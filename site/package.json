@@ -1,0 +1,16 @@
+{
+  "name": "albums-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild app.ts --bundle --outfile=app.js --format=iife --target=es2020",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.1",
+    "typescript": "^5.5.4"
+  }
+}

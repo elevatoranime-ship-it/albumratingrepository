@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="color-scheme" content="dark" />
+  <title>Пространство · альбомы</title>
+  <link rel="stylesheet" href="styles.css?v=34" />
+</head>
+<body>
+
+  <!-- ===== Фон ===== -->
+  <div class="bg" aria-hidden="true">
+    <div class="bg__glow bg__glow--a"></div>
+    <div class="bg__glow bg__glow--b"></div>
+    <div class="bg__noise"></div>
+    <div class="bg__vignette"></div>
+  </div>
+
+  <main class="stage">
+
+    <!-- ===== ЭКРАН ВХОДА ===== -->
+    <section class="view view--login is-visible" id="view-login" aria-label="Вход">
+      <div class="card" id="card">
+
+        <header class="brand reveal">
+          <svg class="brand__mark" viewBox="0 0 28 28" fill="none" aria-hidden="true">
+            <path d="M14 3.2c.8 3.6 2 6.1 4.6 7.3-2.6 1.2-3.8 3.7-4.6 7.3-.8-3.6-2-6.1-4.6-7.3 2.6-1.2 3.8-3.7 4.6-7.3Z"
+                  stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+            <path d="M6.6 17.4c2.2-.6 3.7-1.3 4.4-2.7.7 1.4 2.2 2.1 4.4 2.7-2.2.6-3.7 1.3-4.4 2.7-.7-1.4-2.2-2.1-4.4-2.7Z"
+                  stroke="currentColor" stroke-width="1" stroke-linejoin="round" opacity=".55"/>
+          </svg>
+          <h1 class="brand__title" id="brand-title">Вход</h1>
+          <svg class="brand__underline" viewBox="0 0 120 10" fill="none" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M4 6.6C28 3.4 52 8.4 76 5.6C92 3.8 106 6.6 116 5"
+                  stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </header>
+
+        <div class="auth">
+          <form class="form" id="login-form" novalidate>
+            <div class="field reveal">
+              <span class="field__label">Почта</span>
+              <input class="field__input field__input--plain" id="email-input" type="email"
+                     autocomplete="email" spellcheck="false" placeholder="you@example.com" />
+            </div>
+
+            <div class="field reveal">
+              <span class="field__label">Пароль</span>
+              <span class="field__control">
+                <input class="field__input" id="password" type="password"
+                       autocomplete="current-password" placeholder="••••••••" />
+                <button class="field__toggle" id="toggle-password" type="button" aria-label="Показать пароль">
+                  <svg class="icon icon--eye" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z"/>
+                    <circle cx="12" cy="12" r="2.6"/>
+                  </svg>
+                  <svg class="icon icon--eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 4l16 16"/>
+                    <path d="M9.9 5.1A10.8 10.8 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.1 3.9"/>
+                    <path d="M6.6 6.6A16.7 16.7 0 0 0 2 12s3.5 7 10 7c1.4 0 2.7-.3 3.9-.8"/>
+                    <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>
+                  </svg>
+                </button>
+              </span>
+            </div>
+
+            <div class="field reveal" id="confirm-field" hidden>
+              <span class="field__label">Повтор пароля</span>
+              <input class="field__input field__input--plain" id="password2" type="password"
+                     autocomplete="new-password" placeholder="••••••••" />
+            </div>
+
+            <p class="form__error" id="form-error" role="alert" aria-live="polite"></p>
+
+            <button class="btn btn--block reveal" id="submit-btn" type="submit">
+              <span class="btn__label" id="submit-label">Войти</span>
+              <span class="btn__spinner" aria-hidden="true"></span>
+            </button>
+          </form>
+
+          <div class="auth__switch reveal">
+            <span id="auth-switch-hint">нет аккаунта?</span>
+            <button class="auth__link" id="auth-switch" type="button">создать</button>
+          </div>
+
+          <p class="auth__demo" id="demo-hint" hidden></p>
+        </div>
+
+        <footer class="foot reveal">
+          <span class="foot__line"></span>
+          <span class="foot__text">закрытое пространство</span>
+          <span class="foot__line"></span>
+        </footer>
+
+        <!-- Оверлей успешного входа -->
+        <div class="success" id="success" aria-hidden="true">
+          <svg viewBox="0 0 64 64" fill="none">
+            <circle class="success__ring" cx="32" cy="32" r="27"/>
+            <path class="success__check" d="M21 33.5 28.5 41 44 24"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== ОСНОВНАЯ СТРАНИЦА ===== -->
+    <section class="view view--home" id="view-home" aria-label="Главная страница">
+      <div class="home">
+        <header class="hdr">
+          <div class="hdr__titles reveal" style="--d:.05s">
+            <h1 class="hdr__title">Альбомы</h1>
+            <svg class="hdr__underline" viewBox="0 0 170 12" fill="none" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M5 7C30 3.6 58 8.6 84 5.8C108 3.4 140 6.8 164 5"
+                    stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="hdr__right reveal" style="--d:.12s">
+            <span class="hdr__hello">привет, <strong id="home-title">Гость</strong></span>
+            <div class="hdr__actions">
+              <button class="btn btn--ghost btn--sm" id="artists-btn" type="button">рейтинг артистов</button>
+              <button class="btn btn--ghost btn--sm hdr__profile" id="profile-btn" type="button">
+                <span class="hdr__avatar" id="home-avatar"></span>
+                <span>мой профиль</span>
+              </button>
+              <button class="btn btn--ghost btn--sm" id="logout-btn" type="button">выйти</button>
+            </div>
+          </div>
+        </header>
+
+        <p class="home__meta reveal" id="home-meta" style="--d:.18s">альбомы…</p>
+
+        <div class="albums" id="albums"></div>
+      </div>
+    </section>
+
+    <!-- ===== СТРАНИЦА АЛЬБОМА ===== -->
+    <section class="view view--album" id="view-album" aria-label="Страница альбома">
+      <div class="albumview">
+        <div class="av__top reveal" style="--d:.04s">
+          <button class="iconbtn" id="album-back" type="button" aria-label="Назад к альбомам">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="av__grid">
+          <figure class="av__cover reveal" style="--d:.1s">
+            <img id="av-cover-img" alt="" />
+            <span class="av__year" id="av-year"></span>
+          </figure>
+
+          <div class="av__info reveal" style="--d:.16s">
+            <h1 class="av__title" id="av-title"></h1>
+            <p class="av__artist" id="av-artist"></p>
+
+            <div class="av__avg">
+              <span class="av__avg-num" id="av-avg">—</span>
+              <div class="av__avg-meta">
+                <span class="av__avg-of">/10</span>
+                <span class="av__avg-caption">средний балл по трекам</span>
+                <span class="av__confirm-state" id="av-confirm-state" hidden></span>
+              </div>
+            </div>
+
+            <div class="av__impact" id="av-impact" hidden>
+              <span class="av__impact-label">вклад в общий балл</span>
+              <div class="av__chips" id="av-chips"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="av__finalize reveal" style="--d:.22s">
+          <div class="av__fin-item">
+            <span class="av__fin-label">целостность / концептуальность</span>
+            <div class="av__fin-control" id="cohesion-control"></div>
+          </div>
+          <div class="av__fin-item">
+            <span class="av__fin-label">тип релиза</span>
+            <div class="av__fin-control" id="type-control"></div>
+          </div>
+        </div>
+
+        <div class="av__tracks reveal" style="--d:.3s">
+          <div class="av__tracks-head">
+            <h2 class="av__tracks-title">треки</h2>
+            <span class="av__tracks-count" id="av-tracks-count"></span>
+            <button class="av__lockcount" id="tracks-lock-btn" type="button" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/>
+                <path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/>
+              </svg>
+              <span id="tracks-lock-label">зафиксировать количество</span>
+            </button>
+          </div>
+          <form class="av__addtrack" id="track-form" novalidate>
+            <input class="field__input field__input--plain av__track-input" id="track-input" type="text"
+                   autocomplete="off" spellcheck="false" placeholder="название трека…" />
+            <button class="btn" id="track-add-btn" type="submit">добавить</button>
+            <div class="av__feat" id="track-feat-box" hidden>
+              <span class="av__feat-label">при участии (ft. / feat. / &)</span>
+              <div class="combobox av__feat-combo">
+                <input class="field__input field__input--plain av__feat-input" id="track-feat-input" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="выберите или введите артиста…" />
+                <ul class="combo__list" id="track-feat-list" hidden></ul>
+              </div>
+            </div>
+          </form>
+          <p class="av__locked-note" id="tracks-locked-note" hidden>количество треков зафиксировано</p>
+          <ol class="tracklist" id="track-list"></ol>
+        </div>
+
+        <div class="av__danger reveal" style="--d:.36s">
+          <button class="btn btn--danger" id="album-delete-btn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/>
+            </svg>
+            <span>удалить альбом</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== ДОБАВЛЕНИЕ АЛЬБОМА ===== -->
+    <section class="view view--add" id="view-add" aria-label="Добавить альбом">
+      <div class="add">
+        <div class="add__top">
+          <button class="iconbtn" id="add-back" type="button" aria-label="Назад к альбомам">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="card add__panel" id="add-panel">
+          <header class="add__head reveal" style="--d:.05s">
+            <h1 class="add__title">Новый альбом</h1>
+            <svg class="add__underline" viewBox="0 0 120 10" fill="none" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M4 6.6C28 3.4 52 8.4 76 5.6C92 3.8 106 6.6 116 5"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </header>
+
+          <form class="form form--add" id="add-form" novalidate>
+            <div class="field field--artist reveal" id="artist-field" style="--d:.12s">
+              <span class="field__label">Артист *</span>
+              <div class="combobox" id="artist-box">
+                <input class="field__input field__input--plain" id="artist-input" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="начните вводить…" />
+                <span class="combo__check" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                       stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 6.5"/></svg>
+                </span>
+                <ul class="combo__list" id="artist-list" hidden></ul>
+              </div>
+            </div>
+
+            <div class="field reveal" style="--d:.18s">
+              <span class="field__label">Название альбома *</span>
+              <input class="field__input field__input--plain" id="title-input" type="text"
+                     autocomplete="off" spellcheck="false" placeholder="например, Blonde" />
+              <p class="form__error" id="title-error" role="alert" aria-live="polite"></p>
+            </div>
+
+            <div class="field reveal" style="--d:.24s">
+              <span class="field__label">Год *</span>
+              <input class="field__input field__input--plain field__input--year" id="year-input" type="text"
+                     inputmode="numeric" autocomplete="off" placeholder="2024" maxlength="4" />
+            </div>
+
+            <div class="field reveal" style="--d:.3s">
+              <span class="field__label">Обложка <em>— необязательно</em></span>
+              <div class="cover-pick" id="cover-pick" role="button" tabindex="0" aria-label="Добавить обложку">
+                <span class="cover-pick__thumb" aria-hidden="true">
+                  <svg class="cover-pick__smile" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="11.2" fill="#f2cf5e"/>
+                    <circle cx="12" cy="12" r="11.2" stroke="#0c0c0e" stroke-opacity="0.35" stroke-width="1"/>
+                    <circle cx="8.3" cy="9.4" r="1.5" fill="#141418"/>
+                    <circle cx="15.7" cy="9.4" r="1.5" fill="#141418"/>
+                    <path d="M7.6 13.8c1.4 1.8 3 2.6 4.4 2.6s3-.8 4.4-2.6" stroke="#141418" stroke-width="1.7" stroke-linecap="round"/>
+                  </svg>
+                  <img class="cover-pick__img" id="cover-img" alt="" />
+                </span>
+                <span class="cover-pick__hint">добавить обложку</span>
+                <button class="cover-pick__remove" id="cover-remove" type="button" aria-label="Убрать обложку">×</button>
+                <input type="file" id="cover-file" accept="image/*" hidden />
+              </div>
+              <div class="cover-url">
+                <input class="field__input field__input--plain" id="cover-url" type="url"
+                       autocomplete="off" spellcheck="false" placeholder="…или вставьте ссылку на обложку" />
+                <p class="form__error" id="cover-url-error" role="alert" aria-live="polite"></p>
+              </div>
+              <p class="cover-pick__note">файл или ссылка — обложку можно будет заменить и позже, на странице альбома</p>
+            </div>
+
+            <p class="form__error" id="add-error" role="alert" aria-live="polite"></p>
+
+            <button class="btn btn--block reveal" id="add-submit" type="submit" style="--d:.36s">
+              <span class="btn__label">Добавить альбом</span>
+              <span class="btn__spinner" aria-hidden="true"></span>
+            </button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== ПРОФИЛЬ АРТИСТА ===== -->
+    <section class="view view--artist" id="view-artist" aria-label="Профиль артиста">
+      <div class="artistview">
+        <div class="av__top reveal" style="--d:.04s">
+          <button class="iconbtn" id="artist-back" type="button" aria-label="Назад">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <header class="artist__head reveal" style="--d:.1s">
+          <h1 class="artist__name" id="artist-name"></h1>
+          <div class="artist__score">
+            <span class="artist__score-num" id="artist-score">—</span>
+            <div class="artist__score-meta">
+              <span class="artist__score-of">/10</span>
+              <span class="artist__score-caption">средний балл</span>
+            </div>
+          </div>
+        </header>
+
+        <section class="artist__section reveal" id="artist-own-section" style="--d:.18s" hidden>
+          <h2 class="artist__sec-title">альбомы</h2>
+          <div class="albums" id="artist-own"></div>
+        </section>
+
+        <section class="artist__section reveal" id="artist-feat-section" style="--d:.24s" hidden>
+          <h2 class="artist__sec-title">при участии</h2>
+          <div class="albums" id="artist-feat"></div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ===== РЕЙТИНГ АРТИСТОВ ===== -->
+    <section class="view view--rank" id="view-rank" aria-label="Рейтинг артистов">
+      <div class="rankview">
+        <div class="av__top reveal" style="--d:.04s">
+          <button class="iconbtn" id="rank-back" type="button" aria-label="Назад">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="rank__panel">
+          <header class="rank__head reveal" style="--d:.1s">
+            <h1 class="rank__title">рейтинг артистов</h1>
+            <svg class="rank__underline" viewBox="0 0 150 10" fill="none" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M5 6.4C34 3.2 66 8.6 96 5.4C118 3 136 6.8 145 5"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <p class="rank__sub">по среднему баллу за все альбомы</p>
+          </header>
+          <ol class="rank__list reveal" id="artist-rank-list" style="--d:.18s"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== МОЙ ПРОФИЛЬ ===== -->
+    <section class="view view--profile" id="view-profile" aria-label="Мой профиль">
+      <div class="profileview">
+        <div class="av__top reveal" style="--d:.04s">
+          <button class="iconbtn" id="profile-back" type="button" aria-label="Назад">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="card prof__panel">
+          <header class="prof__head reveal" style="--d:.1s">
+            <span class="prof__avatar" id="prof-avatar"></span>
+            <div class="prof__head-meta">
+              <h1 class="prof__title">мой профиль</h1>
+              <p class="prof__sub">это видят оба участника</p>
+            </div>
+          </header>
+
+          <div class="prof__section reveal" style="--d:.18s">
+            <span class="prof__label">аватар</span>
+            <div class="prof__avatar-row">
+              <button class="btn btn--ghost prof__pick" id="prof-upload" type="button">загрузить изображение</button>
+              <button class="btn btn--ghost prof__pick prof__pick--remove" id="prof-remove" type="button" hidden>убрать</button>
+              <input type="file" id="prof-file" accept="image/*" hidden />
+            </div>
+            <p class="prof__note">если аватара нет — показывается первая буква ника</p>
+          </div>
+
+          <div class="prof__section reveal" style="--d:.26s">
+            <span class="prof__label">никнейм</span>
+            <input class="field__input field__input--plain" id="prof-name" type="text"
+                   autocomplete="off" spellcheck="false" maxlength="24" placeholder="ваш ник…" />
+            <p class="form__error" id="prof-error" role="alert" aria-live="polite"></p>
+            <button class="btn" id="prof-save" type="button">сохранить</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== МОДАЛЬНОЕ ПОДТВЕРЖДЕНИЕ ФИНАЛЬНОГО ВЫБОРА ===== -->
+  <div class="confirm" id="confirm-modal" hidden>
+    <div class="confirm__backdrop" data-confirm-close></div>
+    <div class="confirm__dialog" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+      <h3 class="confirm__title" id="confirm-title"></h3>
+      <p class="confirm__text" id="confirm-text"></p>
+      <div class="confirm__actions">
+        <button class="btn btn--ghost" id="confirm-cancel" type="button">отмена</button>
+        <button class="btn" id="confirm-ok" type="button">подтвердить</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="app.js?v=27"></script>
+</body>
+</html>

@@ -48,6 +48,8 @@
 | `package.json`, `tsconfig.json`, `package-lock.json` | Сборка |
 | `server.py`  | Локальный сервер без кэша |
 | `covers/`    | Обложки для демо-данных |
+| `.assetsignore` | Список разрешённых статических файлов для Cloudflare |
+| `../wrangler.jsonc` | Конфигурация Worker `albumratings` в корне репозитория |
 
 ## Запуск локально
 
@@ -160,23 +162,64 @@ npm test                         # пересборка + браузерные �
    Cloudflare связан с репозиторием и настроен деплой из `main`. Если сайт загружался
    вручную, потребуется отдельно опубликовать обновлённые статические файлы.
 
-В текущем репозитории нет `wrangler.toml`/`wrangler.jsonc` и GitHub Actions для
-деплоя. Настройки подключения GitHub в панели Cloudflare здесь не видны,
-поэтому наличие автодеплоя нельзя определить только по коду. Перед публикацией
-проверьте в настройках своего проекта Cloudflare подключённый репозиторий,
-ветку для production, корневую папку и команды сборки/деплоя.
+### Конфигурация Workers Builds
 
-Для существующей сборки исходники находятся в **`site/`**, команда —
-`npm ci && npm run build` (из этой папки). `app.js` хранится в Git вместе
-с исходником `app.ts`: при изменении TypeScript нужно обновлять оба.
-Если Cloudflare отдаёт готовые файлы без сборки, обновлять только `app.ts`
-недостаточно — браузер его не подключает.
+В **корне репозитория** находится `wrangler.jsonc`. Он указывает существующий
+Worker **`albumratings`** и папку статических ресурсов **`./site`**. Поэтому
+Wrangler знает, что публиковать, даже когда команда запускается из корня,
+а не из `site/`. Без этой конфигурации `wrangler versions upload` завершался
+ошибкой `Missing entry-point to Worker script or to assets directory`.
 
-При ручной публикации нужны `index.html`, `styles.css`, `app.js`, `config.js`
-и каталог `covers/`. Не публикуйте `node_modules`, тестовые отчёты или SQL-файлы
-как статические ресурсы. Конкретную команду деплоя следует выбирать по уже
-настроенному проекту Cloudflare; новый Worker или новую базу для этой функции
-создавать не нужно.
+Серверный Worker-скрипт не нужен: сайт работает как Workers Static Assets,
+а серверные данные обслуживает Supabase. **Не указывайте `site/app.js` как `main`**
+в конфигурации Wrangler — это браузерный код, а не серверный обработчик.
+
+Для этой структуры проекта настройки Cloudflare **Settings → Build**:
+
+| Настройка | Значение |
+|-----------|----------|
+| Root directory | корень репозитория (`/`), **не** `site/` |
+| Production branch | `main` |
+| Build command | можно оставить пустой: собранный `site/app.js` уже хранится в Git |
+| Deploy command (production) | `npx wrangler deploy` |
+| Non-production branch deploy command | `npx wrangler versions upload` |
+
+Команда `versions upload` создаёт версию для проверки ветки, не переключая на неё
+рабочий сайт. После слияния PR в `main` production-команда `deploy` публикует
+обновление. Текущую команду `npx wrangler versions upload` менять для исправления
+этой ошибки не требуется: она автоматически прочитает новый `wrangler.jsonc`.
+Новый Worker, база или токен для этого не нужны.
+
+### Какие файлы публикуются
+
+`site/.assetsignore` разрешает загрузку **только** `index.html`, `styles.css`,
+`app.js`, `config.js` и каталога `covers/`. Исходники TypeScript, SQL, зависимости,
+документация и тесты не публикуются как доступные по URL файлы.
+При добавлении новых ресурсов для браузера обновляйте этот список разрешений.
+
+`app.js` хранится в Git вместе с исходником `app.ts`: при изменении TypeScript
+нужно обновлять оба. Для пересборки из корня репозитория:
+
+```bash
+npm --prefix site ci
+npm --prefix site run build
+```
+
+При желании эти команды можно добавить в **Build command** Cloudflare:
+`npm --prefix site ci && npm --prefix site run build`. Корневую папку при этом
+оставьте `/`, чтобы Wrangler находил конфигурацию. Для Wrangler 4.129.0 нужен
+Node.js 22+.
+
+Проверка конфигурации и состава ресурсов **без загрузки в Cloudflare**, также
+из корня репозитория:
+
+```bash
+npx wrangler@4.129.0 versions upload --dry-run
+npx wrangler@4.129.0 deploy --dry-run
+```
+
+Документация Cloudflare: [Workers Builds](https://developers.cloudflare.com/workers/ci-cd/builds/configuration/)
+и [настройка Static Assets / `.assetsignore`](https://developers.cloudflare.com/workers/static-assets/binding/).
 
 ## Структура данных (облако)
 

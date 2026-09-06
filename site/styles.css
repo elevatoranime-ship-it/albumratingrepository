@@ -894,7 +894,7 @@ body {
    ========================================================================== */
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *, *::before, *::after, *::backdrop {
     animation-duration: 0.001s !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001s !important;
@@ -968,6 +968,11 @@ body {
   align-items: start;
   margin-top: 8px;
 }
+
+.av__artwork { min-width: 0; }
+.av__cover-edit { width: 100%; min-height: 44px; margin-top: 12px; }
+.av__cover-edit svg { width: 17px; height: 17px; flex: none; }
+.av__cover-edit:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
 .av__cover {
   position: relative;
@@ -1122,7 +1127,7 @@ body {
 
 @media (max-width: 700px) {
   .av__grid { grid-template-columns: 1fr; gap: 24px; }
-  .av__cover { max-width: 260px; }
+  .av__artwork { max-width: 260px; }
 }
 
 /* ==========================================================================
@@ -1298,7 +1303,7 @@ body {
 
 @media (max-width: 700px) {
   .av__grid { grid-template-columns: 1fr; gap: 24px; }
-  .av__cover { max-width: 260px; }
+  .av__artwork { max-width: 260px; }
   .track__row2 { padding-left: 0; flex-wrap: wrap; }
   .track__rate-label { width: 100%; }
 }
@@ -1440,6 +1445,51 @@ body {
 @keyframes finalLockIn {
   from { opacity: 0; transform: scale(0.5) rotate(-14deg); }
   to   { opacity: 1; transform: none; }
+}
+
+/* --- обложка существующего альбома: нативный диалог с удержанием фокуса --- */
+.cover-editor {
+  position: fixed;
+  margin: auto;
+  width: min(480px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  padding: 28px;
+  overflow-y: auto;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 18px;
+  box-shadow: 0 40px 90px -30px rgba(0,0,0,0.9);
+  opacity: 0;
+  transform: translateY(14px) scale(0.97);
+  transition: opacity 0.28s var(--ease-out), transform 0.36s var(--ease-out);
+}
+.cover-editor.is-open { opacity: 1; transform: none; }
+.cover-editor::backdrop {
+  background: rgba(7,7,9,0.78);
+  opacity: 0;
+  transition: opacity 0.28s var(--ease-out);
+}
+.cover-editor.is-open::backdrop { opacity: 1; }
+.cover-editor__album { margin-top: 8px; font-size: 13px; color: var(--accent); overflow-wrap: anywhere; }
+.cover-editor__media { display: flex; align-items: center; gap: 18px; margin: 24px 0; }
+.cover-editor__preview {
+  width: 112px; height: 112px; flex: none;
+  object-fit: cover; border-radius: 12px;
+  border: 1px solid var(--line); background: var(--panel-2);
+}
+.cover-editor .cover-pick__note { line-height: 1.5; }
+.cover-editor__status { min-height: 18px; margin-top: 12px; font-size: 13px; color: var(--text-dim); }
+.cover-editor .form__error { margin-top: 4px; line-height: 1.5; }
+.cover-editor .btn { min-height: 44px; }
+.cover-editor .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; box-shadow: none; }
+.cover-editor .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+@media (max-width: 480px) {
+  .cover-editor { padding: 22px 18px; }
+  .cover-editor__media { gap: 14px; }
+  .cover-editor__preview { width: 88px; height: 88px; }
+  .cover-editor .confirm__actions .btn { padding-left: 16px; padding-right: 16px; }
 }
 
 /* --- модальное подтверждение --- */
@@ -2045,7 +2095,7 @@ body { -webkit-tap-highlight-color: transparent; }
 
   /* --- страница альбома --- */
   .av__grid { gap: 20px; }
-  .av__cover { max-width: min(220px, 60vw); }
+  .av__artwork { max-width: min(220px, 60vw); }
   .av__avg-num { font-size: 48px; }
   .av__avg { gap: 10px; margin-top: 22px; }
   .av__tracks { margin-top: 34px; }

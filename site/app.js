@@ -269,7 +269,7 @@
      */
     invoke(functionName_1) {
       return __awaiter(this, arguments, void 0, function* (functionName, options = {}) {
-        var _a2;
+        var _a;
         let timeoutId;
         let timeoutController;
         try {
@@ -336,7 +336,7 @@
           if (!response.ok) {
             throw new FunctionsHttpError(response);
           }
-          let responseType = ((_a2 = response.headers.get("Content-Type")) !== null && _a2 !== void 0 ? _a2 : "text/plain").split(";")[0].trim();
+          let responseType = ((_a = response.headers.get("Content-Type")) !== null && _a !== void 0 ? _a : "text/plain").split(";")[0].trim();
           let data;
           if (responseType === "application/json") {
             data = yield response.json();
@@ -4151,7 +4151,7 @@ ${cause.stack}`;
     constructor() {
     }
     static detectEnvironment() {
-      var _a2;
+      var _a;
       if (typeof WebSocket !== "undefined") {
         return { type: "native", wsConstructor: WebSocket };
       }
@@ -4170,7 +4170,7 @@ ${cause.stack}`;
           workaround: "Use Cloudflare Workers WebSocket API for server-side WebSocket handling, or deploy to a different runtime."
         };
       }
-      if (typeof globalThis !== "undefined" && gt.EdgeRuntime || typeof navigator !== "undefined" && ((_a2 = navigator.userAgent) === null || _a2 === void 0 ? void 0 : _a2.includes("Vercel-Edge"))) {
+      if (typeof globalThis !== "undefined" && gt.EdgeRuntime || typeof navigator !== "undefined" && ((_a = navigator.userAgent) === null || _a === void 0 ? void 0 : _a.includes("Vercel-Edge"))) {
         return {
           type: "unsupported",
           error: "Edge runtime detected (Vercel Edge/Netlify Edge). WebSockets are not supported in edge functions.",
@@ -4251,7 +4251,7 @@ Suggested solution: ${env.workaround}`;
       try {
         const env = this.detectEnvironment();
         return env.type === "native" || env.type === "ws";
-      } catch (_a2) {
+      } catch (_a) {
         return false;
       }
     }
@@ -4310,29 +4310,29 @@ Suggested solution: ${env.workaround}`;
       return callback(JSON.stringify(payload));
     }
     _binaryEncodeUserBroadcastPush(message) {
-      var _a2;
-      if (this._isArrayBuffer((_a2 = message.payload) === null || _a2 === void 0 ? void 0 : _a2.payload)) {
+      var _a;
+      if (this._isArrayBuffer((_a = message.payload) === null || _a === void 0 ? void 0 : _a.payload)) {
         return this._encodeBinaryUserBroadcastPush(message);
       } else {
         return this._encodeJsonUserBroadcastPush(message);
       }
     }
     _encodeBinaryUserBroadcastPush(message) {
-      var _a2, _b;
-      const userPayload = (_b = (_a2 = message.payload) === null || _a2 === void 0 ? void 0 : _a2.payload) !== null && _b !== void 0 ? _b : new ArrayBuffer(0);
+      var _a, _b;
+      const userPayload = (_b = (_a = message.payload) === null || _a === void 0 ? void 0 : _a.payload) !== null && _b !== void 0 ? _b : new ArrayBuffer(0);
       return this._encodeUserBroadcastPush(message, this.BINARY_ENCODING, userPayload);
     }
     _encodeJsonUserBroadcastPush(message) {
-      var _a2, _b;
-      const userPayload = (_b = (_a2 = message.payload) === null || _a2 === void 0 ? void 0 : _a2.payload) !== null && _b !== void 0 ? _b : {};
+      var _a, _b;
+      const userPayload = (_b = (_a = message.payload) === null || _a === void 0 ? void 0 : _a.payload) !== null && _b !== void 0 ? _b : {};
       const encoder = new TextEncoder();
       const encodedUserPayload = encoder.encode(JSON.stringify(userPayload)).buffer;
       return this._encodeUserBroadcastPush(message, this.JSON_ENCODING, encodedUserPayload);
     }
     _encodeUserBroadcastPush(message, encodingType, encodedPayload) {
-      var _a2, _b;
+      var _a, _b;
       const topic = message.topic;
-      const ref = (_a2 = message.ref) !== null && _a2 !== void 0 ? _a2 : "";
+      const ref = (_a = message.ref) !== null && _a !== void 0 ? _a : "";
       const joinRef = (_b = message.join_ref) !== null && _b !== void 0 ? _b : "";
       const userEvent = message.payload.event;
       const rest = this.allowedMetadataKeys ? this._pick(message.payload, this.allowedMetadataKeys) : {};
@@ -4419,8 +4419,8 @@ Suggested solution: ${env.workaround}`;
       return { join_ref: null, ref: null, topic, event: this.BROADCAST_EVENT, payload: data };
     }
     _isArrayBuffer(buffer) {
-      var _a2;
-      return buffer instanceof ArrayBuffer || ((_a2 = buffer === null || buffer === void 0 ? void 0 : buffer.constructor) === null || _a2 === void 0 ? void 0 : _a2.name) === "ArrayBuffer";
+      var _a;
+      return buffer instanceof ArrayBuffer || ((_a = buffer === null || buffer === void 0 ? void 0 : buffer.constructor) === null || _a === void 0 ? void 0 : _a.name) === "ArrayBuffer";
     }
     _pick(obj, keys) {
       if (!obj || typeof obj !== "object") {
@@ -4459,8 +4459,8 @@ Suggested solution: ${env.workaround}`;
     PostgresTypes2["tstzrange"] = "tstzrange";
   })(PostgresTypes || (PostgresTypes = {}));
   var convertChangeData = (columns, record, options = {}) => {
-    var _a2;
-    const skipTypes = (_a2 = options.skipTypes) !== null && _a2 !== void 0 ? _a2 : [];
+    var _a;
+    const skipTypes = (_a = options.skipTypes) !== null && _a !== void 0 ? _a : [];
     if (!record) {
       return {};
     }
@@ -4550,7 +4550,7 @@ Suggested solution: ${env.workaround}`;
     if (typeof value === "string") {
       try {
         return JSON.parse(value);
-      } catch (_a2) {
+      } catch (_a) {
         return value;
       }
     }
@@ -5186,7 +5186,7 @@ Suggested solution: ${env.workaround}`;
       }
       try {
         return JSON.parse(resp);
-      } catch (e) {
+      } catch {
         console && console.log("failed to parse JSON response", resp);
         return null;
       }
@@ -5706,7 +5706,6 @@ Suggested solution: ${env.workaround}`;
      * @param {SocketOptions} [opts] - Optional configuration
      */
     constructor(endPoint, opts = {}) {
-      var _a2, _b;
       this.stateChangeCallbacks = { open: [], close: [], error: [], message: [] };
       this.channels = [];
       this.sendBuffer = [];
@@ -5721,7 +5720,7 @@ Suggested solution: ${env.workaround}`;
       let envSessionStorage = null;
       try {
         envSessionStorage = global2 && global2.sessionStorage;
-      } catch (e) {
+      } catch {
       }
       this.sessionStore = opts.sessionStorage || envSessionStorage;
       this.establishedConnections = 0;
@@ -5767,9 +5766,9 @@ Suggested solution: ${env.workaround}`;
         });
       }
       this.heartbeatIntervalMs = opts.heartbeatIntervalMs || 3e4;
-      this.autoSendHeartbeat = (_a2 = opts.autoSendHeartbeat) != null ? _a2 : true;
-      this.heartbeatCallback = (_b = opts.heartbeatCallback) != null ? _b : () => {
-      };
+      this.autoSendHeartbeat = opts.autoSendHeartbeat ?? true;
+      this.heartbeatCallback = opts.heartbeatCallback ?? (() => {
+      });
       this.rejoinAfterMs = (tries) => {
         if (opts.rejoinAfterMs) {
           return opts.rejoinAfterMs(tries);
@@ -6796,7 +6795,7 @@ Suggested solution: ${env.workaround}`;
      * ```
      */
     constructor(topic, params = { config: {} }, socket) {
-      var _a2, _b;
+      var _a, _b;
       this.topic = topic;
       this.params = params;
       this.socket = socket;
@@ -6815,7 +6814,7 @@ Suggested solution: ${env.workaround}`;
       this._updateFilterTransform();
       this.broadcastEndpointURL = httpEndpointURL(this.socket.socketAdapter.endPointURL());
       this.private = this.params.config.private || false;
-      if (!this.private && ((_b = (_a2 = this.params.config) === null || _a2 === void 0 ? void 0 : _a2.broadcast) === null || _b === void 0 ? void 0 : _b.replay)) {
+      if (!this.private && ((_b = (_a = this.params.config) === null || _a === void 0 ? void 0 : _a.broadcast) === null || _b === void 0 ? void 0 : _b.replay)) {
         throw new Error(`tried to use replay on public channel '${this.topic}'. It must be a private channel.`);
       }
     }
@@ -6839,13 +6838,13 @@ Suggested solution: ${env.workaround}`;
      * ```
      */
     subscribe(callback, timeout = this.timeout) {
-      var _a2, _b, _c;
+      var _a, _b, _c;
       if (!this.socket.isConnected()) {
         this.socket.connect();
       }
       if (this.channelAdapter.isClosed()) {
         const { config: { broadcast, presence, private: isPrivate } } = this.params;
-        const postgres_changes = (_b = (_a2 = this.bindings.postgres_changes) === null || _a2 === void 0 ? void 0 : _a2.map((r) => r.filter)) !== null && _b !== void 0 ? _b : [];
+        const postgres_changes = (_b = (_a = this.bindings.postgres_changes) === null || _a === void 0 ? void 0 : _a.map((r) => r.filter)) !== null && _b !== void 0 ? _b : [];
         const presence_enabled = !!this.bindings[REALTIME_LISTEN_TYPES.PRESENCE] && this.bindings[REALTIME_LISTEN_TYPES.PRESENCE].length > 0 || ((_c = this.params.config.presence) === null || _c === void 0 ? void 0 : _c.enabled) === true;
         const accessTokenPayload = {};
         const config = {
@@ -6883,9 +6882,9 @@ Suggested solution: ${env.workaround}`;
       return this;
     }
     _updatePostgresBindings(postgres_changes, callback) {
-      var _a2;
+      var _a;
       const clientPostgresBindings = this.bindings.postgres_changes;
-      const bindingsLen = (_a2 = clientPostgresBindings === null || clientPostgresBindings === void 0 ? void 0 : clientPostgresBindings.length) !== null && _a2 !== void 0 ? _a2 : 0;
+      const bindingsLen = (_a = clientPostgresBindings === null || clientPostgresBindings === void 0 ? void 0 : clientPostgresBindings.length) !== null && _a !== void 0 ? _a : 0;
       const newPostgresBindings = [];
       for (let i = 0; i < bindingsLen; i++) {
         const clientPostgresBinding = clientPostgresBindings[i];
@@ -7125,7 +7124,7 @@ Suggested solution: ${env.workaround}`;
      * @category Realtime
      */
     async httpSend(event, payload, opts = {}) {
-      var _a2;
+      var _a;
       if (payload === void 0 || payload === null) {
         return Promise.reject(new Error("Payload is required for httpSend()"));
       }
@@ -7147,7 +7146,7 @@ Suggested solution: ${env.workaround}`;
         headers,
         body: isBinary ? payload : JSON.stringify(payload)
       };
-      const response = await this._fetchWithTimeout(url.toString(), options, (_a2 = opts.timeout) !== null && _a2 !== void 0 ? _a2 : this.timeout);
+      const response = await this._fetchWithTimeout(url.toString(), options, (_a = opts.timeout) !== null && _a !== void 0 ? _a : this.timeout);
       if (response.status === 202) {
         return { success: true };
       }
@@ -7211,7 +7210,7 @@ Suggested solution: ${env.workaround}`;
      * ```
      */
     async send(args, opts = {}) {
-      var _a2, _b;
+      var _a, _b;
       if (!this.channelAdapter.canPush() && args.type === "broadcast") {
         console.warn("Realtime send() is automatically falling back to REST API. This behavior will be deprecated in the future. Please use httpSend() explicitly for REST delivery.");
         const { event, payload: endpoint_payload } = args;
@@ -7237,7 +7236,7 @@ Suggested solution: ${env.workaround}`;
           })
         };
         try {
-          const response = await this._fetchWithTimeout(this.broadcastEndpointURL, options, (_a2 = opts.timeout) !== null && _a2 !== void 0 ? _a2 : this.timeout);
+          const response = await this._fetchWithTimeout(this.broadcastEndpointURL, options, (_a = opts.timeout) !== null && _a !== void 0 ? _a : this.timeout);
           await ((_b = response.body) === null || _b === void 0 ? void 0 : _b.cancel());
           return response.ok ? "ok" : "error";
         } catch (error) {
@@ -7249,9 +7248,9 @@ Suggested solution: ${env.workaround}`;
         }
       } else {
         return new Promise((resolve) => {
-          var _a3, _b2, _c;
+          var _a2, _b2, _c;
           const push = this.channelAdapter.push(args.type, args, opts.timeout || this.timeout);
-          if (args.type === "broadcast" && !((_c = (_b2 = (_a3 = this.params) === null || _a3 === void 0 ? void 0 : _a3.config) === null || _b2 === void 0 ? void 0 : _b2.broadcast) === null || _c === void 0 ? void 0 : _c.ack)) {
+          if (args.type === "broadcast" && !((_c = (_b2 = (_a2 = this.params) === null || _a2 === void 0 ? void 0 : _a2.config) === null || _b2 === void 0 ? void 0 : _b2.broadcast) === null || _c === void 0 ? void 0 : _c.ack)) {
             resolve("ok");
           }
           push.receive("ok", () => resolve("ok"));
@@ -7342,12 +7341,12 @@ Suggested solution: ${env.workaround}`;
     /** @internal */
     _updateFilterMessage() {
       this.channelAdapter.updateFilterBindings((binding, payload, ref) => {
-        var _a2, _b, _c, _d, _e, _f, _g;
+        var _a, _b, _c, _d, _e, _f, _g;
         const typeLower = binding.event.toLocaleLowerCase();
         if (this._notThisChannelEvent(typeLower, ref)) {
           return false;
         }
-        const bind = (_a2 = this.bindings[typeLower]) === null || _a2 === void 0 ? void 0 : _a2.find((bind2) => bind2.ref === binding.ref);
+        const bind = (_a = this.bindings[typeLower]) === null || _a === void 0 ? void 0 : _a.find((bind2) => bind2.ref === binding.ref);
         if (!bind) {
           return true;
         }
@@ -7557,8 +7556,8 @@ Suggested solution: ${env.workaround}`;
         return store.has(key) ? store.get(key) : null;
       },
       key(index) {
-        var _a2;
-        return (_a2 = Array.from(store.keys())[index]) !== null && _a2 !== void 0 ? _a2 : null;
+        var _a;
+        return (_a = Array.from(store.keys())[index]) !== null && _a !== void 0 ? _a : null;
       },
       removeItem(key) {
         store.delete(key);
@@ -7573,7 +7572,7 @@ Suggested solution: ${env.workaround}`;
       if (typeof globalThis !== "undefined" && globalThis.sessionStorage) {
         return globalThis.sessionStorage;
       }
-    } catch (_a2) {
+    } catch (_a) {
     }
     return createMemorySessionStorage();
   }
@@ -7676,7 +7675,7 @@ Suggested solution: ${env.workaround}`;
      * ```
      */
     constructor(endPoint, options) {
-      var _a2;
+      var _a;
       this.channels = new Array();
       this.accessTokenValue = null;
       this.accessToken = null;
@@ -7698,7 +7697,7 @@ Suggested solution: ${env.workaround}`;
         }
         return (...args) => fetch(...args);
       };
-      if (!((_a2 = options === null || options === void 0 ? void 0 : options.params) === null || _a2 === void 0 ? void 0 : _a2.apikey)) {
+      if (!((_a = options === null || options === void 0 ? void 0 : options.params) === null || _a === void 0 ? void 0 : _a.apikey)) {
         throw new Error("API key is required to connect to Realtime");
       }
       this.apiKey = options.params.apikey;
@@ -8131,8 +8130,8 @@ Option 2: Install and provide the "ws" package:
      * @internal
      */
     _initializeOptions(options) {
-      var _a2, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
-      this.worker = (_a2 = options === null || options === void 0 ? void 0 : options.worker) !== null && _a2 !== void 0 ? _a2 : false;
+      var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+      this.worker = (_a = options === null || options === void 0 ? void 0 : options.worker) !== null && _a !== void 0 ? _a : false;
       this.accessToken = (_b = options === null || options === void 0 ? void 0 : options.accessToken) !== null && _b !== void 0 ? _b : null;
       const result = {};
       result.timeout = (_c = options === null || options === void 0 ? void 0 : options.timeout) !== null && _c !== void 0 ? _c : DEFAULT_TIMEOUT;
@@ -8194,14 +8193,13 @@ Option 2: Install and provide the "ws" package:
   // node_modules/iceberg-js/dist/index.mjs
   var IcebergError = class extends Error {
     constructor(message, opts) {
-      var _a2;
       super(message);
       this.name = "IcebergError";
       this.status = opts.status;
       this.icebergType = opts.icebergType;
       this.icebergCode = opts.icebergCode;
       this.details = opts.details;
-      this.isCommitStateUnknown = opts.icebergType === "CommitStateUnknownException" || [500, 502, 504].includes(opts.status) && ((_a2 = opts.icebergType) == null ? void 0 : _a2.includes("CommitState")) === true;
+      this.isCommitStateUnknown = opts.icebergType === "CommitStateUnknownException" || [500, 502, 504].includes(opts.status) && opts.icebergType?.includes("CommitState") === true;
     }
     /**
      * Returns true if the error is a 404 Not Found error.
@@ -8249,8 +8247,7 @@ Option 2: Install and provide the "ws" package:
     return {};
   }
   function createFetchClient(options) {
-    var _a2;
-    const fetchFn = (_a2 = options.fetchImpl) != null ? _a2 : globalThis.fetch;
+    const fetchFn = options.fetchImpl ?? globalThis.fetch;
     return {
       async request({
         method,
@@ -8259,7 +8256,6 @@ Option 2: Install and provide the "ws" package:
         body,
         headers
       }) {
-        var _a3;
         const url = buildUrl(options.baseUrl, path, query);
         const authHeaders = await buildAuthHeaders(options.auth);
         const res = await fetchFn(url, {
@@ -8276,13 +8272,13 @@ Option 2: Install and provide the "ws" package:
         const data = isJson && text ? JSON.parse(text) : text;
         if (!res.ok) {
           const errBody = isJson ? data : void 0;
-          const errorDetail = errBody == null ? void 0 : errBody.error;
+          const errorDetail = errBody?.error;
           throw new IcebergError(
-            (_a3 = errorDetail == null ? void 0 : errorDetail.message) != null ? _a3 : `Request failed with status ${res.status}`,
+            errorDetail?.message ?? `Request failed with status ${res.status}`,
             {
               status: res.status,
-              icebergType: errorDetail == null ? void 0 : errorDetail.type,
-              icebergCode: errorDetail == null ? void 0 : errorDetail.code,
+              icebergType: errorDetail?.type,
+              icebergCode: errorDetail?.code,
               details: errBody
             }
           );
@@ -8311,7 +8307,7 @@ Option 2: Install and provide the "ws" package:
     async createNamespace(id, metadata) {
       const request = {
         namespace: id.namespace,
-        properties: metadata == null ? void 0 : metadata.properties
+        properties: metadata?.properties
       };
       const response = await this.client.request({
         method: "POST",
@@ -8401,11 +8397,10 @@ Option 2: Install and provide the "ws" package:
       };
     }
     async dropTable(id, options) {
-      var _a2;
       await this.client.request({
         method: "DELETE",
         path: `${this.prefix}/namespaces/${namespaceToPath2(id.namespace)}/tables/${id.name}`,
-        query: { purgeRequested: String((_a2 = options == null ? void 0 : options.purge) != null ? _a2 : false) }
+        query: { purgeRequested: String(options?.purge ?? false) }
       });
     }
     async loadTable(id) {
@@ -8457,7 +8452,6 @@ Option 2: Install and provide the "ws" package:
      * @param options - Configuration options for the catalog client
      */
     constructor(options) {
-      var _a2;
       let prefix = "v1";
       if (options.catalogName) {
         prefix += `/${options.catalogName}`;
@@ -8468,7 +8462,7 @@ Option 2: Install and provide the "ws" package:
         auth: options.auth,
         fetchImpl: options.fetch
       });
-      this.accessDelegation = (_a2 = options.accessDelegation) == null ? void 0 : _a2.join(",");
+      this.accessDelegation = options.accessDelegation?.join(",");
       this.namespaceOps = new NamespaceOperations(this.client, prefix);
       this.tableOps = new TableOperations(this.client, prefix, this.accessDelegation);
     }
@@ -11902,7 +11896,7 @@ Option 2: Install and provide the "ws" package:
     }
     try {
       return JSON.parse(value);
-    } catch (_a2) {
+    } catch (_a) {
       return null;
     }
   };
@@ -12148,7 +12142,7 @@ Option 2: Install and provide the "ws" package:
     530
   ];
   async function handleError2(error) {
-    var _a2;
+    var _a;
     if (!looksLikeFetchResponse(error)) {
       throw new AuthRetryableFetchError(_getErrorMessage2(error), 0);
     }
@@ -12173,7 +12167,7 @@ Option 2: Install and provide the "ws" package:
         throw new AuthWeakPasswordError(_getErrorMessage2(data), error.status, data.weak_password.reasons);
       }
     } else if (errorCode === "weak_password") {
-      throw new AuthWeakPasswordError(_getErrorMessage2(data), error.status, ((_a2 = data.weak_password) === null || _a2 === void 0 ? void 0 : _a2.reasons) || []);
+      throw new AuthWeakPasswordError(_getErrorMessage2(data), error.status, ((_a = data.weak_password) === null || _a === void 0 ? void 0 : _a.reasons) || []);
     } else if (errorCode === "session_not_found") {
       throw new AuthSessionMissingError();
     }
@@ -12189,7 +12183,7 @@ Option 2: Install and provide the "ws" package:
     return Object.assign(Object.assign({}, params), parameters);
   };
   async function _request(fetcher, method, url, options) {
-    var _a2;
+    var _a;
     const headers = Object.assign({}, options === null || options === void 0 ? void 0 : options.headers);
     if (!headers[API_VERSION_HEADER_NAME]) {
       headers[API_VERSION_HEADER_NAME] = API_VERSIONS["2024-01-01"].name;
@@ -12197,7 +12191,7 @@ Option 2: Install and provide the "ws" package:
     if (options === null || options === void 0 ? void 0 : options.jwt) {
       headers["Authorization"] = `Bearer ${options.jwt}`;
     }
-    const qs = (_a2 = options === null || options === void 0 ? void 0 : options.query) !== null && _a2 !== void 0 ? _a2 : {};
+    const qs = (_a = options === null || options === void 0 ? void 0 : options.query) !== null && _a !== void 0 ? _a : {};
     if (options === null || options === void 0 ? void 0 : options.redirectTo) {
       qs["redirect_to"] = options.redirectTo;
     }
@@ -12230,7 +12224,7 @@ Option 2: Install and provide the "ws" package:
     }
   }
   function _sessionResponse(data) {
-    var _a2;
+    var _a;
     let session = null;
     if (hasSession(data)) {
       session = Object.assign({}, data);
@@ -12238,7 +12232,7 @@ Option 2: Install and provide the "ws" package:
         session.expires_at = expiresAt(data.expires_in);
       }
     }
-    const user = (_a2 = data.user) !== null && _a2 !== void 0 ? _a2 : typeof (data === null || data === void 0 ? void 0 : data.id) === "string" ? data : null;
+    const user = (_a = data.user) !== null && _a !== void 0 ? _a : typeof (data === null || data === void 0 ? void 0 : data.id) === "string" ? data : null;
     return { data: { session, user }, error: null };
   }
   function _sessionResponsePassword(data) {
@@ -12249,8 +12243,8 @@ Option 2: Install and provide the "ws" package:
     return response;
   }
   function _userResponse(data) {
-    var _a2;
-    const user = (_a2 = data.user) !== null && _a2 !== void 0 ? _a2 : data;
+    var _a;
+    const user = (_a = data.user) !== null && _a !== void 0 ? _a : data;
     return { data: { user }, error: null };
   }
   function _ssoResponse(data) {
@@ -12706,14 +12700,14 @@ Option 2: Install and provide the "ws" package:
      * ```
      */
     async listUsers(params) {
-      var _a2, _b, _c, _d, _e, _f, _g;
+      var _a, _b, _c, _d, _e, _f, _g;
       try {
         const pagination = { nextPage: null, lastPage: 0, total: 0 };
         const response = await _request(this.fetch, "GET", `${this.url}/admin/users`, {
           headers: this.headers,
           noResolveJson: true,
           query: {
-            page: (_b = (_a2 = params === null || params === void 0 ? void 0 : params.page) === null || _a2 === void 0 ? void 0 : _a2.toString()) !== null && _b !== void 0 ? _b : "",
+            page: (_b = (_a = params === null || params === void 0 ? void 0 : params.page) === null || _a === void 0 ? void 0 : _a.toString()) !== null && _b !== void 0 ? _b : "",
             per_page: (_d = (_c = params === null || params === void 0 ? void 0 : params.perPage) === null || _c === void 0 ? void 0 : _c.toString()) !== null && _d !== void 0 ? _d : ""
           },
           xform: _noResolveJsonResponse
@@ -13062,14 +13056,14 @@ Option 2: Install and provide the "ws" package:
      * This function should only be called on a server. Never expose your `service_role` key in the browser.
      */
     async _listOAuthClients(params) {
-      var _a2, _b, _c, _d, _e, _f, _g;
+      var _a, _b, _c, _d, _e, _f, _g;
       try {
         const pagination = { nextPage: null, lastPage: 0, total: 0 };
         const response = await _request(this.fetch, "GET", `${this.url}/admin/oauth/clients`, {
           headers: this.headers,
           noResolveJson: true,
           query: {
-            page: (_b = (_a2 = params === null || params === void 0 ? void 0 : params.page) === null || _a2 === void 0 ? void 0 : _a2.toString()) !== null && _b !== void 0 ? _b : "",
+            page: (_b = (_a = params === null || params === void 0 ? void 0 : params.page) === null || _a === void 0 ? void 0 : _a.toString()) !== null && _b !== void 0 ? _b : "",
             per_page: (_d = (_c = params === null || params === void 0 ? void 0 : params.perPage) === null || _c === void 0 ? void 0 : _c.toString()) !== null && _d !== void 0 ? _d : ""
           },
           xform: _noResolveJsonResponse
@@ -13216,8 +13210,8 @@ Option 2: Install and provide the "ws" package:
           headers: this.headers,
           query,
           xform: (data) => {
-            var _a2;
-            return { data: { providers: (_a2 = data === null || data === void 0 ? void 0 : data.providers) !== null && _a2 !== void 0 ? _a2 : [] }, error: null };
+            var _a;
+            return { data: { providers: (_a = data === null || data === void 0 ? void 0 : data.providers) !== null && _a !== void 0 ? _a : [] }, error: null };
           }
         });
       } catch (error) {
@@ -13426,7 +13420,7 @@ Option 2: Install and provide the "ws" package:
     return "0x" + hex;
   }
   function createSiweMessage(parameters) {
-    var _a2;
+    var _a;
     const { chainId, domain, expirationTime, issuedAt = /* @__PURE__ */ new Date(), nonce, notBefore, requestId, resources, scheme, uri, version: version5 } = parameters;
     {
       if (!Number.isInteger(chainId))
@@ -13439,7 +13433,7 @@ Option 2: Install and provide the "ws" package:
         throw new Error(`@supabase/auth-js: Invalid SIWE message field "uri". URI must be provided.`);
       if (version5 !== "1")
         throw new Error(`@supabase/auth-js: Invalid SIWE message field "version". Version must be '1'. Provided value: ${version5}`);
-      if ((_a2 = parameters.statement) === null || _a2 === void 0 ? void 0 : _a2.includes("\n"))
+      if ((_a = parameters.statement) === null || _a === void 0 ? void 0 : _a.includes("\n"))
         throw new Error(`@supabase/auth-js: Invalid SIWE message field "statement". Statement must not include '\\n'. Provided value: ${parameters.statement}`);
     }
     const address = getAddress(parameters.address);
@@ -13481,10 +13475,10 @@ ${suffix}`;
   // node_modules/@supabase/auth-js/dist/module/lib/webauthn.errors.js
   var WebAuthnError = class extends Error {
     constructor({ message, code, cause, name }) {
-      var _a2;
+      var _a;
       super(message, { cause });
       this.__isWebAuthnError = true;
-      this.name = (_a2 = name !== null && name !== void 0 ? name : cause instanceof Error ? cause.name : void 0) !== null && _a2 !== void 0 ? _a2 : "Unknown Error";
+      this.name = (_a = name !== null && name !== void 0 ? name : cause instanceof Error ? cause.name : void 0) !== null && _a !== void 0 ? _a : "Unknown Error";
       this.code = code;
     }
     toJSON() {
@@ -13507,7 +13501,7 @@ ${suffix}`;
     }
   };
   function identifyRegistrationError({ error, options }) {
-    var _a2, _b, _c;
+    var _a, _b, _c;
     const { publicKey } = options;
     if (!publicKey) {
       throw Error("options was missing required publicKey property");
@@ -13521,7 +13515,7 @@ ${suffix}`;
         });
       }
     } else if (error.name === "ConstraintError") {
-      if (((_a2 = publicKey.authenticatorSelection) === null || _a2 === void 0 ? void 0 : _a2.requireResidentKey) === true) {
+      if (((_a = publicKey.authenticatorSelection) === null || _a === void 0 ? void 0 : _a.requireResidentKey) === true) {
         return new WebAuthnError({
           message: "Discoverable credentials were required but no available authenticator supported it",
           code: "ERROR_AUTHENTICATOR_MISSING_DISCOVERABLE_CREDENTIAL_SUPPORT",
@@ -13750,7 +13744,7 @@ ${suffix}`;
     return result;
   }
   function serializeCredentialCreationResponse(credential) {
-    var _a2;
+    var _a;
     if ("toJSON" in credential && typeof credential.toJSON === "function") {
       return credential.toJSON();
     }
@@ -13765,11 +13759,11 @@ ${suffix}`;
       type: "public-key",
       clientExtensionResults: credential.getClientExtensionResults(),
       // Convert null to undefined and cast to AuthenticatorAttachment type
-      authenticatorAttachment: (_a2 = credentialWithAttachment.authenticatorAttachment) !== null && _a2 !== void 0 ? _a2 : void 0
+      authenticatorAttachment: (_a = credentialWithAttachment.authenticatorAttachment) !== null && _a !== void 0 ? _a : void 0
     };
   }
   function serializeCredentialRequestResponse(credential) {
-    var _a2;
+    var _a;
     if ("toJSON" in credential && typeof credential.toJSON === "function") {
       return credential.toJSON();
     }
@@ -13789,7 +13783,7 @@ ${suffix}`;
       type: "public-key",
       clientExtensionResults,
       // Convert null to undefined and cast to AuthenticatorAttachment type
-      authenticatorAttachment: (_a2 = credentialWithAttachment.authenticatorAttachment) !== null && _a2 !== void 0 ? _a2 : void 0
+      authenticatorAttachment: (_a = credentialWithAttachment.authenticatorAttachment) !== null && _a !== void 0 ? _a : void 0
     };
   }
   function isValidDomain(hostname) {
@@ -13799,8 +13793,8 @@ ${suffix}`;
     );
   }
   function browserSupportsWebAuthn() {
-    var _a2, _b;
-    return !!(isBrowser() && "PublicKeyCredential" in window && window.PublicKeyCredential && "credentials" in navigator && typeof ((_a2 = navigator === null || navigator === void 0 ? void 0 : navigator.credentials) === null || _a2 === void 0 ? void 0 : _a2.create) === "function" && typeof ((_b = navigator === null || navigator === void 0 ? void 0 : navigator.credentials) === null || _b === void 0 ? void 0 : _b.get) === "function");
+    var _a, _b;
+    return !!(isBrowser() && "PublicKeyCredential" in window && window.PublicKeyCredential && "credentials" in navigator && typeof ((_a = navigator === null || navigator === void 0 ? void 0 : navigator.credentials) === null || _a === void 0 ? void 0 : _a.create) === "function" && typeof ((_b = navigator === null || navigator === void 0 ? void 0 : navigator.credentials) === null || _b === void 0 ? void 0 : _b.get) === "function");
   }
   async function createCredential(options) {
     try {
@@ -13948,7 +13942,7 @@ ${suffix}`;
      * @see {@link https://w3c.github.io/webauthn/#sctn-verifying-assertion W3C WebAuthn Spec - Verifying Assertion}
      */
     async _challenge({ factorId, webauthn, friendlyName, signal }, overrides) {
-      var _a2;
+      var _a;
       try {
         const { data: challengeResponse, error: challengeError } = await this.client.mfa.challenge({
           factorId,
@@ -13965,7 +13959,7 @@ ${suffix}`;
             if (!nameToUse) {
               const currentUser2 = await this.client.getUser();
               const userData = currentUser2.data.user;
-              const fallbackName = ((_a2 = userData === null || userData === void 0 ? void 0 : userData.user_metadata) === null || _a2 === void 0 ? void 0 : _a2.name) || (userData === null || userData === void 0 ? void 0 : userData.email) || (userData === null || userData === void 0 ? void 0 : userData.id) || "User";
+              const fallbackName = ((_a = userData === null || userData === void 0 ? void 0 : userData.user_metadata) === null || _a === void 0 ? void 0 : _a.name) || (userData === null || userData === void 0 ? void 0 : userData.email) || (userData === null || userData === void 0 ? void 0 : userData.id) || "User";
               user.name = `${user.id}:${fallbackName}`;
             } else {
               user.name = `${user.id}:${nameToUse}`;
@@ -14138,8 +14132,8 @@ ${suffix}`;
         });
         if (!factor) {
           await this.client.mfa.listFactors().then((factors) => {
-            var _a2;
-            return (_a2 = factors.data) === null || _a2 === void 0 ? void 0 : _a2.all.find((v) => v.factor_type === "webauthn" && v.friendly_name === friendlyName && v.status !== "unverified");
+            var _a;
+            return (_a = factors.data) === null || _a === void 0 ? void 0 : _a.all.find((v) => v.factor_type === "webauthn" && v.friendly_name === friendlyName && v.status !== "unverified");
           }).then((factor2) => factor2 ? this.client.mfa.unenroll({ factorId: factor2 === null || factor2 === void 0 ? void 0 : factor2.id }) : void 0);
           return { data: null, error: enrollError };
         }
@@ -14200,15 +14194,15 @@ ${suffix}`;
      * The JWKS used for verifying asymmetric JWTs
      */
     get jwks() {
-      var _a2, _b;
-      return (_b = (_a2 = GLOBAL_JWKS[this.storageKey]) === null || _a2 === void 0 ? void 0 : _a2.jwks) !== null && _b !== void 0 ? _b : { keys: [] };
+      var _a, _b;
+      return (_b = (_a = GLOBAL_JWKS[this.storageKey]) === null || _a === void 0 ? void 0 : _a.jwks) !== null && _b !== void 0 ? _b : { keys: [] };
     }
     set jwks(value) {
       GLOBAL_JWKS[this.storageKey] = Object.assign(Object.assign({}, GLOBAL_JWKS[this.storageKey]), { jwks: value });
     }
     get jwks_cached_at() {
-      var _a2, _b;
-      return (_b = (_a2 = GLOBAL_JWKS[this.storageKey]) === null || _a2 === void 0 ? void 0 : _a2.cachedAt) !== null && _b !== void 0 ? _b : Number.MIN_SAFE_INTEGER;
+      var _a, _b;
+      return (_b = (_a = GLOBAL_JWKS[this.storageKey]) === null || _a === void 0 ? void 0 : _a.cachedAt) !== null && _b !== void 0 ? _b : Number.MIN_SAFE_INTEGER;
     }
     set jwks_cached_at(value) {
       GLOBAL_JWKS[this.storageKey] = Object.assign(Object.assign({}, GLOBAL_JWKS[this.storageKey]), { cachedAt: value });
@@ -14236,7 +14230,7 @@ ${suffix}`;
      * ```
      */
     constructor(options) {
-      var _a2, _b, _c;
+      var _a, _b, _c;
       this.userStorage = null;
       this.memoryStorage = null;
       this.stateChangeEmitters = /* @__PURE__ */ new Map();
@@ -14257,7 +14251,7 @@ ${suffix}`;
       this.logger = console.log;
       const settings = Object.assign(Object.assign({}, DEFAULT_OPTIONS), options);
       this.storageKey = settings.storageKey;
-      this.instanceID = (_a2 = _GoTrueClient.nextInstanceID[this.storageKey]) !== null && _a2 !== void 0 ? _a2 : 0;
+      this.instanceID = (_a = _GoTrueClient.nextInstanceID[this.storageKey]) !== null && _a !== void 0 ? _a : 0;
       _GoTrueClient.nextInstanceID[this.storageKey] = this.instanceID + 1;
       this.logDebugMessages = !!settings.debug;
       if (typeof settings.debug === "function") {
@@ -14427,7 +14421,7 @@ ${suffix}`;
      *    the whole lifetime of the client
      */
     async _initialize() {
-      var _a2;
+      var _a;
       try {
         let params = {};
         let callbackUrlType = "none";
@@ -14444,7 +14438,7 @@ ${suffix}`;
           if (error) {
             this._debug("#_initialize()", "error detecting session from URL", error);
             if (isAuthImplicitGrantRedirectError(error)) {
-              const errorCode = (_a2 = error.details) === null || _a2 === void 0 ? void 0 : _a2.code;
+              const errorCode = (_a = error.details) === null || _a === void 0 ? void 0 : _a.code;
               if (errorCode === "identity_already_exists" || errorCode === "identity_not_found" || errorCode === "single_identity_not_deletable") {
                 return { error };
               }
@@ -14551,12 +14545,12 @@ ${suffix}`;
      * ```
      */
     async signInAnonymously(credentials) {
-      var _a2, _b, _c;
+      var _a, _b, _c;
       try {
         const res = await _request(this.fetch, "POST", `${this.url}/signup`, {
           headers: this.headers,
           body: {
-            data: (_b = (_a2 = credentials === null || credentials === void 0 ? void 0 : credentials.options) === null || _a2 === void 0 ? void 0 : _a2.data) !== null && _b !== void 0 ? _b : {},
+            data: (_b = (_a = credentials === null || credentials === void 0 ? void 0 : credentials.options) === null || _a === void 0 ? void 0 : _a.data) !== null && _b !== void 0 ? _b : {},
             gotrue_meta_security: { captcha_token: (_c = credentials === null || credentials === void 0 ? void 0 : credentials.options) === null || _c === void 0 ? void 0 : _c.captchaToken }
           },
           xform: _sessionResponse
@@ -14757,7 +14751,7 @@ ${suffix}`;
      * ```
      */
     async signUp(credentials) {
-      var _a2, _b, _c;
+      var _a, _b, _c;
       try {
         let res;
         if ("email" in credentials) {
@@ -14774,7 +14768,7 @@ ${suffix}`;
             body: {
               email,
               password,
-              data: (_a2 = options === null || options === void 0 ? void 0 : options.data) !== null && _a2 !== void 0 ? _a2 : {},
+              data: (_a = options === null || options === void 0 ? void 0 : options.data) !== null && _a !== void 0 ? _a : {},
               gotrue_meta_security: { captcha_token: options === null || options === void 0 ? void 0 : options.captchaToken },
               code_challenge: codeChallenge,
               code_challenge_method: codeChallengeMethod
@@ -15079,9 +15073,9 @@ ${suffix}`;
      * ```
      */
     async signInWithOAuth(credentials) {
-      var _a2, _b, _c, _d;
+      var _a, _b, _c, _d;
       return await this._handleProviderSignIn(credentials.provider, {
-        redirectTo: (_a2 = credentials.options) === null || _a2 === void 0 ? void 0 : _a2.redirectTo,
+        redirectTo: (_a = credentials.options) === null || _a === void 0 ? void 0 : _a.redirectTo,
         scopes: (_b = credentials.options) === null || _b === void 0 ? void 0 : _b.scopes,
         queryParams: (_c = credentials.options) === null || _c === void 0 ? void 0 : _c.queryParams,
         skipBrowserRedirect: (_d = credentials.options) === null || _d === void 0 ? void 0 : _d.skipBrowserRedirect
@@ -15366,7 +15360,7 @@ ${suffix}`;
       }
     }
     async signInWithEthereum(credentials) {
-      var _a2, _b, _c, _d, _f, _g, _h, _j, _k, _l, _m;
+      var _a, _b, _c, _d, _f, _g, _h, _j, _k, _l, _m;
       let message;
       let signature;
       if ("message" in credentials) {
@@ -15390,7 +15384,7 @@ ${suffix}`;
             throw new Error(`@supabase/auth-js: No compatible Ethereum wallet interface on the window object (window.ethereum) detected. Make sure the user already has a wallet installed and connected for this app. Prefer passing the wallet interface object directly to signInWithWeb3({ chain: 'ethereum', wallet: resolvedUserWallet }) instead.`);
           }
         }
-        const url = new URL((_a2 = options === null || options === void 0 ? void 0 : options.url) !== null && _a2 !== void 0 ? _a2 : window.location.href);
+        const url = new URL((_a = options === null || options === void 0 ? void 0 : options.url) !== null && _a !== void 0 ? _a : window.location.href);
         const accounts = await resolvedWallet.request({
           method: "eth_requestAccounts"
         }).then((accs) => accs).catch(() => {
@@ -15457,7 +15451,7 @@ ${suffix}`;
       }
     }
     async signInWithSolana(credentials) {
-      var _a2, _b, _c, _d, _f, _g, _h, _j, _k, _l, _m, _o;
+      var _a, _b, _c, _d, _f, _g, _h, _j, _k, _l, _m, _o;
       let message;
       let signature;
       if ("message" in credentials) {
@@ -15481,7 +15475,7 @@ ${suffix}`;
             throw new Error(`@supabase/auth-js: No compatible Solana wallet interface on the window object (window.solana) detected. Make sure the user already has a wallet installed and connected for this app. Prefer passing the wallet interface object directly to signInWithWeb3({ chain: 'solana', wallet: resolvedUserWallet }) instead.`);
           }
         }
-        const url = new URL((_a2 = options === null || options === void 0 ? void 0 : options.url) !== null && _a2 !== void 0 ? _a2 : window.location.href);
+        const url = new URL((_a = options === null || options === void 0 ? void 0 : options.url) !== null && _a !== void 0 ? _a : window.location.href);
         if ("signIn" in resolvedWallet && resolvedWallet.signIn) {
           const output = await resolvedWallet.signIn(Object.assign(Object.assign(Object.assign({ issuedAt: (/* @__PURE__ */ new Date()).toISOString() }, options === null || options === void 0 ? void 0 : options.signInWithSolana), {
             // non-overridable properties
@@ -15784,7 +15778,7 @@ ${suffix}`;
      * ```
      */
     async signInWithOtp(credentials) {
-      var _a2, _b, _c, _d, _f;
+      var _a, _b, _c, _d, _f;
       try {
         if ("email" in credentials) {
           const { email, options } = credentials;
@@ -15798,7 +15792,7 @@ ${suffix}`;
             headers: this.headers,
             body: {
               email,
-              data: (_a2 = options === null || options === void 0 ? void 0 : options.data) !== null && _a2 !== void 0 ? _a2 : {},
+              data: (_a = options === null || options === void 0 ? void 0 : options.data) !== null && _a !== void 0 ? _a : {},
               create_user: (_b = options === null || options === void 0 ? void 0 : options.shouldCreateUser) !== null && _b !== void 0 ? _b : true,
               gotrue_meta_security: { captcha_token: options === null || options === void 0 ? void 0 : options.captchaToken },
               code_challenge: codeChallenge,
@@ -15972,12 +15966,12 @@ ${suffix}`;
      * ```
      */
     async verifyOtp(params) {
-      var _a2, _b;
+      var _a, _b;
       try {
         let redirectTo = void 0;
         let captchaToken = void 0;
         if ("options" in params) {
-          redirectTo = (_a2 = params.options) === null || _a2 === void 0 ? void 0 : _a2.redirectTo;
+          redirectTo = (_a = params.options) === null || _a === void 0 ? void 0 : _a.redirectTo;
           captchaToken = (_b = params.options) === null || _b === void 0 ? void 0 : _b.captchaToken;
         }
         const { data, error } = await _request(this.fetch, "POST", `${this.url}/verify`, {
@@ -16061,7 +16055,7 @@ ${suffix}`;
      * ```
      */
     async signInWithSSO(params) {
-      var _a2, _b, _c, _d, _f;
+      var _a, _b, _c, _d, _f;
       try {
         let codeChallenge = null;
         let codeChallengeMethod = null;
@@ -16070,7 +16064,7 @@ ${suffix}`;
           [codeChallenge, codeChallengeMethod] = await getCodeChallengeAndMethod(this.storage, this.storageKey);
         }
         const result = await _request(this.fetch, "POST", `${this.url}/sso`, {
-          body: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, "providerId" in params ? { provider_id: params.providerId } : null), "domain" in params ? { domain: params.domain } : null), { redirect_to: (_b = (_a2 = params.options) === null || _a2 === void 0 ? void 0 : _a2.redirectTo) !== null && _b !== void 0 ? _b : void 0 }), ((_c = params === null || params === void 0 ? void 0 : params.options) === null || _c === void 0 ? void 0 : _c.captchaToken) ? { gotrue_meta_security: { captcha_token: params.options.captchaToken } } : null), { skip_http_redirect: true, code_challenge: codeChallenge, code_challenge_method: codeChallengeMethod }),
+          body: Object.assign(Object.assign(Object.assign(Object.assign(Object.assign({}, "providerId" in params ? { provider_id: params.providerId } : null), "domain" in params ? { domain: params.domain } : null), { redirect_to: (_b = (_a = params.options) === null || _a === void 0 ? void 0 : _a.redirectTo) !== null && _b !== void 0 ? _b : void 0 }), ((_c = params === null || params === void 0 ? void 0 : params.options) === null || _c === void 0 ? void 0 : _c.captchaToken) ? { gotrue_meta_security: { captcha_token: params.options.captchaToken } } : null), { skip_http_redirect: true, code_challenge: codeChallenge, code_challenge_method: codeChallengeMethod }),
           headers: this.headers,
           xform: _ssoResponse
         });
@@ -16574,12 +16568,12 @@ ${suffix}`;
           });
         }
         return await this._useSession(async (result) => {
-          var _a2, _b, _c;
+          var _a, _b, _c;
           const { data, error } = result;
           if (error) {
             throw error;
           }
-          if (!((_a2 = data.session) === null || _a2 === void 0 ? void 0 : _a2.access_token) && !this.hasCustomAuthorizationHeader) {
+          if (!((_a = data.session) === null || _a === void 0 ? void 0 : _a.access_token) && !this.hasCustomAuthorizationHeader) {
             return { data: { user: null }, error: new AuthSessionMissingError() };
           }
           return await _request(this.fetch, "GET", `${this.url}/user`, {
@@ -17079,13 +17073,13 @@ ${suffix}`;
     async _refreshSession(currentSession) {
       try {
         return await this._useSession(async (result) => {
-          var _a2;
+          var _a;
           if (!currentSession) {
             const { data, error: error2 } = result;
             if (error2) {
               throw error2;
             }
-            currentSession = (_a2 = data.session) !== null && _a2 !== void 0 ? _a2 : void 0;
+            currentSession = (_a = data.session) !== null && _a !== void 0 ? _a : void 0;
           }
           if (!(currentSession === null || currentSession === void 0 ? void 0 : currentSession.refresh_token)) {
             throw new AuthSessionMissingError();
@@ -17110,7 +17104,7 @@ ${suffix}`;
      * Gets the session data from a URL string
      */
     async _getSessionFromURL(params, callbackUrlType) {
-      var _a2;
+      var _a;
       try {
         if (!isBrowser())
           throw new AuthImplicitGrantRedirectError("No browser detected.");
@@ -17144,7 +17138,7 @@ ${suffix}`;
           url.searchParams.delete("code");
           window.history.replaceState(window.history.state, "", url.toString());
           return {
-            data: { session: data2.session, redirectType: (_a2 = data2.redirectType) !== null && _a2 !== void 0 ? _a2 : null },
+            data: { session: data2.session, redirectType: (_a = data2.redirectType) !== null && _a !== void 0 ? _a : null },
             error: null
           };
         }
@@ -17263,12 +17257,12 @@ ${suffix}`;
     }
     async _signOut({ scope } = { scope: "global" }) {
       return await this._useSession(async (result) => {
-        var _a2;
+        var _a;
         const { data, error: sessionError } = result;
         if (sessionError && !isAuthSessionMissingError(sessionError)) {
           return this._returnResult({ error: sessionError });
         }
-        const accessToken = (_a2 = data.session) === null || _a2 === void 0 ? void 0 : _a2.access_token;
+        const accessToken = (_a = data.session) === null || _a === void 0 ? void 0 : _a.access_token;
         if (accessToken) {
           const { error } = await this.admin.signOut(accessToken, scope);
           if (error) {
@@ -17487,12 +17481,12 @@ ${suffix}`;
     }
     async _emitInitialSession(id) {
       return await this._useSession(async (result) => {
-        var _a2, _b;
+        var _a, _b;
         try {
           const { data: { session }, error } = result;
           if (error)
             throw error;
-          await ((_a2 = this.stateChangeEmitters.get(id)) === null || _a2 === void 0 ? void 0 : _a2.callback("INITIAL_SESSION", session));
+          await ((_a = this.stateChangeEmitters.get(id)) === null || _a === void 0 ? void 0 : _a.callback("INITIAL_SESSION", session));
           this._debug("INITIAL_SESSION", "callback id", id, "session", session);
         } catch (err) {
           await ((_b = this.stateChangeEmitters.get(id)) === null || _b === void 0 ? void 0 : _b.callback("INITIAL_SESSION", null));
@@ -17644,12 +17638,12 @@ ${suffix}`;
      * ```
      */
     async getUserIdentities() {
-      var _a2;
+      var _a;
       try {
         const { data, error } = await this.getUser();
         if (error)
           throw error;
-        return this._returnResult({ data: { identities: (_a2 = data.user.identities) !== null && _a2 !== void 0 ? _a2 : [] }, error: null });
+        return this._returnResult({ data: { identities: (_a = data.user.identities) !== null && _a !== void 0 ? _a : [] }, error: null });
       } catch (error) {
         if (isAuthError(error)) {
           return this._returnResult({ data: null, error });
@@ -17691,15 +17685,15 @@ ${suffix}`;
       return this.linkIdentityOAuth(credentials);
     }
     async linkIdentityOAuth(credentials) {
-      var _a2;
+      var _a;
       try {
         const { data, error } = await this._useSession(async (result) => {
-          var _a3, _b, _c, _d, _f;
+          var _a2, _b, _c, _d, _f;
           const { data: data2, error: error2 } = result;
           if (error2)
             throw error2;
           const url = await this._getUrlForProvider(`${this.url}/user/identities/authorize`, credentials.provider, {
-            redirectTo: (_a3 = credentials.options) === null || _a3 === void 0 ? void 0 : _a3.redirectTo,
+            redirectTo: (_a2 = credentials.options) === null || _a2 === void 0 ? void 0 : _a2.redirectTo,
             scopes: (_b = credentials.options) === null || _b === void 0 ? void 0 : _b.scopes,
             queryParams: (_c = credentials.options) === null || _c === void 0 ? void 0 : _c.queryParams,
             skipBrowserRedirect: true
@@ -17711,7 +17705,7 @@ ${suffix}`;
         });
         if (error)
           throw error;
-        if (isBrowser() && !((_a2 = credentials.options) === null || _a2 === void 0 ? void 0 : _a2.skipBrowserRedirect)) {
+        if (isBrowser() && !((_a = credentials.options) === null || _a === void 0 ? void 0 : _a.skipBrowserRedirect)) {
           window.location.assign(data === null || data === void 0 ? void 0 : data.url);
         }
         return this._returnResult({
@@ -17727,7 +17721,7 @@ ${suffix}`;
     }
     async linkIdentityIdToken(credentials) {
       return await this._useSession(async (result) => {
-        var _a2;
+        var _a;
         try {
           const { error: sessionError, data: { session } } = result;
           if (sessionError)
@@ -17735,7 +17729,7 @@ ${suffix}`;
           const { options, provider, token, access_token, nonce } = credentials;
           const res = await _request(this.fetch, "POST", `${this.url}/token?grant_type=id_token`, {
             headers: this.headers,
-            jwt: (_a2 = session === null || session === void 0 ? void 0 : session.access_token) !== null && _a2 !== void 0 ? _a2 : void 0,
+            jwt: (_a = session === null || session === void 0 ? void 0 : session.access_token) !== null && _a !== void 0 ? _a : void 0,
             body: {
               provider,
               id_token: token,
@@ -17797,14 +17791,14 @@ ${suffix}`;
     async unlinkIdentity(identity) {
       try {
         return await this._useSession(async (result) => {
-          var _a2, _b;
+          var _a, _b;
           const { data, error } = result;
           if (error) {
             throw error;
           }
           return await _request(this.fetch, "DELETE", `${this.url}/user/identities/${identity.identity_id}`, {
             headers: this.headers,
-            jwt: (_b = (_a2 = data.session) === null || _a2 === void 0 ? void 0 : _a2.access_token) !== null && _b !== void 0 ? _b : void 0
+            jwt: (_b = (_a = data.session) === null || _a === void 0 ? void 0 : _a.access_token) !== null && _b !== void 0 ? _b : void 0
           });
         });
       } catch (error) {
@@ -17869,7 +17863,7 @@ ${suffix}`;
      * Note: this method is async to accommodate for AsyncStorage e.g. in React native.
      */
     async _recoverAndRefresh() {
-      var _a2, _b;
+      var _a, _b;
       const debugName = "#_recoverAndRefresh()";
       this._debug(debugName, "begin");
       try {
@@ -17880,7 +17874,7 @@ ${suffix}`;
             maybeUser = { user: currentSession.user };
             await setItemAsync(this.userStorage, this.storageKey + "-user", maybeUser);
           }
-          currentSession.user = (_a2 = maybeUser === null || maybeUser === void 0 ? void 0 : maybeUser.user) !== null && _a2 !== void 0 ? _a2 : userNotAvailableProxy();
+          currentSession.user = (_a = maybeUser === null || maybeUser === void 0 ? void 0 : maybeUser.user) !== null && _a !== void 0 ? _a : userNotAvailableProxy();
         } else if (currentSession && !currentSession.user) {
           if (!currentSession.user) {
             const separateUser = await getItemAsync(this.storage, this.storageKey + "-user");
@@ -17940,7 +17934,7 @@ ${suffix}`;
       }
     }
     async _callRefreshToken(refreshToken) {
-      var _a2, _b;
+      var _a, _b;
       if (!refreshToken) {
         throw new AuthSessionMissingError();
       }
@@ -18015,7 +18009,7 @@ ${suffix}`;
             result,
             expiresAt: Date.now() + REFRESH_FAILURE_COOLDOWN_MS
           };
-          (_a2 = this.refreshingDeferred) === null || _a2 === void 0 ? void 0 : _a2.resolve(result);
+          (_a = this.refreshingDeferred) === null || _a === void 0 ? void 0 : _a.resolve(result);
           return result;
         }
         (_b = this.refreshingDeferred) === null || _b === void 0 ? void 0 : _b.reject(error);
@@ -18263,10 +18257,10 @@ ${suffix}`;
      * ```
      */
     async dispose() {
-      var _a2;
+      var _a;
       this._removeVisibilityChangedCallback();
       await this._stopAutoRefresh();
-      (_a2 = this.broadcastChannel) === null || _a2 === void 0 ? void 0 : _a2.close();
+      (_a = this.broadcastChannel) === null || _a === void 0 ? void 0 : _a.close();
       this.broadcastChannel = null;
       this.stateChangeEmitters.clear();
     }
@@ -18430,14 +18424,14 @@ ${suffix}`;
     async _unenroll(params) {
       try {
         return await this._useSession(async (result) => {
-          var _a2;
+          var _a;
           const { data: sessionData, error: sessionError } = result;
           if (sessionError) {
             return this._returnResult({ data: null, error: sessionError });
           }
           return await _request(this.fetch, "DELETE", `${this.url}/factors/${params.factorId}`, {
             headers: this.headers,
-            jwt: (_a2 = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a2 === void 0 ? void 0 : _a2.access_token
+            jwt: (_a = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a === void 0 ? void 0 : _a.access_token
           });
         });
       } catch (error) {
@@ -18450,7 +18444,7 @@ ${suffix}`;
     async _enroll(params) {
       try {
         return await this._useSession(async (result) => {
-          var _a2, _b;
+          var _a, _b;
           const { data: sessionData, error: sessionError } = result;
           if (sessionError) {
             return this._returnResult({ data: null, error: sessionError });
@@ -18459,7 +18453,7 @@ ${suffix}`;
           const { data, error } = await _request(this.fetch, "POST", `${this.url}/factors`, {
             body,
             headers: this.headers,
-            jwt: (_a2 = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a2 === void 0 ? void 0 : _a2.access_token
+            jwt: (_a = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a === void 0 ? void 0 : _a.access_token
           });
           if (error) {
             return this._returnResult({ data: null, error });
@@ -18480,7 +18474,7 @@ ${suffix}`;
       const run = async () => {
         try {
           return await this._useSession(async (result) => {
-            var _a2;
+            var _a;
             const { data: sessionData, error: sessionError } = result;
             if (sessionError) {
               return this._returnResult({ data: null, error: sessionError });
@@ -18491,7 +18485,7 @@ ${suffix}`;
             const { data, error } = await _request(this.fetch, "POST", `${this.url}/factors/${params.factorId}/verify`, {
               body,
               headers: this.headers,
-              jwt: (_a2 = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a2 === void 0 ? void 0 : _a2.access_token
+              jwt: (_a = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a === void 0 ? void 0 : _a.access_token
             });
             if (error) {
               return this._returnResult({ data: null, error });
@@ -18516,7 +18510,7 @@ ${suffix}`;
       const run = async () => {
         try {
           return await this._useSession(async (result) => {
-            var _a2;
+            var _a;
             const { data: sessionData, error: sessionError } = result;
             if (sessionError) {
               return this._returnResult({ data: null, error: sessionError });
@@ -18524,7 +18518,7 @@ ${suffix}`;
             const response = await _request(this.fetch, "POST", `${this.url}/factors/${params.factorId}/challenge`, {
               body: params,
               headers: this.headers,
-              jwt: (_a2 = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a2 === void 0 ? void 0 : _a2.access_token
+              jwt: (_a = sessionData === null || sessionData === void 0 ? void 0 : sessionData.session) === null || _a === void 0 ? void 0 : _a.access_token
             });
             if (response.error) {
               return response;
@@ -18578,7 +18572,7 @@ ${suffix}`;
      * {@see GoTrueMFAApi#listFactors}
      */
     async _listFactors() {
-      var _a2;
+      var _a;
       const { data: { user }, error: userError } = await this.getUser();
       if (userError) {
         return { data: null, error: userError };
@@ -18589,7 +18583,7 @@ ${suffix}`;
         totp: [],
         webauthn: []
       };
-      for (const factor of (_a2 = user === null || user === void 0 ? void 0 : user.factors) !== null && _a2 !== void 0 ? _a2 : []) {
+      for (const factor of (_a = user === null || user === void 0 ? void 0 : user.factors) !== null && _a !== void 0 ? _a : []) {
         data.all.push(factor);
         if (factor.status === "verified") {
           ;
@@ -18605,7 +18599,7 @@ ${suffix}`;
      * {@see GoTrueMFAApi#getAuthenticatorAssuranceLevel}
      */
     async _getAuthenticatorAssuranceLevel(jwt) {
-      var _a2, _b, _c, _d;
+      var _a, _b, _c, _d;
       if (jwt) {
         try {
           const { payload: payload2 } = decodeJWT(jwt);
@@ -18618,7 +18612,7 @@ ${suffix}`;
           if (userError) {
             return this._returnResult({ data: null, error: userError });
           }
-          const verifiedFactors2 = (_b = (_a2 = user === null || user === void 0 ? void 0 : user.factors) === null || _a2 === void 0 ? void 0 : _a2.filter((factor) => factor.status === "verified")) !== null && _b !== void 0 ? _b : [];
+          const verifiedFactors2 = (_b = (_a = user === null || user === void 0 ? void 0 : user.factors) === null || _a === void 0 ? void 0 : _a.filter((factor) => factor.status === "verified")) !== null && _b !== void 0 ? _b : [];
           if (verifiedFactors2.length > 0) {
             nextLevel2 = "aal2";
           }
@@ -18969,7 +18963,7 @@ ${suffix}`;
      * @category Auth
      */
     async signInWithPasskey(credentials) {
-      var _a2, _b, _c;
+      var _a, _b, _c;
       assertPasskeyExperimentalEnabled(this.experimental);
       try {
         if (!browserSupportsWebAuthn()) {
@@ -18979,7 +18973,7 @@ ${suffix}`;
           });
         }
         const { data: options, error: optionsError } = await this._startPasskeyAuthentication({
-          options: { captchaToken: (_a2 = credentials === null || credentials === void 0 ? void 0 : credentials.options) === null || _a2 === void 0 ? void 0 : _a2.captchaToken }
+          options: { captchaToken: (_a = credentials === null || credentials === void 0 ? void 0 : credentials.options) === null || _a === void 0 ? void 0 : _a.captchaToken }
         });
         if (optionsError || !options) {
           return this._returnResult({ data: null, error: optionsError });
@@ -19019,7 +19013,7 @@ ${suffix}`;
      * @category Auth
      */
     async registerPasskey(credentials) {
-      var _a2, _b;
+      var _a, _b;
       assertPasskeyExperimentalEnabled(this.experimental);
       try {
         if (!browserSupportsWebAuthn()) {
@@ -19033,7 +19027,7 @@ ${suffix}`;
           return this._returnResult({ data: null, error: optionsError });
         }
         const publicKeyOptions = deserializeCredentialCreationOptions(options.options);
-        const signal = (_b = (_a2 = credentials === null || credentials === void 0 ? void 0 : credentials.options) === null || _a2 === void 0 ? void 0 : _a2.signal) !== null && _b !== void 0 ? _b : webAuthnAbortService.createNewAbortSignal();
+        const signal = (_b = (_a = credentials === null || credentials === void 0 ? void 0 : credentials.options) === null || _a === void 0 ? void 0 : _a.signal) !== null && _b !== void 0 ? _b : webAuthnAbortService.createNewAbortSignal();
         const { data: credential, error: credentialError } = await createCredential({
           publicKey: publicKeyOptions,
           signal
@@ -19128,13 +19122,13 @@ ${suffix}`;
      * Returns WebAuthn credential request options to pass to navigator.credentials.get().
      */
     async _startPasskeyAuthentication(params) {
-      var _a2;
+      var _a;
       assertPasskeyExperimentalEnabled(this.experimental);
       try {
         const { data, error } = await _request(this.fetch, "POST", `${this.url}/passkeys/authentication/options`, {
           headers: this.headers,
           body: {
-            gotrue_meta_security: { captcha_token: (_a2 = params === null || params === void 0 ? void 0 : params.options) === null || _a2 === void 0 ? void 0 : _a2.captchaToken }
+            gotrue_meta_security: { captcha_token: (_a = params === null || params === void 0 ? void 0 : params.options) === null || _a === void 0 ? void 0 : _a.captchaToken }
           }
         });
         if (error) {
@@ -19362,7 +19356,7 @@ ${suffix}`;
           tracestate: carrier["tracestate"],
           baggage: carrier["baggage"]
         };
-      } catch (_a2) {
+      } catch (_a) {
         return null;
       }
     });
@@ -20012,8 +20006,7 @@ ${suffix}`;
   var cfg = window.APP_CONFIG;
   var CLOUD = Boolean(cfg && cfg.supabaseUrl && cfg.supabaseAnonKey);
   var ALLOWED_USERS = cfg && cfg.allowedUsers && cfg.allowedUsers.length ? cfg.allowedUsers : DEFAULT_USERS;
-  var _a;
-  var DEMO_PASSWORD = (_a = cfg == null ? void 0 : cfg.demoPassword) != null ? _a : "demo";
+  var DEMO_PASSWORD = cfg?.demoPassword ?? "demo";
   var sb = null;
   function getSB() {
     if (!sb) sb = createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
@@ -20043,14 +20036,14 @@ ${suffix}`;
     try {
       const raw = localStorage.getItem(LS_META);
       if (raw) return JSON.parse(raw);
-    } catch (e) {
+    } catch {
     }
     return {};
   }
   function saveLocalMeta(m) {
     try {
       localStorage.setItem(LS_META, JSON.stringify(m));
-    } catch (e) {
+    } catch {
     }
   }
   function loadLocalAlbums() {
@@ -20058,17 +20051,14 @@ ${suffix}`;
       const raw = localStorage.getItem(LS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed.map((a) => {
-          var _a2, _b;
-          return {
-            ...a,
-            tracksLocked: Boolean(a.tracksLocked),
-            cohesion: (_a2 = a.cohesion) != null ? _a2 : null,
-            albumType: (_b = a.albumType) != null ? _b : null
-          };
-        });
+        if (Array.isArray(parsed)) return parsed.map((a) => ({
+          ...a,
+          tracksLocked: Boolean(a.tracksLocked),
+          cohesion: a.cohesion ?? null,
+          albumType: a.albumType ?? null
+        }));
       }
-    } catch (e) {
+    } catch {
     }
     return SEED_ALBUMS.map((a) => ({ ...a }));
   }
@@ -20078,13 +20068,10 @@ ${suffix}`;
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          return parsed.map((t) => {
-            var _a2;
-            return { ...t, locked: Boolean(t.locked), featArtist: (_a2 = t.featArtist) != null ? _a2 : null };
-          });
+          return parsed.map((t) => ({ ...t, locked: Boolean(t.locked), featArtist: t.featArtist ?? null }));
         }
       }
-    } catch (e) {
+    } catch {
     }
     return [];
   }
@@ -20102,30 +20089,30 @@ ${suffix}`;
         }
         return out;
       }
-    } catch (e) {
+    } catch {
     }
     return {};
   }
   function saveLocalAlbums() {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(albums));
-    } catch (e) {
+    } catch {
     }
   }
   function saveLocalTracks() {
     try {
       localStorage.setItem(LS_TRACKS, JSON.stringify(tracks));
-    } catch (e) {
+    } catch {
     }
   }
   function saveLocalRatings() {
     try {
       localStorage.setItem(LS_RATINGS, JSON.stringify(trackRatings));
-    } catch (e) {
+    } catch {
     }
   }
   async function refreshData() {
-    var _a2, _b, _c, _d, _e, _f, _g;
+    var _a;
     if (CLOUD) {
       const s = getSB();
       const [pa, aa, ta, ra] = await Promise.all([
@@ -20139,35 +20126,28 @@ ${suffix}`;
       if (ta.error) throw ta.error;
       if (ra.error) throw ra.error;
       profileCache.clear();
-      for (const p of (_a2 = pa.data) != null ? _a2 : []) {
-        profileCache.set(p.id, { username: p.username, initials: p.initials, avatarUrl: (_b = p.avatar_url) != null ? _b : null });
+      for (const p of pa.data ?? []) {
+        profileCache.set(p.id, { username: p.username, initials: p.initials, avatarUrl: p.avatar_url ?? null });
       }
       if (currentUser) {
         const me = profileCache.get(currentUser.id);
         if (me) currentUser.username = me.username, currentUser.avatarUrl = me.avatarUrl;
       }
-      albums = ((_c = aa.data) != null ? _c : []).map((x) => {
-        var _a3, _b2, _c2;
-        return { id: x.id, artist: x.artist, title: x.title, year: x.year, cover: (_a3 = x.cover_url) != null ? _a3 : "", tracksLocked: Boolean(x.tracks_locked), cohesion: (_b2 = x.cohesion) != null ? _b2 : null, albumType: (_c2 = x.album_type) != null ? _c2 : null };
-      });
-      tracks = ((_d = ta.data) != null ? _d : []).map((t) => {
-        var _a3;
-        return { id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: (_a3 = t.feat_artist) != null ? _a3 : null };
-      });
+      albums = (aa.data ?? []).map((x) => ({ id: x.id, artist: x.artist, title: x.title, year: x.year, cover: x.cover_url ?? "", tracksLocked: Boolean(x.tracks_locked), cohesion: x.cohesion ?? null, albumType: x.album_type ?? null }));
+      tracks = (ta.data ?? []).map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null }));
       trackRatings = {};
-      for (const r of (_e = ra.data) != null ? _e : []) {
-        ((_g = trackRatings[_f = r.track_id]) != null ? _g : trackRatings[_f] = {})[r.profile_id] = { score: r.score, confirmed: Boolean(r.confirmed) };
+      for (const r of ra.data ?? []) {
+        (trackRatings[_a = r.track_id] ?? (trackRatings[_a] = {}))[r.profile_id] = { score: r.score, confirmed: Boolean(r.confirmed) };
       }
     } else {
       profileCache.clear();
       const meta = loadLocalMeta();
       ALLOWED_USERS.forEach((u) => {
-        var _a3, _b2;
         const m = meta[u.email.toLowerCase()];
         profileCache.set(u.email, {
-          username: (_a3 = m == null ? void 0 : m.username) != null ? _a3 : u.username,
+          username: m?.username ?? u.username,
           initials: u.initials,
-          avatarUrl: (_b2 = m == null ? void 0 : m.avatarUrl) != null ? _b2 : null
+          avatarUrl: m?.avatarUrl ?? null
         });
       });
       if (currentUser) {
@@ -20197,7 +20177,7 @@ ${suffix}`;
       }
       if (currentArtistName && viewArtist.classList.contains("is-visible")) renderArtistPage();
       if (viewRank.classList.contains("is-visible")) renderArtistRank();
-    } catch (e) {
+    } catch {
     }
   }
   async function safeTracksRefresh() {
@@ -20207,7 +20187,7 @@ ${suffix}`;
         if (viewHome.classList.contains("is-visible")) renderAlbums();
         if (currentArtistName && viewArtist.classList.contains("is-visible")) renderArtistPage();
         if (viewRank.classList.contains("is-visible")) renderArtistRank();
-      } catch (e) {
+      } catch {
       }
       return;
     }
@@ -20217,11 +20197,11 @@ ${suffix}`;
       updateRatingDisplays();
       if (currentArtistName && viewArtist.classList.contains("is-visible")) renderArtistPage();
       if (viewRank.classList.contains("is-visible")) renderArtistRank();
-    } catch (e) {
+    } catch {
     }
   }
   async function safeRatingsRefresh() {
-    var _a2, _b;
+    var _a;
     if (ratingEditing) return;
     const albumOpen = Boolean(currentAlbumId && viewAlbum.classList.contains("is-visible"));
     const artistOpen = Boolean(currentArtistName && viewArtist.classList.contains("is-visible"));
@@ -20232,8 +20212,8 @@ ${suffix}`;
         const { data, error } = await getSB().from("ratings").select("*");
         if (error) return;
         trackRatings = {};
-        for (const r of data != null ? data : []) {
-          ((_b = trackRatings[_a2 = r.track_id]) != null ? _b : trackRatings[_a2] = {})[r.profile_id] = { score: r.score, confirmed: Boolean(r.confirmed) };
+        for (const r of data ?? []) {
+          (trackRatings[_a = r.track_id] ?? (trackRatings[_a] = {}))[r.profile_id] = { score: r.score, confirmed: Boolean(r.confirmed) };
         }
       }
       if (albumOpen) {
@@ -20242,28 +20222,27 @@ ${suffix}`;
       }
       if (artistOpen) renderArtistPage();
       if (rankOpen) renderArtistRank();
-    } catch (e) {
+    } catch {
     }
   }
   async function ensureProfile(user) {
-    var _a2, _b, _c, _d, _e, _f, _g;
     const s = getSB();
     const { data } = await s.from("profiles").select("*").eq("id", user.id).maybeSingle();
     if (data) {
       return {
         id: data.id,
-        email: (_a2 = user.email) != null ? _a2 : "",
+        email: user.email ?? "",
         username: data.username,
         initials: data.initials,
-        avatarUrl: (_b = data.avatar_url) != null ? _b : null
+        avatarUrl: data.avatar_url ?? null
       };
     }
-    const email = ((_c = user.email) != null ? _c : "").toLowerCase();
+    const email = (user.email ?? "").toLowerCase();
     const allowed = ALLOWED_USERS.find((u) => u.email.toLowerCase() === email);
-    const username = (_e = allowed == null ? void 0 : allowed.username) != null ? _e : ((_d = user.email) != null ? _d : "user").split("@")[0];
-    const initials = (_f = allowed == null ? void 0 : allowed.initials) != null ? _f : username.charAt(0).toUpperCase() || "?";
+    const username = allowed?.username ?? (user.email ?? "user").split("@")[0];
+    const initials = allowed?.initials ?? (username.charAt(0).toUpperCase() || "?");
     await s.from("profiles").insert({ id: user.id, username, initials, avatar_url: null });
-    return { id: user.id, email: (_g = user.email) != null ? _g : "", username, initials, avatarUrl: null };
+    return { id: user.id, email: user.email ?? "", username, initials, avatarUrl: null };
   }
   async function loginCloud(email, password) {
     const { data, error } = await getSB().auth.signInWithPassword({ email, password });
@@ -20282,26 +20261,23 @@ ${suffix}`;
     throw new Error("\u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u043F\u043E\u0447\u0442\u0443 \u0434\u043B\u044F \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F, \u0437\u0430\u0442\u0435\u043C \u0432\u043E\u0439\u0434\u0438\u0442\u0435");
   }
   async function loginLocal(email, password) {
-    var _a2, _b;
     const u = ALLOWED_USERS.find((x) => x.email.toLowerCase() === email.toLowerCase());
     if (!u || password !== DEMO_PASSWORD) throw new Error("\u041D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u043F\u043E\u0447\u0442\u0430 \u0438\u043B\u0438 \u043F\u0430\u0440\u043E\u043B\u044C");
     const m = loadLocalMeta()[u.email.toLowerCase()];
     currentUser = {
       id: u.email || "p0",
       email: u.email,
-      username: (_a2 = m == null ? void 0 : m.username) != null ? _a2 : u.username,
+      username: m?.username ?? u.username,
       initials: u.initials,
-      avatarUrl: (_b = m == null ? void 0 : m.avatarUrl) != null ? _b : null
+      avatarUrl: m?.avatarUrl ?? null
     };
   }
   function isAdmin() {
-    var _a2;
     if (!currentUser) return false;
-    return ((_a2 = ALLOWED_USERS.find((u) => u.email.toLowerCase() === currentUser.email.toLowerCase())) == null ? void 0 : _a2.admin) === true;
+    return ALLOWED_USERS.find((u) => u.email.toLowerCase() === currentUser.email.toLowerCase())?.admin === true;
   }
   function messageOf(err) {
-    var _a2;
-    const msg = (_a2 = err == null ? void 0 : err.message) != null ? _a2 : String(err);
+    const msg = err?.message ?? String(err);
     if (/Invalid login credentials/i.test(msg)) return "\u041D\u0435\u0432\u0435\u0440\u043D\u0430\u044F \u043F\u043E\u0447\u0442\u0430 \u0438\u043B\u0438 \u043F\u0430\u0440\u043E\u043B\u044C";
     if (/already registered/i.test(msg)) return "\u042D\u0442\u043E\u0442 \u0430\u0434\u0440\u0435\u0441 \u0443\u0436\u0435 \u0437\u0430\u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0438\u0440\u043E\u0432\u0430\u043D";
     if (/password should be at least/i.test(msg)) return "\u041F\u0430\u0440\u043E\u043B\u044C \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u043A\u043E\u0440\u043E\u0442\u043A\u0438\u0439 (\u043C\u0438\u043D\u0438\u043C\u0443\u043C 6 \u0441\u0438\u043C\u0432\u043E\u043B\u043E\u0432)";
@@ -20338,8 +20314,7 @@ ${suffix}`;
     { value: "compilation", label: "\u0421\u0431\u043E\u0440\u043D\u0438\u043A" }
   ];
   function typeLabelOf(v) {
-    var _a2, _b;
-    return (_b = (_a2 = TYPE_OPTIONS.find((o) => o.value === v)) == null ? void 0 : _a2.label) != null ? _b : "";
+    return TYPE_OPTIONS.find((o) => o.value === v)?.label ?? "";
   }
   function trackScoreOf(trackId) {
     const r = trackRatings[trackId];
@@ -20357,14 +20332,13 @@ ${suffix}`;
     return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   }
   function peerRatingOf(trackId) {
-    var _a2, _b, _c;
     if (!currentUser) return null;
     const r = trackRatings[trackId];
     if (!r) return null;
     for (const [pid, v] of Object.entries(r)) {
       if (pid === currentUser.id) continue;
       const info = profileCache.get(pid);
-      return { score: v.score, confirmed: v.confirmed, username: (_a2 = info == null ? void 0 : info.username) != null ? _a2 : "\u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A", initials: (_b = info == null ? void 0 : info.initials) != null ? _b : "?", avatarUrl: (_c = info == null ? void 0 : info.avatarUrl) != null ? _c : null };
+      return { score: v.score, confirmed: v.confirmed, username: info?.username ?? "\u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A", initials: info?.initials ?? "?", avatarUrl: info?.avatarUrl ?? null };
     }
     return null;
   }
@@ -20409,26 +20383,24 @@ ${suffix}`;
   function coverSrc(a) {
     if (a.cover) return a.cover;
     const initial = (a.title.trim().charAt(0) || "?").toUpperCase();
-    const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><rect width='600' height='600' fill='#15151a'/><circle cx='300' cy='300' r='210' fill='none' stroke='rgba(183,168,239,0.16)' stroke-width='1.5'/><text x='300' y='345' font-family='Georgia, serif' font-size='210' fill='rgba(243,241,236,0.8)' text-anchor='middle'>" + initial + "</text></svg>";
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><rect width='600' height='600' fill='#15151a'/><circle cx='300' cy='300' r='210' fill='none' stroke='rgba(183,168,239,0.16)' stroke-width='1.5'/><text x='300' y='345' font-family='Georgia, serif' font-size='210' fill='rgba(243,241,236,0.8)' text-anchor='middle'>" + esc(initial) + "</text></svg>";
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   }
   var FEAT_RE = /(\bfeat\.|\bft\.|&)/i;
   function featNameOf(title) {
-    var _a2;
     const m = FEAT_RE.exec(title);
     if (!m) return null;
-    const after = title.slice(((_a2 = m.index) != null ? _a2 : 0) + m[0].length).trim();
+    const after = title.slice((m.index ?? 0) + m[0].length).trim();
     return after || null;
   }
   function allArtistNames() {
-    var _a2;
     const map = /* @__PURE__ */ new Map();
     for (const a of albums) {
       const n = a.artist.trim();
       if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), n);
     }
     for (const t of tracks) {
-      const n = ((_a2 = t.featArtist) != null ? _a2 : "").trim();
+      const n = (t.featArtist ?? "").trim();
       if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), n);
     }
     return [...map.values()].sort((a, b) => a.localeCompare(b, "ru"));
@@ -20436,7 +20408,7 @@ ${suffix}`;
   function canonicalArtistName(raw) {
     const lower = raw.trim().toLowerCase();
     const existing = allArtistNames().find((n) => n.toLowerCase() === lower);
-    return existing != null ? existing : raw.trim();
+    return existing ?? raw.trim();
   }
   function artistOwnAlbums(name) {
     const k = name.toLowerCase();
@@ -20447,10 +20419,7 @@ ${suffix}`;
     const out = [];
     for (const a of albums) {
       if (a.artist.toLowerCase() === k) continue;
-      const ft = tracks.filter((t) => {
-        var _a2;
-        return t.albumId === a.id && ((_a2 = t.featArtist) != null ? _a2 : "").toLowerCase() === k;
-      });
+      const ft = tracks.filter((t) => t.albumId === a.id && (t.featArtist ?? "").toLowerCase() === k);
       if (ft.length) {
         const vals = ft.map((t) => trackScoreOf(t.id)).filter((s) => s !== null);
         out.push({
@@ -20489,22 +20458,20 @@ ${suffix}`;
     toastTimer = window.setTimeout(() => el.classList.remove("is-visible"), 2600);
   }
   function dataUrlToBlob(dataUrl) {
-    var _a2, _b;
     const [head2, body] = dataUrl.split(",");
-    const mime = (_b = (_a2 = /^data:([^;]+)/.exec(head2)) == null ? void 0 : _a2[1]) != null ? _b : "image/jpeg";
+    const mime = /^data:([^;]+)/.exec(head2)?.[1] ?? "image/jpeg";
     const bin = atob(body);
     const arr = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     return new Blob([arr], { type: mime });
   }
   function tweenText(el, to) {
-    var _a2, _b;
     if (to === null) {
       el.textContent = "\u2014";
       delete el.dataset.val;
       return;
     }
-    const cur = parseFloat((_b = (_a2 = el.dataset.val) != null ? _a2 : el.textContent) != null ? _b : "");
+    const cur = parseFloat(el.dataset.val ?? el.textContent ?? "");
     const from = isNaN(cur) ? to : cur;
     if (Math.abs(from - to) < 5e-3) {
       el.textContent = fmt(to);
@@ -20556,6 +20523,20 @@ ${suffix}`;
   var demoHint = q("#demo-hint");
   var albumBack = q("#album-back");
   var avCoverImg = q("#av-cover-img");
+  var avCoverEdit = q("#av-cover-edit");
+  var avCoverEditLabel = q("#av-cover-edit-label");
+  var albumCoverDialog = q("#album-cover-dialog");
+  var albumCoverForm = q("#album-cover-form");
+  var albumCoverTitle = q("#album-cover-title");
+  var albumCoverName = q("#album-cover-name");
+  var albumCoverPreview = q("#album-cover-preview");
+  var albumCoverPick = q("#album-cover-pick");
+  var albumCoverFile = q("#album-cover-file");
+  var albumCoverUrl = q("#album-cover-url");
+  var albumCoverStatus = q("#album-cover-status");
+  var albumCoverError = q("#album-cover-error");
+  var albumCoverCancel = q("#album-cover-cancel");
+  var albumCoverSave = q("#album-cover-save");
   var avYear = q("#av-year");
   var avTitle = q("#av-title");
   var avArtist = q("#av-artist");
@@ -20689,6 +20670,7 @@ ${suffix}`;
         await loginLocal(email, password);
       }
       await refreshData();
+      subscribeRealtime();
       await enterHome();
     } catch (err) {
       showError(messageOf(err));
@@ -20699,8 +20681,7 @@ ${suffix}`;
     }
   }
   async function enterHome() {
-    var _a2, _b;
-    homeTitle.textContent = (_a2 = currentUser == null ? void 0 : currentUser.username) != null ? _a2 : "\u0413\u043E\u0441\u0442\u044C";
+    homeTitle.textContent = currentUser?.username ?? "\u0413\u043E\u0441\u0442\u044C";
     setAvatarEl(homeAvatar, currentUser);
     success.classList.add("is-visible");
     await sleep3(1350);
@@ -20711,7 +20692,7 @@ ${suffix}`;
     passwordInput.value = "";
     password2Input.value = "";
     renderAlbums();
-    toast(`\u0414\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C, ${(_b = currentUser == null ? void 0 : currentUser.username) != null ? _b : ""}!`);
+    toast(`\u0414\u043E\u0431\u0440\u043E \u043F\u043E\u0436\u0430\u043B\u043E\u0432\u0430\u0442\u044C, ${currentUser?.username ?? ""}!`);
   }
   logoutBtn.addEventListener("click", () => {
     void (async () => {
@@ -20743,7 +20724,7 @@ ${suffix}`;
       const n = trackCountOf(a.id);
       el.innerHTML = `
       <div class="album__cover">
-        <img src="${coverSrc(a)}" alt="${esc(a.artist)} \u2014 ${esc(a.title)}" loading="lazy">
+        <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} \u2014 ${esc(a.title)}" loading="lazy">
         <span class="album__year">${a.year}</span>
         ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ""}
       </div>
@@ -20790,13 +20771,18 @@ ${suffix}`;
   function currentAlbum() {
     return albums.find((a) => a.id === currentAlbumId);
   }
+  function renderAlbumCover(al) {
+    avCoverImg.src = coverSrc(al);
+    avCoverImg.alt = `${al.artist} \u2014 ${al.title}`;
+    avCoverImg.style.opacity = "";
+    avCoverEdit.hidden = !currentUser;
+    avCoverEditLabel.textContent = al.cover ? "\u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443" : "\u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443";
+  }
   function renderAlbumPage(al) {
     avTitle.textContent = al.title;
     avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
     avYear.textContent = String(al.year);
-    avCoverImg.src = coverSrc(al);
-    avCoverImg.alt = `${al.artist} \u2014 ${al.title}`;
-    avCoverImg.style.opacity = "";
+    renderAlbumCover(al);
     const score = albumScoreOf(al.id);
     avAvg.textContent = score === null ? "\u2014" : fmt(score);
     delete avAvg.dataset.val;
@@ -20804,6 +20790,184 @@ ${suffix}`;
     renderImpact();
     renderConfirmState();
     renderFinalize();
+  }
+  var editingCoverAlbumId = null;
+  var albumCoverDraft = null;
+  var albumCoverPreparing = false;
+  var albumCoverSaving = false;
+  var albumCoverClosing = false;
+  var albumCoverRequest = 0;
+  var albumCoverUrlTimer;
+  function showAlbumCoverError(text = "") {
+    albumCoverError.textContent = text;
+    albumCoverError.classList.toggle("is-visible", Boolean(text));
+  }
+  function updateAlbumCoverControls() {
+    const blocked = albumCoverSaving || albumCoverClosing;
+    albumCoverPick.disabled = blocked;
+    albumCoverFile.disabled = blocked;
+    albumCoverUrl.disabled = blocked;
+    albumCoverCancel.disabled = blocked;
+    albumCoverSave.disabled = blocked || albumCoverPreparing || !albumCoverDraft;
+    albumCoverSave.classList.toggle("is-loading", albumCoverSaving);
+    albumCoverSave.setAttribute("aria-busy", String(albumCoverSaving));
+    albumCoverStatus.textContent = albumCoverSaving ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C \u043E\u0431\u043B\u043E\u0436\u043A\u0443\u2026" : albumCoverPreparing ? "\u041F\u043E\u0434\u0433\u043E\u0442\u0430\u0432\u043B\u0438\u0432\u0430\u0435\u043C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435\u2026" : "";
+  }
+  function resetAlbumCoverDraft() {
+    window.clearTimeout(albumCoverUrlTimer);
+    albumCoverRequest += 1;
+    albumCoverDraft = null;
+    albumCoverPreparing = false;
+    showAlbumCoverError();
+    const al = albums.find((a) => a.id === editingCoverAlbumId);
+    if (al) albumCoverPreview.src = coverSrc(al);
+    updateAlbumCoverControls();
+    return albumCoverRequest;
+  }
+  function openAlbumCoverEditor() {
+    const al = currentAlbum();
+    if (!al || !currentUser || albumCoverDialog.open) return;
+    editingCoverAlbumId = al.id;
+    albumCoverForm.reset();
+    albumCoverTitle.textContent = al.cover ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443";
+    albumCoverName.textContent = `${al.artist} \u2014 ${al.title}`;
+    resetAlbumCoverDraft();
+    albumCoverDialog.showModal();
+    void albumCoverDialog.offsetWidth;
+    albumCoverDialog.classList.add("is-open");
+  }
+  function closeAlbumCoverEditor() {
+    if (albumCoverSaving || albumCoverClosing || !albumCoverDialog.open) return;
+    albumCoverClosing = true;
+    window.clearTimeout(albumCoverUrlTimer);
+    albumCoverRequest += 1;
+    albumCoverDraft = null;
+    albumCoverPreparing = false;
+    updateAlbumCoverControls();
+    albumCoverDialog.classList.remove("is-open");
+    const finishClose = () => {
+      albumCoverDialog.close();
+      albumCoverClosing = false;
+      editingCoverAlbumId = null;
+      albumCoverForm.reset();
+      albumCoverPreview.removeAttribute("src");
+      showAlbumCoverError();
+      updateAlbumCoverControls();
+    };
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      finishClose();
+      return;
+    }
+    const animations = albumCoverDialog.getAnimations({ subtree: true }).filter((animation) => animation.effect?.target === albumCoverDialog);
+    void Promise.allSettled(animations.map((animation) => animation.finished)).then(finishClose);
+  }
+  async function previewAlbumCover(source, request) {
+    try {
+      let src;
+      if (typeof source === "string") {
+        let url;
+        try {
+          url = new URL(source);
+        } catch {
+          throw new Error("\u041D\u0443\u0436\u043D\u0430 \u043F\u0440\u044F\u043C\u0430\u044F \u0441\u0441\u044B\u043B\u043A\u0430 \u0432\u0438\u0434\u0430 https://\u2026");
+        }
+        if (url.protocol !== "https:" && url.protocol !== "http:") {
+          throw new Error("\u041D\u0443\u0436\u043D\u0430 \u043F\u0440\u044F\u043C\u0430\u044F \u0441\u0441\u044B\u043B\u043A\u0430 \u0432\u0438\u0434\u0430 https://\u2026");
+        }
+        src = url.href;
+        await loadImage(src);
+      } else {
+        src = await prepareCoverFile(source);
+      }
+      if (!albumCoverDialog.open || request !== albumCoverRequest) return;
+      albumCoverDraft = src;
+      albumCoverPreview.src = src;
+    } catch (err) {
+      if (albumCoverDialog.open && request === albumCoverRequest) showAlbumCoverError(messageOf(err));
+    } finally {
+      if (request === albumCoverRequest) {
+        albumCoverPreparing = false;
+        updateAlbumCoverControls();
+      }
+    }
+  }
+  avCoverEdit.addEventListener("click", openAlbumCoverEditor);
+  albumCoverPick.addEventListener("click", () => albumCoverFile.click());
+  albumCoverCancel.addEventListener("click", closeAlbumCoverEditor);
+  albumCoverDialog.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    closeAlbumCoverEditor();
+  });
+  albumCoverDialog.addEventListener("click", (e) => {
+    if (e.target !== albumCoverDialog) return;
+    const rect = albumCoverDialog.getBoundingClientRect();
+    if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+      closeAlbumCoverEditor();
+    }
+  });
+  albumCoverFile.addEventListener("change", () => {
+    const file = albumCoverFile.files?.[0];
+    albumCoverFile.value = "";
+    if (!file || albumCoverSaving || albumCoverClosing || !albumCoverDialog.open) return;
+    const request = resetAlbumCoverDraft();
+    albumCoverUrl.value = "";
+    albumCoverPreparing = true;
+    updateAlbumCoverControls();
+    void previewAlbumCover(file, request);
+  });
+  albumCoverUrl.addEventListener("input", () => {
+    if (albumCoverSaving || albumCoverClosing || !albumCoverDialog.open) return;
+    const request = resetAlbumCoverDraft();
+    const url = albumCoverUrl.value.trim();
+    if (!url) return;
+    albumCoverPreparing = true;
+    updateAlbumCoverControls();
+    albumCoverUrlTimer = window.setTimeout(() => void previewAlbumCover(url, request), 400);
+  });
+  async function saveAlbumCover(albumId, source) {
+    if (!currentUser) throw new Error("\u0412\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u0430\u043A\u043A\u0430\u0443\u043D\u0442 \u0437\u0430\u043D\u043E\u0432\u043E");
+    if (!albums.some((a) => a.id === albumId)) throw new Error("\u0410\u043B\u044C\u0431\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D");
+    let url = source;
+    if (CLOUD) {
+      if (source.startsWith("data:")) url = await uploadCover(source);
+      const { error } = await getSB().from("albums").update({ cover_url: url }).eq("id", albumId).select("id").single();
+      if (error) {
+        if (error.code === "PGRST116") throw new Error("\u0410\u043B\u044C\u0431\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D. \u041E\u0431\u043D\u043E\u0432\u0438\u0442\u0435 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443.");
+        throw new Error("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443: " + messageOf(error));
+      }
+    }
+    const next = albums.map((a) => a.id === albumId ? { ...a, cover: url } : a);
+    if (!CLOUD) {
+      try {
+        localStorage.setItem(LS_KEY, JSON.stringify(next));
+      } catch {
+        throw new Error("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043E\u0445\u0440\u0430\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443 \u0432 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0435. \u0412\u043E\u0437\u043C\u043E\u0436\u043D\u043E, \u0437\u0430\u043A\u043E\u043D\u0447\u0438\u043B\u043E\u0441\u044C \u043C\u0435\u0441\u0442\u043E. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0441\u0441\u044B\u043B\u043A\u0443 \u0432\u043C\u0435\u0441\u0442\u043E \u0444\u0430\u0439\u043B\u0430.");
+      }
+    }
+    albums = next;
+    const al = currentAlbum();
+    if (al?.id === albumId) renderAlbumCover(al);
+  }
+  albumCoverForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    void handleAlbumCoverSave();
+  });
+  async function handleAlbumCoverSave() {
+    if (!editingCoverAlbumId || !albumCoverDraft || albumCoverPreparing || albumCoverSaving || albumCoverClosing) return;
+    albumCoverSaving = true;
+    showAlbumCoverError();
+    updateAlbumCoverControls();
+    try {
+      await saveAlbumCover(editingCoverAlbumId, albumCoverDraft);
+      albumCoverSaving = false;
+      closeAlbumCoverEditor();
+      toast("\u041E\u0431\u043B\u043E\u0436\u043A\u0430 \u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u0430");
+    } catch (err) {
+      showAlbumCoverError(messageOf(err));
+    } finally {
+      albumCoverSaving = false;
+      updateAlbumCoverControls();
+    }
   }
   function updateRatingDisplays(changedTrackId) {
     if (!currentAlbumId) return;
@@ -20824,7 +20988,6 @@ ${suffix}`;
     renderConfirmState();
   }
   function renderImpact() {
-    var _a2;
     avChips.innerHTML = "";
     if (!currentAlbumId) {
       avImpact.hidden = true;
@@ -20844,7 +21007,7 @@ ${suffix}`;
     for (const [pid, info] of profileCache) {
       let sum = 0, n = 0;
       for (const t of list) {
-        const v = (_a2 = trackRatings[t.id]) == null ? void 0 : _a2[pid];
+        const v = trackRatings[t.id]?.[pid];
         if (v) {
           sum += v.score;
           n += 1;
@@ -20852,9 +21015,9 @@ ${suffix}`;
       }
       rows.push({ id: pid, username: info.username, initials: info.initials, avatarUrl: info.avatarUrl, mean: n ? round2(sum / n) : null, n });
     }
-    rows.sort((a, b) => Number(b.id === (currentUser == null ? void 0 : currentUser.id)) - Number(a.id === (currentUser == null ? void 0 : currentUser.id)));
+    rows.sort((a, b) => Number(b.id === currentUser?.id) - Number(a.id === currentUser?.id));
     for (const r of rows) {
-      const isMe = r.id === (currentUser == null ? void 0 : currentUser.id);
+      const isMe = r.id === currentUser?.id;
       const chip = document.createElement("div");
       chip.className = "av__chip" + (isMe ? " is-me" : "");
       const label = isMe ? "\u044F" : esc(r.username);
@@ -20900,14 +21063,13 @@ ${suffix}`;
   </div>`;
   }
   function renderFinalize(animateKind) {
-    var _a2;
     const al = currentAlbum();
     if (!al) {
       cohesionControl.innerHTML = "";
       typeControl.innerHTML = "";
       return;
     }
-    cohesionControl.innerHTML = al.cohesion === null ? finSelectHTML("cohesion", COHESION_OPTIONS.map((o, i) => ({ value: String(i + 1), label: o }))) : finalBadgeHTML((_a2 = COHESION_OPTIONS[al.cohesion - 1]) != null ? _a2 : "\u2014", animateKind === "cohesion");
+    cohesionControl.innerHTML = al.cohesion === null ? finSelectHTML("cohesion", COHESION_OPTIONS.map((o, i) => ({ value: String(i + 1), label: o }))) : finalBadgeHTML(COHESION_OPTIONS[al.cohesion - 1] ?? "\u2014", animateKind === "cohesion");
     typeControl.innerHTML = al.albumType === null ? finSelectHTML("type", TYPE_OPTIONS) : finalBadgeHTML(typeLabelOf(al.albumType), animateKind === "type");
   }
   function closeAllFinSelects() {
@@ -20918,7 +21080,6 @@ ${suffix}`;
     });
   }
   viewAlbum.addEventListener("click", (e) => {
-    var _a2, _b;
     const t = e.target;
     const trigger = t.closest(".fin-select__trigger");
     if (trigger) {
@@ -20935,7 +21096,7 @@ ${suffix}`;
     const opt = t.closest(".fin-select__option");
     if (opt) {
       const root = opt.closest(".fin-select");
-      if (root) onFinOptionPick(root, (_a2 = opt.dataset.value) != null ? _a2 : "", (_b = opt.textContent) != null ? _b : "");
+      if (root) onFinOptionPick(root, opt.dataset.value ?? "", opt.textContent ?? "");
     }
   });
   document.addEventListener("click", (e) => {
@@ -20943,14 +21104,13 @@ ${suffix}`;
     if (!t.closest(".fin-select")) closeAllFinSelects();
   });
   function onFinOptionPick(root, value, label) {
-    var _a2;
     root.querySelectorAll(".fin-select__option").forEach((b) => {
       b.classList.toggle("is-selected", b.dataset.value === value);
     });
     const valueEl = root.querySelector(".fin-select__value");
     if (valueEl) valueEl.textContent = label;
     closeAllFinSelects();
-    void onFinalizePick((_a2 = root.dataset.kind) != null ? _a2 : "", value, label);
+    void onFinalizePick(root.dataset.kind ?? "", value, label);
   }
   async function onFinalizePick(kind, value, label) {
     const al = currentAlbum();
@@ -21026,7 +21186,7 @@ ${suffix}`;
     window.setTimeout(() => {
       confirmModal.hidden = true;
     }, 320);
-    res == null ? void 0 : res(ok);
+    res?.(ok);
   }
   confirmOk.addEventListener("click", () => closeConfirm(true));
   confirmCancel.addEventListener("click", () => closeConfirm(false));
@@ -21038,7 +21198,7 @@ ${suffix}`;
   var saveTimers = /* @__PURE__ */ new Map();
   function setTrackSave(trackId, s) {
     const li = trackList.querySelector(`[data-id="${trackId}"]`);
-    const el = li == null ? void 0 : li.querySelector(".track__save");
+    const el = li?.querySelector(".track__save");
     if (!el) return;
     const map = { save: "\u0441\u043E\u0445\u0440\u0430\u043D\u044F\u044E\u2026", done: "\u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E", err: "\u043E\u0448\u0438\u0431\u043A\u0430", "": "" };
     el.textContent = map[s];
@@ -21050,10 +21210,9 @@ ${suffix}`;
     }
   }
   function setTrackRating(trackId, v) {
-    var _a2, _b;
     if (!currentUser) return;
-    const prev = (_a2 = trackRatings[trackId]) == null ? void 0 : _a2[currentUser.id];
-    ((_b = trackRatings[trackId]) != null ? _b : trackRatings[trackId] = {})[currentUser.id] = { score: v, confirmed: (prev == null ? void 0 : prev.confirmed) === true };
+    const prev = trackRatings[trackId]?.[currentUser.id];
+    (trackRatings[trackId] ?? (trackRatings[trackId] = {}))[currentUser.id] = { score: v, confirmed: prev?.confirmed === true };
     if (!CLOUD) saveLocalRatings();
     setTrackSave(trackId, "save");
     updateRatingDisplays(trackId);
@@ -21078,9 +21237,8 @@ ${suffix}`;
     saveTimers.set(trackId, t);
   }
   async function persistTrackRating(trackId) {
-    var _a2;
     if (!currentUser) return;
-    const entry = (_a2 = trackRatings[trackId]) == null ? void 0 : _a2[currentUser.id];
+    const entry = trackRatings[trackId]?.[currentUser.id];
     setTrackSave(trackId, "save");
     try {
       if (CLOUD) {
@@ -21102,9 +21260,8 @@ ${suffix}`;
     }
   }
   async function toggleRatingConfirm(trackId) {
-    var _a2;
     if (!currentUser) return;
-    const entry = (_a2 = trackRatings[trackId]) == null ? void 0 : _a2[currentUser.id];
+    const entry = trackRatings[trackId]?.[currentUser.id];
     if (!entry) return;
     const next = !entry.confirmed;
     entry.confirmed = next;
@@ -21151,8 +21308,7 @@ ${suffix}`;
   var CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>';
   var PENDING_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>';
   function trackTitleHTML(t) {
-    var _a2;
-    const name = ((_a2 = t.featArtist) != null ? _a2 : "").trim();
+    const name = (t.featArtist ?? "").trim();
     const escTitle = esc(t.title);
     if (!name) return escTitle;
     const idx = t.title.toLowerCase().indexOf(name.toLowerCase());
@@ -21165,17 +21321,15 @@ ${suffix}`;
     return `${before}<a class="track__feat" data-artist="${esc(name)}" href="#">${mid}</a>${after}`;
   }
   function renderTracks(enterId) {
-    var _a2, _b;
     const al = currentAlbum();
-    const locked = (_a2 = al == null ? void 0 : al.tracksLocked) != null ? _a2 : false;
+    const locked = al?.tracksLocked ?? false;
     const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
-    const myId = (_b = currentUser == null ? void 0 : currentUser.id) != null ? _b : "";
+    const myId = currentUser?.id ?? "";
     trackList.innerHTML = "";
     list.forEach((t, i) => {
-      var _a3;
-      const mine = (_a3 = trackRatings[t.id]) == null ? void 0 : _a3[myId];
-      const mineScore = typeof (mine == null ? void 0 : mine.score) === "number" ? mine.score : void 0;
-      const mineConfirmed = (mine == null ? void 0 : mine.confirmed) === true;
+      const mine = trackRatings[t.id]?.[myId];
+      const mineScore = typeof mine?.score === "number" ? mine.score : void 0;
+      const mineConfirmed = mine?.confirmed === true;
       const tavg = trackScoreOf(t.id);
       const tavgStr = tavg === null ? "\u2014" : fmt(tavg);
       const mineStr = typeof mineScore === "number" ? fmt(mineScore) : "";
@@ -21283,12 +21437,11 @@ ${suffix}`;
     lastFeatExtract = "";
   }
   trackInput.addEventListener("input", () => {
-    var _a2;
     const title = trackInput.value;
     const detected = FEAT_RE.test(title);
     trackFeatBox.hidden = !detected;
     if (detected) {
-      const ext = (_a2 = featNameOf(title)) != null ? _a2 : "";
+      const ext = featNameOf(title) ?? "";
       if (ext && (trackFeatInput.value.trim() === "" || trackFeatInput.value.trim() === lastFeatExtract)) {
         trackFeatInput.value = ext;
       }
@@ -21371,7 +21524,7 @@ ${suffix}`;
           feat_artist: featArtist
         }).select();
         if (error) throw error;
-        newId = (data == null ? void 0 : data[0]).id;
+        newId = (data?.[0]).id;
       } else {
         newId = "t" + Date.now().toString(36);
         tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist });
@@ -21407,7 +21560,6 @@ ${suffix}`;
     }
   }
   function startRename(li) {
-    var _a2;
     const id = li.dataset.id;
     if (!id) return;
     const titleEl = li.querySelector(".track__title");
@@ -21415,17 +21567,16 @@ ${suffix}`;
     const input = document.createElement("input");
     input.className = "track__rename-input";
     input.type = "text";
-    input.value = (_a2 = titleEl.textContent) != null ? _a2 : "";
+    input.value = titleEl.textContent ?? "";
     titleEl.replaceWith(input);
     input.focus();
     input.select();
     let done = false;
     const commit = () => {
-      var _a3;
       if (done) return;
       done = true;
       const v = input.value.trim();
-      if (v && v !== ((_a3 = titleEl.textContent) != null ? _a3 : "")) void renameTrack(id, v);
+      if (v && v !== (titleEl.textContent ?? "")) void renameTrack(id, v);
       else renderTracks();
     };
     const cancel = () => {
@@ -21565,11 +21716,11 @@ ${suffix}`;
     e.dataTransfer.effectAllowed = "move";
     try {
       e.dataTransfer.setDragImage(li, 24, 24);
-    } catch (e2) {
+    } catch {
     }
     try {
       e.dataTransfer.setData("text/plain", li.dataset.id);
-    } catch (e2) {
+    } catch {
     }
     li.classList.add("dragging");
   });
@@ -21613,10 +21764,7 @@ ${suffix}`;
     trackList.querySelectorAll(".track").forEach((el) => {
       el.style.transform = "";
     });
-    const ids = [...trackList.querySelectorAll(".track")].map((el) => {
-      var _a2;
-      return (_a2 = el.dataset.id) != null ? _a2 : "";
-    });
+    const ids = [...trackList.querySelectorAll(".track")].map((el) => el.dataset.id ?? "");
     const byId = new Map(tracks.map((t) => [t.id, t]));
     const next = ids.map((id) => byId.get(id)).filter((t) => Boolean(t));
     if (next.length !== tracks.length) return;
@@ -21645,25 +21793,22 @@ ${suffix}`;
     return null;
   }
   function topEntry() {
-    var _a2;
-    return (_a2 = viewStack[viewStack.length - 1]) != null ? _a2 : { view: "home" };
+    return viewStack[viewStack.length - 1] ?? { view: "home" };
   }
   async function navigateTo(view, entry) {
-    var _a2;
-    const from = (_a2 = visibleView()) != null ? _a2 : viewHome;
+    const from = visibleView() ?? viewHome;
     viewStack.push(entry);
     await swapTo(from, view, () => {
       view.scrollTop = 0;
     });
   }
   async function goBack() {
-    var _a2, _b;
     viewStack.pop();
     const prev = topEntry();
-    const from = (_a2 = visibleView()) != null ? _a2 : viewHome;
+    const from = visibleView() ?? viewHome;
     switch (prev.view) {
       case "album": {
-        currentAlbumId = (_b = prev.albumId) != null ? _b : null;
+        currentAlbumId = prev.albumId ?? null;
         const al = albums.find((a) => a.id === prev.albumId);
         if (al) renderAlbumPage(al);
         await swapTo(from, viewAlbum, () => {
@@ -21724,7 +21869,7 @@ ${suffix}`;
     const n = trackCountOf(a.id);
     el.innerHTML = `
     <div class="album__cover">
-      <img src="${coverSrc(a)}" alt="${esc(a.artist)} \u2014 ${esc(a.title)}" loading="lazy">
+      <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} \u2014 ${esc(a.title)}" loading="lazy">
       <span class="album__year">${a.year}</span>
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ""}
       ${featScore !== null ? `<span class="album__featbadge">\u0444\u0438\u0442 ${fmt(featScore)}</span>` : ""}
@@ -21744,7 +21889,7 @@ ${suffix}`;
     return el;
   }
   function renderArtistPage() {
-    const name = currentArtistName != null ? currentArtistName : "";
+    const name = currentArtistName ?? "";
     artistName.textContent = name;
     const sc = artistScoreOf(name);
     artistScore.textContent = sc === null ? "\u2014" : fmt(sc);
@@ -21764,10 +21909,7 @@ ${suffix}`;
       const cands = [];
       for (const a of own) cands.push({ album: a, score: albumScoreOf(a.id) });
       for (const f of feats) cands.push({ album: f.album, score: f.score });
-      cands.sort((x, y) => {
-        var _a2, _b;
-        return ((_a2 = y.score) != null ? _a2 : -1) - ((_b = x.score) != null ? _b : -1);
-      });
+      cands.sort((x, y) => (y.score ?? -1) - (x.score ?? -1));
       const best = cands[0];
       return {
         name,
@@ -21794,7 +21936,7 @@ ${suffix}`;
       if (r.featCount) meta.push(`${r.featCount} ${featPlural(r.featCount)}`);
       li.innerHTML = `
       <span class="rank__pos">${pos}</span>
-      <span class="rank__ava"><img src="${r.cover}" alt="" loading="lazy"></span>
+      <span class="rank__ava"><img src="${esc(r.cover)}" alt="" loading="lazy"></span>
       <div class="rank__body">
         <span class="rank__name">${esc(r.name)}</span>
         <span class="rank__meta">${meta.join(" \xB7 ") || "\u0431\u0435\u0437 \u0430\u043B\u044C\u0431\u043E\u043C\u043E\u0432"}</span>
@@ -21848,7 +21990,7 @@ ${suffix}`;
   function applyProfileToUi() {
     setAvatarEl(homeAvatar, currentUser);
     setAvatarEl(profAvatar, currentUser);
-    profRemove.hidden = !(currentUser == null ? void 0 : currentUser.avatarUrl);
+    profRemove.hidden = !currentUser?.avatarUrl;
     if (viewHome.classList.contains("is-visible")) renderAlbums();
     if (currentAlbumId && viewAlbum.classList.contains("is-visible")) {
       renderTracks();
@@ -21858,8 +22000,7 @@ ${suffix}`;
   }
   profUpload.addEventListener("click", () => profFile.click());
   profFile.addEventListener("change", () => {
-    var _a2;
-    const f = (_a2 = profFile.files) == null ? void 0 : _a2[0];
+    const f = profFile.files?.[0];
     if (f) void handleAvatarFile(f);
   });
   async function handleAvatarFile(file) {
@@ -21880,12 +22021,11 @@ ${suffix}`;
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       await saveAvatar(canvas.toDataURL("image/jpeg", 0.85));
       toast("\u0410\u0432\u0430\u0442\u0430\u0440 \u043E\u0431\u043D\u043E\u0432\u043B\u0451\u043D");
-    } catch (e) {
+    } catch {
       toast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435");
     }
   }
   async function saveAvatar(dataUrl) {
-    var _a2;
     if (!currentUser) return;
     let url = dataUrl;
     if (CLOUD && dataUrl) {
@@ -21898,7 +22038,7 @@ ${suffix}`;
     } else if (!CLOUD) {
       const meta = loadLocalMeta();
       const key = currentUser.email.toLowerCase();
-      const m = (_a2 = meta[key]) != null ? _a2 : { username: currentUser.username, avatarUrl: null };
+      const m = meta[key] ?? { username: currentUser.username, avatarUrl: null };
       m.avatarUrl = dataUrl;
       meta[key] = m;
       saveLocalMeta(meta);
@@ -21914,7 +22054,6 @@ ${suffix}`;
   }
   profRemove.addEventListener("click", () => void saveAvatar(null));
   async function saveNickname() {
-    var _a2;
     if (!currentUser) return;
     const name = profName.value.trim();
     profError.textContent = "";
@@ -21931,7 +22070,7 @@ ${suffix}`;
       } else {
         const meta = loadLocalMeta();
         const key = currentUser.email.toLowerCase();
-        const m = (_a2 = meta[key]) != null ? _a2 : { username: currentUser.username, avatarUrl: currentUser.avatarUrl };
+        const m = meta[key] ?? { username: currentUser.username, avatarUrl: currentUser.avatarUrl };
         m.username = name;
         meta[key] = m;
         saveLocalMeta(meta);
@@ -21943,7 +22082,7 @@ ${suffix}`;
       applyProfileToUi();
       toast("\u041D\u0438\u043A\u043D\u0435\u0439\u043C \u0441\u043E\u0445\u0440\u0430\u043D\u0451\u043D");
     } catch (err) {
-      const code = err == null ? void 0 : err.code;
+      const code = err?.code;
       profError.textContent = code === "23505" ? "\u044D\u0442\u043E\u0442 \u043D\u0438\u043A \u0443\u0436\u0435 \u0437\u0430\u043D\u044F\u0442" : messageOf(err);
       profError.classList.add("is-visible");
     }
@@ -21995,7 +22134,7 @@ ${suffix}`;
     const cover = document.querySelector(".av__cover");
     if (!cover) return;
     const img = cover.querySelector("img");
-    const src = img == null ? void 0 : img.getAttribute("src");
+    const src = img?.getAttribute("src");
     const rect = cover.getBoundingClientRect();
     if (!src || rect.width < 4 || rect.height < 4) return;
     if (img) img.style.opacity = "0";
@@ -22151,7 +22290,7 @@ ${suffix}`;
   function normalizeArtist(raw) {
     const lower = raw.toLowerCase();
     const existing = artistNames().find((n) => n.toLowerCase() === lower);
-    return existing != null ? existing : raw;
+    return existing ?? raw;
   }
   function applyCover(src) {
     pendingCover = src;
@@ -22174,8 +22313,7 @@ ${suffix}`;
     }
   });
   coverFile.addEventListener("change", () => {
-    var _a2;
-    const file = (_a2 = coverFile.files) == null ? void 0 : _a2[0];
+    const file = coverFile.files?.[0];
     if (file) void handleCoverFile(file);
   });
   function readFileAsDataURL(file) {
@@ -22189,32 +22327,54 @@ ${suffix}`;
   function loadImage(src) {
     return new Promise((resolve, reject) => {
       const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = () => reject(new Error("image error"));
+      const timer = window.setTimeout(() => {
+        img.onload = img.onerror = null;
+        img.src = "";
+        reject(new Error("\u0418\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0437\u0430\u0433\u0440\u0443\u0436\u0430\u0435\u0442\u0441\u044F \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u0434\u043E\u043B\u0433\u043E. \u041F\u043E\u043F\u0440\u043E\u0431\u0443\u0439\u0442\u0435 \u0434\u0440\u0443\u0433\u043E\u0439 \u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u0441\u0441\u044B\u043B\u043A\u0443."));
+      }, 15e3);
+      img.onload = () => {
+        window.clearTimeout(timer);
+        resolve(img);
+      };
+      img.onerror = () => {
+        window.clearTimeout(timer);
+        reject(new Error("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435. \u041F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u043F\u0440\u044F\u043C\u0443\u044E \u0441\u0441\u044B\u043B\u043A\u0443."));
+      };
       img.src = src;
     });
   }
-  async function handleCoverFile(file) {
-    if (!file.type.startsWith("image/")) {
-      toast("\u041D\u0443\u0436\u0435\u043D \u0444\u0430\u0439\u043B \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F");
-      return;
-    }
+  async function prepareCoverFile(file) {
+    if (!file.type.startsWith("image/")) throw new Error("\u041D\u0443\u0436\u0435\u043D \u0444\u0430\u0439\u043B \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u044F");
+    if (file.size > 10 * 1024 * 1024) throw new Error("\u0418\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u0441\u043B\u0438\u0448\u043A\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u043E\u0435. \u041C\u0430\u043A\u0441\u0438\u043C\u0443\u043C \u2014 10 \u041C\u0411.");
     try {
-      const dataUrl = await readFileAsDataURL(file);
-      const img = await loadImage(dataUrl);
-      const max = 900;
-      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const img = await loadImage(await readFileAsDataURL(file));
+      const scale = Math.min(1, 900 / Math.max(img.width, img.height));
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.round(img.width * scale));
       canvas.height = Math.max(1, Math.round(img.height * scale));
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("no ctx");
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      applyCover(canvas.toDataURL("image/jpeg", 0.85));
+      return canvas.toDataURL("image/jpeg", 0.85);
+    } catch {
+      throw new Error("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435. \u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0440\u0443\u0433\u043E\u0439 \u0444\u0430\u0439\u043B.");
+    }
+  }
+  async function uploadCover(dataUrl) {
+    const storage = getSB().storage.from("covers");
+    const blob = dataUrlToBlob(dataUrl);
+    const path = "cover-" + crypto.randomUUID() + ".jpg";
+    const { error } = await storage.upload(path, blob, { contentType: blob.type, upsert: false });
+    if (error) throw new Error("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443 \u0432 \u0445\u0440\u0430\u043D\u0438\u043B\u0438\u0449\u0435: " + messageOf(error));
+    return storage.getPublicUrl(path).data.publicUrl;
+  }
+  async function handleCoverFile(file) {
+    try {
+      applyCover(await prepareCoverFile(file));
       coverUrl.value = "";
       clearCoverUrlError();
-    } catch (e) {
-      toast("\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435");
+    } catch (err) {
+      toast(messageOf(err));
     }
   }
   coverUrl.addEventListener("input", () => {
@@ -22233,7 +22393,7 @@ ${suffix}`;
       await loadImage(url);
       applyCover(url);
       coverFile.value = "";
-    } catch (e) {
+    } catch {
       showCoverUrlError("\u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u043F\u043E \u0441\u0441\u044B\u043B\u043A\u0435");
     }
   }
@@ -22274,6 +22434,11 @@ ${suffix}`;
   addBack.addEventListener("click", closeAdd);
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    if (albumCoverDialog.open) {
+      e.preventDefault();
+      closeAlbumCoverEditor();
+      return;
+    }
     if (!confirmModal.hidden) {
       closeConfirm(false);
       return;
@@ -22286,29 +22451,17 @@ ${suffix}`;
     else if (visibleView() && !viewHome.classList.contains("is-visible")) void goBack();
   });
   async function addAlbum(input) {
-    var _a2, _b, _c, _d;
     if (CLOUD) {
       const s = getSB();
-      let coverUrlFinal = (_a2 = input.coverUrl) != null ? _a2 : "";
-      if (input.coverDataUrl) {
-        const blob = dataUrlToBlob(input.coverDataUrl);
-        const path = "cover-" + Date.now().toString(36) + ".jpg";
-        const up = await s.storage.from("covers").upload(path, blob, {
-          contentType: blob.type || "image/jpeg",
-          upsert: false
-        });
-        if (!up.error) {
-          const { data } = s.storage.from("covers").getPublicUrl(path);
-          coverUrlFinal = data.publicUrl;
-        }
-      }
+      let coverUrlFinal = input.coverUrl ?? "";
+      if (input.coverDataUrl) coverUrlFinal = await uploadCover(input.coverDataUrl);
       const ins = await s.from("albums").insert({
         artist: input.artist,
         title: input.title,
         year: input.year,
         cover_url: coverUrlFinal || null,
         tracks_locked: false,
-        created_by: (_b = currentUser == null ? void 0 : currentUser.id) != null ? _b : null
+        created_by: currentUser?.id ?? null
       });
       if (ins.error) {
         if (ins.error.code === "23505") {
@@ -22323,7 +22476,7 @@ ${suffix}`;
         artist: input.artist,
         title: input.title,
         year: input.year,
-        cover: (_d = (_c = input.coverDataUrl) != null ? _c : input.coverUrl) != null ? _d : "",
+        cover: input.coverDataUrl ?? input.coverUrl ?? "",
         tracksLocked: false,
         cohesion: null,
         albumType: null
@@ -22429,8 +22582,7 @@ ${suffix}`;
     demoHint.textContent = "\u0434\u0435\u043C\u043E-\u0440\u0435\u0436\u0438\u043C (\u0431\u0435\u0437 \u0431\u0430\u0437\u044B): " + ALLOWED_USERS.map((u) => u.email).join(" \xB7 ") + " \u2014 \u043F\u0430\u0440\u043E\u043B\u044C: " + DEMO_PASSWORD;
   }
   function showHomeDirect() {
-    var _a2;
-    homeTitle.textContent = (_a2 = currentUser == null ? void 0 : currentUser.username) != null ? _a2 : "\u0413\u043E\u0441\u0442\u044C";
+    homeTitle.textContent = currentUser?.username ?? "\u0413\u043E\u0441\u0442\u044C";
     setAvatarEl(homeAvatar, currentUser);
     viewLogin.classList.remove("is-visible");
     viewLogin.style.display = "none";
@@ -22453,7 +22605,7 @@ ${suffix}`;
           showHomeDirect();
           return;
         }
-      } catch (e) {
+      } catch {
       }
     }
   }

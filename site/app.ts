@@ -469,7 +469,7 @@ function coverSrc(a: UiAlbum): string {
     "<rect width='600' height='600' fill='#15151a'/>" +
     "<circle cx='300' cy='300' r='210' fill='none' stroke='rgba(183,168,239,0.16)' stroke-width='1.5'/>" +
     "<text x='300' y='345' font-family='Georgia, serif' font-size='210' fill='rgba(243,241,236,0.8)' text-anchor='middle'>" +
-    initial +
+    esc(initial) +
     '</text></svg>';
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 }
@@ -634,6 +634,20 @@ const demoHint = q<HTMLParagraphElement>('#demo-hint');
 /* альбом */
 const albumBack = q<HTMLButtonElement>('#album-back');
 const avCoverImg = q<HTMLImageElement>('#av-cover-img');
+const avCoverEdit = q<HTMLButtonElement>('#av-cover-edit');
+const avCoverEditLabel = q<HTMLSpanElement>('#av-cover-edit-label');
+const albumCoverDialog = q<HTMLDialogElement>('#album-cover-dialog');
+const albumCoverForm = q<HTMLFormElement>('#album-cover-form');
+const albumCoverTitle = q<HTMLHeadingElement>('#album-cover-title');
+const albumCoverName = q<HTMLParagraphElement>('#album-cover-name');
+const albumCoverPreview = q<HTMLImageElement>('#album-cover-preview');
+const albumCoverPick = q<HTMLButtonElement>('#album-cover-pick');
+const albumCoverFile = q<HTMLInputElement>('#album-cover-file');
+const albumCoverUrl = q<HTMLInputElement>('#album-cover-url');
+const albumCoverStatus = q<HTMLParagraphElement>('#album-cover-status');
+const albumCoverError = q<HTMLParagraphElement>('#album-cover-error');
+const albumCoverCancel = q<HTMLButtonElement>('#album-cover-cancel');
+const albumCoverSave = q<HTMLButtonElement>('#album-cover-save');
 const avYear = q<HTMLSpanElement>('#av-year');
 const avTitle = q<HTMLHeadingElement>('#av-title');
 const avArtist = q<HTMLParagraphElement>('#av-artist');
@@ -779,6 +793,7 @@ async function handleAuthSubmit(): Promise<void> {
       await loginLocal(email, password);
     }
     await refreshData();
+    subscribeRealtime();
     await enterHome();
   } catch (err) {
     showError(messageOf(err));
@@ -837,7 +852,7 @@ function renderAlbums(): void {
 
     el.innerHTML = `
       <div class="album__cover">
-        <img src="${coverSrc(a)}" alt="${esc(a.artist)} — ${esc(a.title)}" loading="lazy">
+        <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} — ${esc(a.title)}" loading="lazy">
         <span class="album__year">${a.year}</span>
         ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ''}
       </div>
@@ -898,13 +913,19 @@ function currentAlbum(): UiAlbum | undefined {
   return albums.find((a) => a.id === currentAlbumId);
 }
 
+function renderAlbumCover(al: UiAlbum): void {
+  avCoverImg.src = coverSrc(al);
+  avCoverImg.alt = `${al.artist} — ${al.title}`;
+  avCoverImg.style.opacity = ''; // сброс после анимации осыпания
+  avCoverEdit.hidden = !currentUser;
+  avCoverEditLabel.textContent = al.cover ? 'изменить обложку' : 'добавить обложку';
+}
+
 function renderAlbumPage(al: UiAlbum): void {
   avTitle.textContent = al.title;
   avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
   avYear.textContent = String(al.year);
-  avCoverImg.src = coverSrc(al);
-  avCoverImg.alt = `${al.artist} — ${al.title}`;
-  avCoverImg.style.opacity = ''; // сброс после анимации осыпания
+  renderAlbumCover(al);
   const score = albumScoreOf(al.id);
   avAvg.textContent = score === null ? '—' : fmt(score);
   delete avAvg.dataset.val;
@@ -912,6 +933,202 @@ function renderAlbumPage(al: UiAlbum): void {
   renderImpact();
   renderConfirmState();
   renderFinalize();
+}
+
+/* --- обложка существующего альбома --- */
+let editingCoverAlbumId: string | null = null;
+let albumCoverDraft: string | null = null;
+let albumCoverPreparing = false;
+let albumCoverSaving = false;
+let albumCoverClosing = false;
+let albumCoverRequest = 0;
+let albumCoverUrlTimer: number | undefined;
+
+function showAlbumCoverError(text = ''): void {
+  albumCoverError.textContent = text;
+  albumCoverError.classList.toggle('is-visible', Boolean(text));
+}
+
+function updateAlbumCoverControls(): void {
+  const blocked = albumCoverSaving || albumCoverClosing;
+  albumCoverPick.disabled = blocked;
+  albumCoverFile.disabled = blocked;
+  albumCoverUrl.disabled = blocked;
+  albumCoverCancel.disabled = blocked;
+  albumCoverSave.disabled = blocked || albumCoverPreparing || !albumCoverDraft;
+  albumCoverSave.classList.toggle('is-loading', albumCoverSaving);
+  albumCoverSave.setAttribute('aria-busy', String(albumCoverSaving));
+  albumCoverStatus.textContent = albumCoverSaving ? 'Сохраняем обложку…'
+    : albumCoverPreparing ? 'Подготавливаем изображение…' : '';
+}
+
+function resetAlbumCoverDraft(): number {
+  window.clearTimeout(albumCoverUrlTimer);
+  albumCoverRequest += 1; // поздние ответы от предыдущего файла/URL больше не применяются
+  albumCoverDraft = null;
+  albumCoverPreparing = false;
+  showAlbumCoverError();
+  const al = albums.find((a) => a.id === editingCoverAlbumId);
+  if (al) albumCoverPreview.src = coverSrc(al);
+  updateAlbumCoverControls();
+  return albumCoverRequest;
+}
+
+function openAlbumCoverEditor(): void {
+  const al = currentAlbum();
+  if (!al || !currentUser || albumCoverDialog.open) return;
+  editingCoverAlbumId = al.id;
+  albumCoverForm.reset();
+  albumCoverTitle.textContent = al.cover ? 'Изменить обложку' : 'Добавить обложку';
+  albumCoverName.textContent = `${al.artist} — ${al.title}`;
+  resetAlbumCoverDraft();
+  albumCoverDialog.showModal();
+  // Фиксируем начальные стили после showModal(), чтобы окно и фон плавно появились.
+  void albumCoverDialog.offsetWidth;
+  albumCoverDialog.classList.add('is-open');
+}
+
+function closeAlbumCoverEditor(): void {
+  if (albumCoverSaving || albumCoverClosing || !albumCoverDialog.open) return;
+  albumCoverClosing = true;
+  window.clearTimeout(albumCoverUrlTimer);
+  albumCoverRequest += 1;
+  albumCoverDraft = null;
+  albumCoverPreparing = false;
+  updateAlbumCoverControls();
+  albumCoverDialog.classList.remove('is-open');
+
+  const finishClose = (): void => {
+    albumCoverDialog.close();
+    albumCoverClosing = false;
+    editingCoverAlbumId = null;
+    albumCoverForm.reset();
+    albumCoverPreview.removeAttribute('src');
+    showAlbumCoverError();
+    updateAlbumCoverControls();
+  };
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    finishClose();
+    return;
+  }
+  // Не очищаем предпросмотр и не снимаем модальность до конца затухания.
+  // При отмене перехода (например, смене настройки анимаций) тоже закрываем окно.
+  const animations = albumCoverDialog.getAnimations({ subtree: true })
+    // Учитываем ::backdrop, но не бесконечную анимацию спиннера внутри формы.
+    .filter((animation) => (animation.effect as KeyframeEffect | null)?.target === albumCoverDialog);
+  void Promise.allSettled(animations.map((animation) => animation.finished)).then(finishClose);
+}
+
+async function previewAlbumCover(source: File | string, request: number): Promise<void> {
+  try {
+    let src: string;
+    if (typeof source === 'string') {
+      let url: URL;
+      try { url = new URL(source); }
+      catch { throw new Error('Нужна прямая ссылка вида https://…'); }
+      if (url.protocol !== 'https:' && url.protocol !== 'http:') {
+        throw new Error('Нужна прямая ссылка вида https://…');
+      }
+      src = url.href;
+      await loadImage(src);
+    } else {
+      src = await prepareCoverFile(source);
+    }
+    if (!albumCoverDialog.open || request !== albumCoverRequest) return;
+    albumCoverDraft = src;
+    albumCoverPreview.src = src;
+  } catch (err) {
+    if (albumCoverDialog.open && request === albumCoverRequest) showAlbumCoverError(messageOf(err));
+  } finally {
+    if (request === albumCoverRequest) {
+      albumCoverPreparing = false;
+      updateAlbumCoverControls();
+    }
+  }
+}
+
+avCoverEdit.addEventListener('click', openAlbumCoverEditor);
+albumCoverPick.addEventListener('click', () => albumCoverFile.click());
+albumCoverCancel.addEventListener('click', closeAlbumCoverEditor);
+albumCoverDialog.addEventListener('cancel', (e) => {
+  e.preventDefault();
+  closeAlbumCoverEditor();
+});
+albumCoverDialog.addEventListener('click', (e) => {
+  if (e.target !== albumCoverDialog) return;
+  const rect = albumCoverDialog.getBoundingClientRect();
+  if (e.clientX < rect.left || e.clientX > rect.right || e.clientY < rect.top || e.clientY > rect.bottom) {
+    closeAlbumCoverEditor();
+  }
+});
+
+albumCoverFile.addEventListener('change', () => {
+  const file = albumCoverFile.files?.[0];
+  albumCoverFile.value = ''; // можно повторно выбрать тот же файл, в том числе после ошибки
+  if (!file || albumCoverSaving || albumCoverClosing || !albumCoverDialog.open) return;
+  const request = resetAlbumCoverDraft();
+  albumCoverUrl.value = '';
+  albumCoverPreparing = true;
+  updateAlbumCoverControls();
+  void previewAlbumCover(file, request);
+});
+
+albumCoverUrl.addEventListener('input', () => {
+  if (albumCoverSaving || albumCoverClosing || !albumCoverDialog.open) return;
+  const request = resetAlbumCoverDraft();
+  const url = albumCoverUrl.value.trim();
+  if (!url) return;
+  albumCoverPreparing = true;
+  updateAlbumCoverControls();
+  albumCoverUrlTimer = window.setTimeout(() => void previewAlbumCover(url, request), 400);
+});
+
+async function saveAlbumCover(albumId: string, source: string): Promise<void> {
+  if (!currentUser) throw new Error('Войдите в аккаунт заново');
+  if (!albums.some((a) => a.id === albumId)) throw new Error('Альбом больше не доступен');
+  let url = source;
+  if (CLOUD) {
+    if (source.startsWith('data:')) url = await uploadCover(source);
+    // Обновляем только обложку: треки, оценки и финальные выборы не затрагиваются.
+    const { error } = await getSB().from('albums').update({ cover_url: url })
+      .eq('id', albumId).select('id').single();
+    if (error) {
+      if (error.code === 'PGRST116') throw new Error('Альбом больше не доступен. Обновите страницу.');
+      throw new Error('Не удалось сохранить обложку: ' + messageOf(error));
+    }
+  }
+  const next = albums.map((a) => a.id === albumId ? { ...a, cover: url } : a);
+  if (!CLOUD) {
+    // Не меняем интерфейс и не сообщаем об успехе, если localStorage заполнен.
+    try { localStorage.setItem(LS_KEY, JSON.stringify(next)); }
+    catch { throw new Error('Не удалось сохранить обложку в браузере. Возможно, закончилось место. Попробуйте ссылку вместо файла.'); }
+  }
+  albums = next;
+  const al = currentAlbum();
+  if (al?.id === albumId) renderAlbumCover(al);
+}
+
+albumCoverForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  void handleAlbumCoverSave();
+});
+
+async function handleAlbumCoverSave(): Promise<void> {
+  if (!editingCoverAlbumId || !albumCoverDraft || albumCoverPreparing || albumCoverSaving || albumCoverClosing) return;
+  albumCoverSaving = true;
+  showAlbumCoverError();
+  updateAlbumCoverControls();
+  try {
+    await saveAlbumCover(editingCoverAlbumId, albumCoverDraft);
+    albumCoverSaving = false;
+    closeAlbumCoverEditor();
+    toast('Обложка сохранена');
+  } catch (err) {
+    showAlbumCoverError(messageOf(err));
+  } finally {
+    albumCoverSaving = false;
+    updateAlbumCoverControls();
+  }
 }
 
 function updateRatingDisplays(changedTrackId?: string): void {
@@ -1859,7 +2076,7 @@ function makeAlbumCard(a: UiAlbum, featScore: number | null = null): HTMLElement
   const n = trackCountOf(a.id);
   el.innerHTML = `
     <div class="album__cover">
-      <img src="${coverSrc(a)}" alt="${esc(a.artist)} — ${esc(a.title)}" loading="lazy">
+      <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} — ${esc(a.title)}" loading="lazy">
       <span class="album__year">${a.year}</span>
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ''}
       ${featScore !== null ? `<span class="album__featbadge">фит ${fmt(featScore)}</span>` : ''}
@@ -1934,7 +2151,7 @@ function renderArtistRank(): void {
     if (r.featCount) meta.push(`${r.featCount} ${featPlural(r.featCount)}`);
     li.innerHTML = `
       <span class="rank__pos">${pos}</span>
-      <span class="rank__ava"><img src="${r.cover}" alt="" loading="lazy"></span>
+      <span class="rank__ava"><img src="${esc(r.cover)}" alt="" loading="lazy"></span>
       <div class="rank__body">
         <span class="rank__name">${esc(r.name)}</span>
         <span class="rank__meta">${meta.join(' · ') || 'без альбомов'}</span>
@@ -2367,33 +2584,56 @@ function readFileAsDataURL(file: File): Promise<string> {
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('image error'));
+    const timer = window.setTimeout(() => {
+      img.onload = img.onerror = null;
+      img.src = '';
+      reject(new Error('Изображение загружается слишком долго. Попробуйте другой файл или ссылку.'));
+    }, 15000);
+    img.onload = () => { window.clearTimeout(timer); resolve(img); };
+    img.onerror = () => {
+      window.clearTimeout(timer);
+      reject(new Error('Не удалось загрузить изображение. Проверьте файл или прямую ссылку.'));
+    };
     img.src = src;
   });
 }
 
-async function handleCoverFile(file: File): Promise<void> {
-  if (!file.type.startsWith('image/')) {
-    toast('Нужен файл изображения');
-    return;
-  }
+/* Одинаковая подготовка файла при создании альбома и при смене обложки. */
+async function prepareCoverFile(file: File): Promise<string> {
+  if (!file.type.startsWith('image/')) throw new Error('Нужен файл изображения');
+  if (file.size > 10 * 1024 * 1024) throw new Error('Изображение слишком большое. Максимум — 10 МБ.');
   try {
-    const dataUrl = await readFileAsDataURL(file);
-    const img = await loadImage(dataUrl);
-    const max = 900;
-    const scale = Math.min(1, max / Math.max(img.width, img.height));
+    const img = await loadImage(await readFileAsDataURL(file));
+    const scale = Math.min(1, 900 / Math.max(img.width, img.height));
     const canvas = document.createElement('canvas');
     canvas.width = Math.max(1, Math.round(img.width * scale));
     canvas.height = Math.max(1, Math.round(img.height * scale));
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('no ctx');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    applyCover(canvas.toDataURL('image/jpeg', 0.85));
+    return canvas.toDataURL('image/jpeg', 0.85);
+  } catch {
+    throw new Error('Не удалось прочитать изображение. Выберите другой файл.');
+  }
+}
+
+async function uploadCover(dataUrl: string): Promise<string> {
+  const storage = getSB().storage.from('covers');
+  const blob = dataUrlToBlob(dataUrl);
+  // Новый URL для каждой версии: CDN/браузер не покажет старую обложку из кэша.
+  const path = 'cover-' + crypto.randomUUID() + '.jpg';
+  const { error } = await storage.upload(path, blob, { contentType: blob.type, upsert: false });
+  if (error) throw new Error('Не удалось загрузить обложку в хранилище: ' + messageOf(error));
+  return storage.getPublicUrl(path).data.publicUrl;
+}
+
+async function handleCoverFile(file: File): Promise<void> {
+  try {
+    applyCover(await prepareCoverFile(file));
     coverUrl.value = '';
     clearCoverUrlError();
-  } catch {
-    toast('Не удалось прочитать изображение');
+  } catch (err) {
+    toast(messageOf(err));
   }
 }
 
@@ -2457,6 +2697,11 @@ addBack.addEventListener('click', closeAdd);
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  if (albumCoverDialog.open) {
+    e.preventDefault();
+    closeAlbumCoverEditor();
+    return;
+  }
   if (!confirmModal.hidden) { closeConfirm(false); return; }
   if (document.querySelector('.fin-select.is-open')) { closeAllFinSelects(); return; }
   if (viewAdd.classList.contains('is-visible')) closeAdd();
@@ -2467,18 +2712,7 @@ async function addAlbum(input: AddInput): Promise<void> {
   if (CLOUD) {
     const s = getSB();
     let coverUrlFinal = input.coverUrl ?? '';
-    if (input.coverDataUrl) {
-      const blob = dataUrlToBlob(input.coverDataUrl);
-      const path = 'cover-' + Date.now().toString(36) + '.jpg';
-      const up = await s.storage.from('covers').upload(path, blob, {
-        contentType: blob.type || 'image/jpeg',
-        upsert: false,
-      });
-      if (!up.error) {
-        const { data } = s.storage.from('covers').getPublicUrl(path);
-        coverUrlFinal = data.publicUrl;
-      }
-    }
+    if (input.coverDataUrl) coverUrlFinal = await uploadCover(input.coverDataUrl);
     const ins = await s.from('albums').insert({
       artist: input.artist,
       title: input.title,

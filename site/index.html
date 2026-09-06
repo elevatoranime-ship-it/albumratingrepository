@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>Пространство · альбомы</title>
-  <link rel="stylesheet" href="styles.css?v=34" />
+  <link rel="stylesheet" href="styles.css?v=36" />
 </head>
 <body>
 
@@ -149,10 +149,22 @@
         </div>
 
         <div class="av__grid">
-          <figure class="av__cover reveal" style="--d:.1s">
-            <img id="av-cover-img" alt="" />
-            <span class="av__year" id="av-year"></span>
-          </figure>
+          <div class="av__artwork reveal" style="--d:.1s">
+            <figure class="av__cover">
+              <img id="av-cover-img" alt="" />
+              <span class="av__year" id="av-year"></span>
+            </figure>
+            <button class="btn btn--ghost btn--sm av__cover-edit" id="av-cover-edit" type="button"
+                    aria-haspopup="dialog" aria-controls="album-cover-dialog" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="4"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <path d="m21 15-5-5L6 21"/>
+              </svg>
+              <span id="av-cover-edit-label">добавить обложку</span>
+            </button>
+          </div>
 
           <div class="av__info reveal" style="--d:.16s">
             <h1 class="av__title" id="av-title"></h1>
@@ -417,6 +429,38 @@
 
   </main>
 
+  <!-- ===== ОБЛОЖКА УЖЕ СОЗДАННОГО АЛЬБОМА ===== -->
+  <dialog class="cover-editor" id="album-cover-dialog" aria-labelledby="album-cover-title"
+          aria-describedby="album-cover-description">
+    <form id="album-cover-form" novalidate>
+      <h2 class="confirm__title" id="album-cover-title">Обложка альбома</h2>
+      <p class="cover-editor__album" id="album-cover-name"></p>
+      <p class="confirm__text" id="album-cover-description">Выберите файл или вставьте прямую ссылку на изображение. Обложка изменится только после сохранения.</p>
+
+      <div class="cover-editor__media">
+        <img class="cover-editor__preview" id="album-cover-preview" alt="Предпросмотр обложки" />
+        <div>
+          <button class="btn btn--ghost btn--sm" id="album-cover-pick" type="button" autofocus>выбрать файл</button>
+          <input id="album-cover-file" type="file" accept="image/*" aria-label="Файл обложки" hidden />
+          <p class="cover-pick__note">Изображение до 10 МБ.<br>Уменьшим до 900 px.</p>
+        </div>
+      </div>
+
+      <label class="field__label" for="album-cover-url">или ссылка на изображение</label>
+      <input class="field__input field__input--plain" id="album-cover-url" type="url"
+             placeholder="https://…" autocomplete="off" spellcheck="false" aria-describedby="album-cover-error" />
+      <p class="cover-editor__status" id="album-cover-status" role="status" aria-live="polite"></p>
+      <p class="form__error" id="album-cover-error" role="alert"></p>
+      <div class="confirm__actions">
+        <button class="btn btn--ghost" id="album-cover-cancel" type="button">отмена</button>
+        <button class="btn" id="album-cover-save" type="submit" disabled>
+          <span class="btn__label">сохранить</span>
+          <span class="btn__spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- ===== МОДАЛЬНОЕ ПОДТВЕРЖДЕНИЕ ФИНАЛЬНОГО ВЫБОРА ===== -->
   <div class="confirm" id="confirm-modal" hidden>
     <div class="confirm__backdrop" data-confirm-close></div>
@@ -431,6 +475,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="app.js?v=27"></script>
+  <script src="app.js?v=29"></script>
 </body>
 </html>

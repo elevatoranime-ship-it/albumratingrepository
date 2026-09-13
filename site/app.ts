@@ -4,7 +4,7 @@
    его треков. Данные: Supabase (облако) или localStorage (демо).
    ========================================================================== */
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js';
 
 /* ---------- Конфигурация (config.js) ---------- */
 interface AllowedUser { email: string; username: string; initials: string; admin?: boolean; }
@@ -43,6 +43,8 @@ interface UiAlbum {
 }
 interface UiTrack { id: string; albumId: string; title: string; position: number; locked: boolean; featArtist: string | null; }
 interface TrackRating { score: number; confirmed: boolean; }
+type RatingMap = Record<string, Record<string, TrackRating>>;
+interface PendingRating { value: TrackRating | null; savedAfterRead?: number; failed?: boolean; }
 interface AddInput {
   artist: string; title: string; year: number;
   coverDataUrl: string | null;
@@ -63,7 +65,7 @@ const SEED_ALBUMS: UiAlbum[] = [
 let currentUser: ProfileInfo | null = null;
 let albums: UiAlbum[] = [];
 let tracks: UiTrack[] = [];
-let trackRatings: Record<string, Record<string, TrackRating>> = {}; // trackId -> profileId -> {score, confirmed}
+let trackRatings: RatingMap = {}; // trackId -> profileId -> {score, confirmed}
 let currentAlbumId: string | null = null;
 let currentArtistName: string | null = null;
 /* стек навигации: история переходов, верхний элемент — текущий экран */
@@ -149,7 +151,30 @@ function saveLocalRatings(): void {
 }
 
 /* ---------- Данные ---------- */
-async function refreshData(): Promise<void> {
+let dataReadRevision = 0;
+const pendingRatings = new Map<string, PendingRating>();
+
+function mergeRatings(incoming: RatingMap, readRevision: number): RatingMap {
+  const myId = currentUser?.id;
+  if (!myId) return incoming;
+  for (const [trackId, pending] of pendingRatings) {
+    // Ответ запроса, начатого до завершения записи, ещё может содержать старый балл.
+    if (pending.savedAfterRead !== undefined && readRevision > pending.savedAfterRead) {
+      pendingRatings.delete(trackId);
+      continue;
+    }
+    if (pending.value) (incoming[trackId] ??= {})[myId] = { ...pending.value };
+    else if (incoming[trackId]) {
+      delete incoming[trackId][myId];
+      if (!Object.keys(incoming[trackId]).length) delete incoming[trackId];
+    }
+  }
+  return incoming;
+}
+
+async function refreshData(signal?: AbortSignal): Promise<void> {
+  const revision = ++dataReadRevision;
+  const userId = currentUser?.id;
   if (CLOUD) {
     const s = getSB();
     const [pa, aa, ta, ra] = await Promise.all([
@@ -157,7 +182,8 @@ async function refreshData(): Promise<void> {
       s.from('albums').select('*').order('created_at', { ascending: true }),
       s.from('tracks').select('*'),
       s.from('ratings').select('*'),
-    ]);
+    ].map((query) => signal ? query.abortSignal(signal) : query));
+    if (revision !== dataReadRevision || userId !== currentUser?.id) return;
     if (pa.error) throw pa.error;
     if (aa.error) throw aa.error;
     if (ta.error) throw ta.error;
@@ -178,10 +204,11 @@ async function refreshData(): Promise<void> {
     tracks = ((ta.data ?? []) as Array<{ id: string; album_id: string; title: string; position: number; locked: boolean | null; feat_artist: string | null }>)
       .map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null }));
 
-    trackRatings = {};
+    const incoming: RatingMap = {};
     for (const r of (ra.data ?? []) as Array<{ track_id: string; profile_id: string; score: number; confirmed: boolean | null }>) {
-      (trackRatings[r.track_id] ??= {})[r.profile_id] = { score: r.score, confirmed: Boolean(r.confirmed) };
+      (incoming[r.track_id] ??= {})[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
     }
+    trackRatings = mergeRatings(incoming, revision);
   } else {
     profileCache.clear();
     const meta = loadLocalMeta();
@@ -199,78 +226,179 @@ async function refreshData(): Promise<void> {
     }
     albums = loadLocalAlbums();
     tracks = loadLocalTracks();
-    trackRatings = loadLocalRatings();
+    trackRatings = mergeRatings(loadLocalRatings(), revision);
   }
 }
 
-let realtimeOn = false;
+/* Realtime — быстрый сигнал; периодическая сверка подхватывает пропущенные события. */
+const SYNC_INTERVAL_MS = 5000;
+let realtimeChannel: RealtimeChannel | null = null;
+let syncActive = false;
+let syncEpoch = 0;
+let syncTimer: number | undefined;
+let syncInterval: number | undefined;
+let syncQueued = false;
+let syncRenderPending = false;
+let syncInFlight = false;
+let syncController: AbortController | null = null;
+let tracksRenderDeferred = false;
+let finalizeRenderDeferred = false;
+
+function canSync(): boolean {
+  return syncActive && Boolean(currentUser) && document.visibilityState !== 'hidden' && navigator.onLine;
+}
+
+function requestSync(delay = 100): void {
+  if (!syncActive || !currentUser) return;
+  syncQueued = true;
+  if (!canSync() || syncInFlight) return;
+  if (syncTimer !== undefined) {
+    if (delay !== 0) return;
+    window.clearTimeout(syncTimer);
+  }
+  syncTimer = window.setTimeout(() => {
+    syncTimer = undefined;
+    void synchronizeData();
+  }, delay);
+}
+
 function subscribeRealtime(): void {
-  if (!CLOUD || realtimeOn) return;
-  realtimeOn = true;
-  getSB()
-    .channel('db-changes')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'albums' }, () => void safeRefresh())
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'tracks' }, () => void safeTracksRefresh())
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, () => void safeRatingsRefresh())
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => void safeRefresh())
-    .subscribe();
-}
-
-async function safeRefresh(): Promise<void> {
-  try {
-    await refreshData();
-    if (viewHome.classList.contains('is-visible')) renderAlbums();
-    if (currentAlbumId && viewAlbum.classList.contains('is-visible')) {
-      const al = albums.find((a) => a.id === currentAlbumId);
-      if (al) { renderAlbumPage(al); }
-    }
-    if (currentArtistName && viewArtist.classList.contains('is-visible')) renderArtistPage();
-    if (viewRank.classList.contains('is-visible')) renderArtistRank();
-  } catch { /* ignore */ }
-}
-
-async function safeTracksRefresh(): Promise<void> {
-  if (!currentAlbumId || !viewAlbum.classList.contains('is-visible')) {
-    try {
-      await refreshData();
-      if (viewHome.classList.contains('is-visible')) renderAlbums();
-      if (currentArtistName && viewArtist.classList.contains('is-visible')) renderArtistPage();
-      if (viewRank.classList.contains('is-visible')) renderArtistRank();
-    } catch { /* ignore */ }
-    return;
+  if (syncActive || !currentUser) return;
+  syncActive = true;
+  const epoch = ++syncEpoch;
+  if (CLOUD) {
+    realtimeChannel = getSB().channel('db-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'albums' }, () => requestSync())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tracks' }, () => requestSync())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, () => requestSync())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => requestSync())
+      .subscribe((status) => {
+        if (epoch !== syncEpoch) return;
+        if (status === 'SUBSCRIBED' || status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          requestSync(0); // в том числе после переподключения, а не только после нового события
+        }
+      });
   }
-  try {
-    await refreshData();
-    renderTracks();
-    updateRatingDisplays();
-    if (currentArtistName && viewArtist.classList.contains('is-visible')) renderArtistPage();
-    if (viewRank.classList.contains('is-visible')) renderArtistRank();
-  } catch { /* ignore */ }
+  syncInterval = window.setInterval(() => requestSync(), SYNC_INTERVAL_MS);
 }
 
-async function safeRatingsRefresh(): Promise<void> {
-  if (ratingEditing) return; // не мешаем активному слайдеру
-  const albumOpen = Boolean(currentAlbumId && viewAlbum.classList.contains('is-visible'));
-  const artistOpen = Boolean(currentArtistName && viewArtist.classList.contains('is-visible'));
-  const rankOpen = viewRank.classList.contains('is-visible');
-  if (!albumOpen && !artistOpen && !rankOpen) return;
+function stopRealtime(): void {
+  syncActive = false;
+  syncEpoch += 1;
+  dataReadRevision += 1;
+  window.clearInterval(syncInterval);
+  window.clearTimeout(syncTimer);
+  syncTimer = syncInterval = undefined;
+  syncController?.abort();
+  syncController = null;
+  syncQueued = syncInFlight = syncRenderPending = false;
+  tracksRenderDeferred = finalizeRenderDeferred = false;
+  for (const timer of saveTimers.values()) window.clearTimeout(timer);
+  saveTimers.clear();
+  pendingRatings.clear();
+  ratingWrites.clear();
+  confirmingRatings.clear();
+  ratingPointerTrackId = null;
+  if (realtimeChannel) {
+    const channel = realtimeChannel;
+    realtimeChannel = null;
+    void getSB().removeChannel(channel);
+  }
+}
+
+async function synchronizeData(): Promise<void> {
+  if (!canSync() || syncInFlight) return;
+  const epoch = syncEpoch;
+  syncInFlight = true;
+  syncQueued = false;
+  const before = JSON.stringify([albums, tracks, trackRatings, [...profileCache]]);
+  const beforeAlbums = JSON.stringify(albums);
+  const beforeTracks = JSON.stringify(tracks);
+  const controller = new AbortController();
+  syncController = controller;
+  const timeout = window.setTimeout(() => controller.abort(), 10000);
   try {
-    if (CLOUD) {
-      const { data, error } = await getSB().from('ratings').select('*');
-      if (error) return;
-      trackRatings = {};
-      for (const r of (data ?? []) as Array<{ track_id: string; profile_id: string; score: number; confirmed: boolean | null }>) {
-        (trackRatings[r.track_id] ??= {})[r.profile_id] = { score: r.score, confirmed: Boolean(r.confirmed) };
+    await refreshData(controller.signal);
+    if (epoch !== syncEpoch) return;
+    if (beforeAlbums !== JSON.stringify(albums)) finalizeRenderDeferred = true;
+    if (beforeTracks !== JSON.stringify(tracks) || beforeAlbums !== JSON.stringify(albums)) tracksRenderDeferred = true;
+    const changed = before !== JSON.stringify([albums, tracks, trackRatings, [...profileCache]]);
+    syncRenderPending ||= changed;
+    flushSynchronizedRender();
+  } catch {
+    // Оставляем показанные данные, следующая сверка или online/focus повторит запрос.
+  } finally {
+    window.clearTimeout(timeout);
+    if (epoch === syncEpoch) {
+      syncController = null;
+      syncInFlight = false;
+      if (syncQueued) requestSync(0); // событие, пришедшее во время чтения, не теряется
+    }
+  }
+}
+
+function flushSynchronizedRender(): void {
+  if (!canSync() || (!syncRenderPending && !tracksRenderDeferred && !finalizeRenderDeferred)) return;
+  renderSynchronizedData(syncRenderPending);
+  // При переходе отрисуем также новый экран, когда закончится его появление.
+  syncRenderPending = Boolean(document.querySelector('.view.is-leaving'));
+}
+
+function flushDeferredTrackRender(): void {
+  if (!tracksRenderDeferred || !viewAlbum.classList.contains('is-visible')) return;
+  if (ratingPointerTrackId || trackList.contains(document.activeElement) || trackList.querySelector('.dragging')) return;
+  renderTracks();
+}
+
+function renderSynchronizedData(changed: boolean): void {
+  if (changed) {
+    homeTitle.textContent = currentUser?.username ?? 'Гость';
+    setAvatarEl(homeAvatar, currentUser);
+    if (viewHome.classList.contains('is-visible')) renderAlbums(false);
+    if (viewArtist.classList.contains('is-visible')) renderArtistPage();
+    if (viewRank.classList.contains('is-visible')) renderArtistRank();
+  }
+  if (viewAlbum.classList.contains('is-visible')) {
+    const al = currentAlbum();
+    if (al) {
+      avTitle.textContent = al.title;
+      if (avArtist.querySelector<HTMLElement>('[data-artist]')?.dataset.artist !== al.artist) {
+        avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
+      }
+      avYear.textContent = String(al.year);
+      if (avCoverImg.getAttribute('src') !== coverSrc(al)) renderAlbumCover(al);
+      if (finalizeRenderDeferred && !document.querySelector('.fin-select.is-open')) {
+        renderFinalize();
+        finalizeRenderDeferred = false;
       }
     }
-    if (albumOpen) {
-      renderTracks();
-      updateRatingDisplays();
-    }
-    if (artistOpen) renderArtistPage();
-    if (rankOpen) renderArtistRank();
-  } catch { /* ignore */ }
+    flushDeferredTrackRender();
+    syncTrackRatingControls();
+    updateRatingDisplays();
+  }
 }
+
+function resumeSynchronization(): void {
+  if (!canSync()) return;
+  flushSynchronizedRender();
+  for (const [trackId, pending] of pendingRatings) {
+    if (pending.failed) void persistTrackRating(trackId).catch(() => {});
+  }
+  requestSync(0);
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') {
+    window.clearTimeout(syncTimer);
+    syncTimer = undefined;
+    syncController?.abort();
+  } else resumeSynchronization();
+});
+window.addEventListener('focus', resumeSynchronization);
+window.addEventListener('online', resumeSynchronization);
+window.addEventListener('storage', (event) => {
+  if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_META].includes(event.key))) requestSync(0);
+});
 
 /* ---------- Авторизация ---------- */
 async function ensureProfile(user: { id: string; email?: string | null }): Promise<ProfileInfo> {
@@ -569,15 +697,19 @@ function dataUrlToBlob(dataUrl: string): Blob {
 }
 
 /* Плавное изменение числа (для альбомного балла и средних по трекам) */
+const numberAnimations = new WeakMap<HTMLElement, number>();
 function tweenText(el: HTMLElement, to: number | null): void {
+  const previous = numberAnimations.get(el);
+  if (previous !== undefined) cancelAnimationFrame(previous);
+  numberAnimations.delete(el);
   if (to === null) {
     el.textContent = '—';
     delete el.dataset.val;
     return;
   }
-  const cur = parseFloat(el.dataset.val ?? el.textContent ?? '');
+  const cur = parseFloat(el.textContent ?? '');
   const from = isNaN(cur) ? to : cur;
-  if (Math.abs(from - to) < 0.005) {
+  if (Math.abs(from - to) < 0.005 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     el.textContent = fmt(to);
     el.dataset.val = String(to);
     return;
@@ -589,9 +721,10 @@ function tweenText(el: HTMLElement, to: number | null): void {
     const p = Math.min(1, (now - start) / dur);
     const e = 1 - Math.pow(1 - p, 3);
     el.textContent = fmt(from + (to - from) * e);
-    if (p < 1) requestAnimationFrame(step);
+    if (p < 1 && el.isConnected) numberAnimations.set(el, requestAnimationFrame(step));
+    else numberAnimations.delete(el);
   };
-  requestAnimationFrame(step);
+  numberAnimations.set(el, requestAnimationFrame(step));
 }
 
 /* ---------- DOM ---------- */
@@ -731,6 +864,7 @@ async function swapTo(from: HTMLElement, to: HTMLElement, after?: () => void): P
   requestAnimationFrame(() => {
     to.classList.add('is-visible');
     if (after) after();
+    flushSynchronizedRender();
   });
 }
 
@@ -819,6 +953,7 @@ async function enterHome(): Promise<void> {
 
 logoutBtn.addEventListener('click', () => {
   void (async () => {
+    stopRealtime();
     if (CLOUD) await getSB().auth.signOut();
     currentUser = null;
     currentAlbumId = null;
@@ -837,13 +972,13 @@ logoutBtn.addEventListener('click', () => {
 });
 
 /* ---------- Карточки альбомов ---------- */
-function renderAlbums(): void {
+function renderAlbums(animate = true): void {
   const grid = q<HTMLDivElement>('#albums');
   grid.innerHTML = '';
 
   albums.forEach((a, i) => {
     const el = document.createElement('article');
-    el.className = 'album reveal';
+    el.className = animate ? 'album reveal' : 'album';
     el.style.setProperty('--d', `${(0.2 + i * 0.07).toFixed(2)}s`);
 
     const avg = albumScoreOf(a.id);
@@ -884,7 +1019,7 @@ function renderAlbums(): void {
 
   const add = document.createElement('button');
   add.type = 'button';
-  add.className = 'album album--add reveal';
+  add.className = animate ? 'album album--add reveal' : 'album album--add';
   add.style.setProperty('--d', `${(0.2 + albums.length * 0.07).toFixed(2)}s`);
   add.innerHTML = '<span class="album__plus">+</span><span class="album__addtext">добавить альбом</span>';
   add.addEventListener('click', () => openAdd());
@@ -1374,8 +1509,10 @@ confirmModal.addEventListener('click', (e) => {
 });
 
 /* --- оценка трека: слайдер + число, реал-тайм с дебаунсом --- */
-let ratingEditing = false;
+let ratingPointerTrackId: string | null = null;
 const saveTimers = new Map<string, number>();
+const ratingWrites = new Map<string, Promise<void>>();
+const confirmingRatings = new Set<string>();
 
 function setTrackSave(trackId: string, s: 'save' | 'done' | 'err' | ''): void {
   const li = trackList.querySelector<HTMLLIElement>(`[data-id="${trackId}"]`);
@@ -1414,64 +1551,102 @@ function clearTrackRating(trackId: string): void {
   scheduleTrackSave(trackId);
 }
 
+function stageRatingSave(trackId: string): PendingRating {
+  const value = currentUser ? trackRatings[trackId]?.[currentUser.id] : null;
+  const pending: PendingRating = { value: value ? { ...value } : null };
+  pendingRatings.set(trackId, pending);
+  return pending;
+}
+
 function scheduleTrackSave(trackId: string): void {
-  const existing = saveTimers.get(trackId);
-  if (existing) window.clearTimeout(existing);
-  const t = window.setTimeout(() => void persistTrackRating(trackId), 500);
-  saveTimers.set(trackId, t);
+  stageRatingSave(trackId);
+  window.clearTimeout(saveTimers.get(trackId));
+  saveTimers.set(trackId, window.setTimeout(() => {
+    saveTimers.delete(trackId);
+    void persistTrackRating(trackId).catch((err) => toast(messageOf(err)));
+  }, 500));
 }
 
-async function persistTrackRating(trackId: string): Promise<void> {
-  if (!currentUser) return;
-  const entry = trackRatings[trackId]?.[currentUser.id];
-  setTrackSave(trackId, 'save');
-  try {
-    if (CLOUD) {
-      if (entry) {
-        await getSB().from('ratings').upsert(
-          { track_id: trackId, profile_id: currentUser.id, score: entry.score },
-          { onConflict: 'track_id,profile_id' },
-        );
-      } else {
-        await getSB().from('ratings').delete().eq('track_id', trackId).eq('profile_id', currentUser.id);
+function persistTrackRating(trackId: string): Promise<void> {
+  if (!currentUser) return Promise.resolve();
+  window.clearTimeout(saveTimers.get(trackId));
+  saveTimers.delete(trackId);
+  const existing = ratingWrites.get(trackId);
+  if (existing) return existing;
+  const profileId = currentUser.id;
+  const epoch = syncEpoch;
+  const task = (async () => {
+    // Только одна запись на трек одновременно: поздний ответ не запишет старый балл поверх нового.
+    while (epoch === syncEpoch && currentUser?.id === profileId) {
+      const pending = pendingRatings.get(trackId);
+      if (!pending || pending.savedAfterRead !== undefined) return;
+      pending.failed = false;
+      setTrackSave(trackId, 'save');
+      try {
+        if (CLOUD) {
+          const result = pending.value
+            ? await getSB().from('ratings').upsert(
+              { track_id: trackId, profile_id: profileId, ...pending.value },
+              { onConflict: 'track_id,profile_id' },
+            )
+            : await getSB().from('ratings').delete().eq('track_id', trackId).eq('profile_id', profileId);
+          if (result.error) throw result.error;
+        } else saveLocalRatings();
+      } catch (err) {
+        if (epoch !== syncEpoch) return;
+        if (pendingRatings.get(trackId) !== pending) continue;
+        pending.failed = true;
+        setTrackSave(trackId, 'err');
+        throw err;
       }
-    } else {
-      saveLocalRatings();
+      if (epoch !== syncEpoch) return;
+      if (pendingRatings.get(trackId) !== pending) continue; // за время запроса ввели новый балл
+      pending.savedAfterRead = dataReadRevision;
+      setTrackSave(trackId, 'done');
+      requestSync(0);
+      return;
     }
-    setTrackSave(trackId, 'done');
-  } catch (err) {
-    setTrackSave(trackId, 'err');
-    toast(messageOf(err));
-  }
+  })().finally(() => {
+    if (ratingWrites.get(trackId) === task) ratingWrites.delete(trackId);
+  });
+  ratingWrites.set(trackId, task);
+  return task;
 }
 
-/* подтвердить/снять подтверждение своей оценки */
+/* Подтверждение использует ту же очередь, что и изменение балла. */
 async function toggleRatingConfirm(trackId: string): Promise<void> {
-  if (!currentUser) return;
+  if (!currentUser || confirmingRatings.has(trackId)) return;
   const entry = trackRatings[trackId]?.[currentUser.id];
   if (!entry) return;
-  const next = !entry.confirmed;
+  const epoch = syncEpoch;
+  const previous = entry.confirmed;
+  const next = !previous;
   entry.confirmed = next;
+  const pending = stageRatingSave(trackId);
+  confirmingRatings.add(trackId);
   if (!CLOUD) saveLocalRatings();
-
-  const li = trackList.querySelector<HTMLLIElement>(`[data-id="${trackId}"]`);
-  if (li) applyRatingLockState(li, next);
+  syncTrackRatingControls();
   renderConfirmState();
-
   try {
-    if (CLOUD) {
-      await getSB().from('ratings').upsert(
-        { track_id: trackId, profile_id: currentUser.id, score: entry.score, confirmed: next },
-        { onConflict: 'track_id,profile_id' },
-      );
-    }
-    toast(next ? 'Оценка подтверждена' : 'Оценку можно менять');
+    await persistTrackRating(trackId);
+    if (epoch === syncEpoch) toast(next ? 'Оценка подтверждена' : 'Оценку можно менять');
   } catch (err) {
-    entry.confirmed = !next;
-    if (!CLOUD) saveLocalRatings();
-    if (li) applyRatingLockState(li, entry.confirmed);
+    if (epoch !== syncEpoch) return;
+    if (pendingRatings.get(trackId) === pending) {
+      const mine = trackRatings[trackId]?.[currentUser.id];
+      if (mine) {
+        mine.confirmed = previous;
+        pending.value = { ...mine };
+      }
+      if (!CLOUD) saveLocalRatings();
+    }
     renderConfirmState();
     toast(messageOf(err));
+  } finally {
+    if (epoch === syncEpoch) {
+      confirmingRatings.delete(trackId);
+      syncTrackRatingControls();
+    }
   }
 }
 
@@ -1515,7 +1690,44 @@ function trackTitleHTML(t: UiTrack): string {
   return `${before}<a class="track__feat" data-artist="${esc(name)}" href="#">${mid}</a>${after}`;
 }
 
+function peerRatingHTML(trackId: string): string {
+  const peer = peerRatingOf(trackId);
+  return peer?.confirmed
+    ? `<span class="track__peer" title="оценка ${esc(peer.username)} · подтверждена">
+         ${avatarMarkup(peer, 'track__peer-who')}
+         <span class="track__peer-val">${fmt(peer.score)}</span>
+       </span>`
+    : '';
+}
+
+/* Меняем только значения/бейджи, сохраняя DOM, фокус, положение курсора и слайдера. */
+function syncTrackRatingControls(): void {
+  const myId = currentUser?.id;
+  if (!myId) return;
+  for (const li of trackList.querySelectorAll<HTMLLIElement>('.track')) {
+    const id = li.dataset.id!;
+    const mine = trackRatings[id]?.[myId];
+    const slider = li.querySelector<HTMLInputElement>('.track__slider');
+    const num = li.querySelector<HTMLInputElement>('.track__numinput');
+    const editing = document.activeElement === slider || document.activeElement === num || ratingPointerTrackId === id;
+    if (!editing) {
+      if (slider) slider.value = String(mine?.score ?? 5);
+      if (num) num.value = mine ? fmt(mine.score) : '';
+    }
+    applyRatingLockState(li, mine?.confirmed === true);
+    const confirm = li.querySelector<HTMLButtonElement>('.track__confirm-btn');
+    if (confirm) confirm.disabled = !mine || confirmingRatings.has(id);
+    const html = peerRatingHTML(id);
+    if (li.dataset.peerHtml !== html) {
+      li.querySelector('.track__peer')?.remove();
+      li.querySelector('.track__title, .track__rename-input')?.insertAdjacentHTML('afterend', html);
+      li.dataset.peerHtml = html;
+    }
+  }
+}
+
 function renderTracks(enterId?: string): void {
+  tracksRenderDeferred = false;
   const al = currentAlbum();
   const locked = al?.tracksLocked ?? false;
   const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
@@ -1530,7 +1742,6 @@ function renderTracks(enterId?: string): void {
     const tavg = trackScoreOf(t.id);
     const tavgStr = tavg === null ? '—' : fmt(tavg);
     const mineStr = typeof mineScore === 'number' ? fmt(mineScore) : '';
-    const peer = peerRatingOf(t.id);
     const canRename = !locked && !t.locked; // фиксация названия (или количества) запрещает переименование
     const canOrder = !locked;               // только фиксация количества запрещает порядок/удаление
 
@@ -1549,12 +1760,8 @@ function renderTracks(enterId?: string): void {
       canOrder ? `<button class="track__btn track__btn--del" data-act="del" type="button" aria-label="Удалить">${DEL_SVG}</button>` : '',
     ].join('');
 
-    const peerBadge = peer && peer.confirmed
-      ? `<span class="track__peer" title="оценка ${esc(peer.username)} · подтверждена">
-           ${avatarMarkup(peer, 'track__peer-who')}
-           <span class="track__peer-val">${fmt(peer.score)}</span>
-         </span>`
-      : '';
+    const peerBadge = peerRatingHTML(t.id);
+    li.dataset.peerHtml = peerBadge;
 
     li.innerHTML = `
       <div class="track__row1">
@@ -1575,6 +1782,8 @@ function renderTracks(enterId?: string): void {
       </div>`;
 
     trackList.appendChild(li);
+    const pending = pendingRatings.get(t.id);
+    if (pending) setTrackSave(t.id, pending.failed ? 'err' : pending.savedAfterRead !== undefined ? 'done' : 'save');
   });
 
   avTracksCount.textContent = `${list.length} ${tracksPlural(list.length)}`;
@@ -1594,7 +1803,6 @@ function renderTracks(enterId?: string): void {
 trackList.addEventListener('input', (e) => {
   const target = e.target as HTMLElement;
   if (target.classList.contains('track__slider')) {
-    ratingEditing = true;
     const li = target.closest<HTMLLIElement>('.track');
     if (!li || !li.dataset.id) return;
     const v = round2(parseFloat((target as HTMLInputElement).value));
@@ -1602,9 +1810,8 @@ trackList.addEventListener('input', (e) => {
     if (num) num.value = fmt(v);
     setTrackRating(li.dataset.id, v);
     const cbtn = li.querySelector<HTMLButtonElement>('.track__confirm-btn');
-    if (cbtn) cbtn.disabled = false;
+    if (cbtn) cbtn.disabled = confirmingRatings.has(li.dataset.id);
   } else if (target.classList.contains('track__numinput')) {
-    ratingEditing = true;
     const li = target.closest<HTMLLIElement>('.track');
     if (!li || !li.dataset.id) return;
     const raw = (target as HTMLInputElement).value.trim();
@@ -1623,20 +1830,32 @@ trackList.addEventListener('input', (e) => {
     if (slider) slider.value = String(v);
     setTrackRating(li.dataset.id, v);
     const cbtn = li.querySelector<HTMLButtonElement>('.track__confirm-btn');
-    if (cbtn) cbtn.disabled = false;
+    if (cbtn) cbtn.disabled = confirmingRatings.has(li.dataset.id);
   }
 });
 
 trackList.addEventListener('pointerdown', (e) => {
   const target = e.target as HTMLElement;
-  if (target.classList.contains('track__slider') || target.classList.contains('track__numinput')) {
-    ratingEditing = true;
+  if (target.matches('.track__slider, .track__numinput')) {
+    ratingPointerTrackId = target.closest<HTMLElement>('.track')?.dataset.id ?? null;
   }
 });
 
-document.addEventListener('pointerup', () => {
-  window.setTimeout(() => { ratingEditing = false; }, 200);
-});
+function finishTrackInteraction(): void {
+  requestAnimationFrame(() => {
+    flushDeferredTrackRender();
+    syncTrackRatingControls();
+  });
+}
+trackList.addEventListener('focusout', finishTrackInteraction);
+trackList.addEventListener('dragend', finishTrackInteraction);
+for (const event of ['pointerup', 'pointercancel']) {
+  document.addEventListener(event, () => {
+    if (!ratingPointerTrackId) return;
+    ratingPointerTrackId = null;
+    finishTrackInteraction();
+  });
+}
 
 /* --- фит: появление поля при ft./feat./& в названии --- */
 let lastFeatExtract = '';

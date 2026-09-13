@@ -20111,8 +20111,28 @@ ${suffix}`;
     } catch {
     }
   }
-  async function refreshData() {
+  var dataReadRevision = 0;
+  var pendingRatings = /* @__PURE__ */ new Map();
+  function mergeRatings(incoming, readRevision) {
+    const myId = currentUser?.id;
+    if (!myId) return incoming;
+    for (const [trackId, pending] of pendingRatings) {
+      if (pending.savedAfterRead !== void 0 && readRevision > pending.savedAfterRead) {
+        pendingRatings.delete(trackId);
+        continue;
+      }
+      if (pending.value) (incoming[trackId] ?? (incoming[trackId] = {}))[myId] = { ...pending.value };
+      else if (incoming[trackId]) {
+        delete incoming[trackId][myId];
+        if (!Object.keys(incoming[trackId]).length) delete incoming[trackId];
+      }
+    }
+    return incoming;
+  }
+  async function refreshData(signal) {
     var _a;
+    const revision = ++dataReadRevision;
+    const userId = currentUser?.id;
     if (CLOUD) {
       const s = getSB();
       const [pa, aa, ta, ra] = await Promise.all([
@@ -20120,7 +20140,8 @@ ${suffix}`;
         s.from("albums").select("*").order("created_at", { ascending: true }),
         s.from("tracks").select("*"),
         s.from("ratings").select("*")
-      ]);
+      ].map((query) => signal ? query.abortSignal(signal) : query));
+      if (revision !== dataReadRevision || userId !== currentUser?.id) return;
       if (pa.error) throw pa.error;
       if (aa.error) throw aa.error;
       if (ta.error) throw ta.error;
@@ -20135,10 +20156,11 @@ ${suffix}`;
       }
       albums = (aa.data ?? []).map((x) => ({ id: x.id, artist: x.artist, title: x.title, year: x.year, cover: x.cover_url ?? "", tracksLocked: Boolean(x.tracks_locked), cohesion: x.cohesion ?? null, albumType: x.album_type ?? null }));
       tracks = (ta.data ?? []).map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null }));
-      trackRatings = {};
+      const incoming = {};
       for (const r of ra.data ?? []) {
-        (trackRatings[_a = r.track_id] ?? (trackRatings[_a] = {}))[r.profile_id] = { score: r.score, confirmed: Boolean(r.confirmed) };
+        (incoming[_a = r.track_id] ?? (incoming[_a] = {}))[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
       }
+      trackRatings = mergeRatings(incoming, revision);
     } else {
       profileCache.clear();
       const meta = loadLocalMeta();
@@ -20156,75 +20178,161 @@ ${suffix}`;
       }
       albums = loadLocalAlbums();
       tracks = loadLocalTracks();
-      trackRatings = loadLocalRatings();
+      trackRatings = mergeRatings(loadLocalRatings(), revision);
     }
   }
-  var realtimeOn = false;
+  var SYNC_INTERVAL_MS = 5e3;
+  var realtimeChannel = null;
+  var syncActive = false;
+  var syncEpoch = 0;
+  var syncTimer;
+  var syncInterval;
+  var syncQueued = false;
+  var syncRenderPending = false;
+  var syncInFlight = false;
+  var syncController = null;
+  var tracksRenderDeferred = false;
+  var finalizeRenderDeferred = false;
+  function canSync() {
+    return syncActive && Boolean(currentUser) && document.visibilityState !== "hidden" && navigator.onLine;
+  }
+  function requestSync(delay = 100) {
+    if (!syncActive || !currentUser) return;
+    syncQueued = true;
+    if (!canSync() || syncInFlight) return;
+    if (syncTimer !== void 0) {
+      if (delay !== 0) return;
+      window.clearTimeout(syncTimer);
+    }
+    syncTimer = window.setTimeout(() => {
+      syncTimer = void 0;
+      void synchronizeData();
+    }, delay);
+  }
   function subscribeRealtime() {
-    if (!CLOUD || realtimeOn) return;
-    realtimeOn = true;
-    getSB().channel("db-changes").on("postgres_changes", { event: "*", schema: "public", table: "albums" }, () => void safeRefresh()).on("postgres_changes", { event: "*", schema: "public", table: "tracks" }, () => void safeTracksRefresh()).on("postgres_changes", { event: "*", schema: "public", table: "ratings" }, () => void safeRatingsRefresh()).on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => void safeRefresh()).subscribe();
+    if (syncActive || !currentUser) return;
+    syncActive = true;
+    const epoch = ++syncEpoch;
+    if (CLOUD) {
+      realtimeChannel = getSB().channel("db-changes").on("postgres_changes", { event: "*", schema: "public", table: "albums" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "tracks" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "ratings" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => requestSync()).subscribe((status) => {
+        if (epoch !== syncEpoch) return;
+        if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
+          requestSync(0);
+        }
+      });
+    }
+    syncInterval = window.setInterval(() => requestSync(), SYNC_INTERVAL_MS);
   }
-  async function safeRefresh() {
+  function stopRealtime() {
+    syncActive = false;
+    syncEpoch += 1;
+    dataReadRevision += 1;
+    window.clearInterval(syncInterval);
+    window.clearTimeout(syncTimer);
+    syncTimer = syncInterval = void 0;
+    syncController?.abort();
+    syncController = null;
+    syncQueued = syncInFlight = syncRenderPending = false;
+    tracksRenderDeferred = finalizeRenderDeferred = false;
+    for (const timer of saveTimers.values()) window.clearTimeout(timer);
+    saveTimers.clear();
+    pendingRatings.clear();
+    ratingWrites.clear();
+    confirmingRatings.clear();
+    ratingPointerTrackId = null;
+    if (realtimeChannel) {
+      const channel = realtimeChannel;
+      realtimeChannel = null;
+      void getSB().removeChannel(channel);
+    }
+  }
+  async function synchronizeData() {
+    if (!canSync() || syncInFlight) return;
+    const epoch = syncEpoch;
+    syncInFlight = true;
+    syncQueued = false;
+    const before = JSON.stringify([albums, tracks, trackRatings, [...profileCache]]);
+    const beforeAlbums = JSON.stringify(albums);
+    const beforeTracks = JSON.stringify(tracks);
+    const controller = new AbortController();
+    syncController = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 1e4);
     try {
-      await refreshData();
-      if (viewHome.classList.contains("is-visible")) renderAlbums();
-      if (currentAlbumId && viewAlbum.classList.contains("is-visible")) {
-        const al = albums.find((a) => a.id === currentAlbumId);
-        if (al) {
-          renderAlbumPage(al);
+      await refreshData(controller.signal);
+      if (epoch !== syncEpoch) return;
+      if (beforeAlbums !== JSON.stringify(albums)) finalizeRenderDeferred = true;
+      if (beforeTracks !== JSON.stringify(tracks) || beforeAlbums !== JSON.stringify(albums)) tracksRenderDeferred = true;
+      const changed = before !== JSON.stringify([albums, tracks, trackRatings, [...profileCache]]);
+      syncRenderPending || (syncRenderPending = changed);
+      flushSynchronizedRender();
+    } catch {
+    } finally {
+      window.clearTimeout(timeout);
+      if (epoch === syncEpoch) {
+        syncController = null;
+        syncInFlight = false;
+        if (syncQueued) requestSync(0);
+      }
+    }
+  }
+  function flushSynchronizedRender() {
+    if (!canSync() || !syncRenderPending && !tracksRenderDeferred && !finalizeRenderDeferred) return;
+    renderSynchronizedData(syncRenderPending);
+    syncRenderPending = Boolean(document.querySelector(".view.is-leaving"));
+  }
+  function flushDeferredTrackRender() {
+    if (!tracksRenderDeferred || !viewAlbum.classList.contains("is-visible")) return;
+    if (ratingPointerTrackId || trackList.contains(document.activeElement) || trackList.querySelector(".dragging")) return;
+    renderTracks();
+  }
+  function renderSynchronizedData(changed) {
+    if (changed) {
+      homeTitle.textContent = currentUser?.username ?? "\u0413\u043E\u0441\u0442\u044C";
+      setAvatarEl(homeAvatar, currentUser);
+      if (viewHome.classList.contains("is-visible")) renderAlbums(false);
+      if (viewArtist.classList.contains("is-visible")) renderArtistPage();
+      if (viewRank.classList.contains("is-visible")) renderArtistRank();
+    }
+    if (viewAlbum.classList.contains("is-visible")) {
+      const al = currentAlbum();
+      if (al) {
+        avTitle.textContent = al.title;
+        if (avArtist.querySelector("[data-artist]")?.dataset.artist !== al.artist) {
+          avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
+        }
+        avYear.textContent = String(al.year);
+        if (avCoverImg.getAttribute("src") !== coverSrc(al)) renderAlbumCover(al);
+        if (finalizeRenderDeferred && !document.querySelector(".fin-select.is-open")) {
+          renderFinalize();
+          finalizeRenderDeferred = false;
         }
       }
-      if (currentArtistName && viewArtist.classList.contains("is-visible")) renderArtistPage();
-      if (viewRank.classList.contains("is-visible")) renderArtistRank();
-    } catch {
-    }
-  }
-  async function safeTracksRefresh() {
-    if (!currentAlbumId || !viewAlbum.classList.contains("is-visible")) {
-      try {
-        await refreshData();
-        if (viewHome.classList.contains("is-visible")) renderAlbums();
-        if (currentArtistName && viewArtist.classList.contains("is-visible")) renderArtistPage();
-        if (viewRank.classList.contains("is-visible")) renderArtistRank();
-      } catch {
-      }
-      return;
-    }
-    try {
-      await refreshData();
-      renderTracks();
+      flushDeferredTrackRender();
+      syncTrackRatingControls();
       updateRatingDisplays();
-      if (currentArtistName && viewArtist.classList.contains("is-visible")) renderArtistPage();
-      if (viewRank.classList.contains("is-visible")) renderArtistRank();
-    } catch {
     }
   }
-  async function safeRatingsRefresh() {
-    var _a;
-    if (ratingEditing) return;
-    const albumOpen = Boolean(currentAlbumId && viewAlbum.classList.contains("is-visible"));
-    const artistOpen = Boolean(currentArtistName && viewArtist.classList.contains("is-visible"));
-    const rankOpen = viewRank.classList.contains("is-visible");
-    if (!albumOpen && !artistOpen && !rankOpen) return;
-    try {
-      if (CLOUD) {
-        const { data, error } = await getSB().from("ratings").select("*");
-        if (error) return;
-        trackRatings = {};
-        for (const r of data ?? []) {
-          (trackRatings[_a = r.track_id] ?? (trackRatings[_a] = {}))[r.profile_id] = { score: r.score, confirmed: Boolean(r.confirmed) };
-        }
-      }
-      if (albumOpen) {
-        renderTracks();
-        updateRatingDisplays();
-      }
-      if (artistOpen) renderArtistPage();
-      if (rankOpen) renderArtistRank();
-    } catch {
+  function resumeSynchronization() {
+    if (!canSync()) return;
+    flushSynchronizedRender();
+    for (const [trackId, pending] of pendingRatings) {
+      if (pending.failed) void persistTrackRating(trackId).catch(() => {
+      });
     }
+    requestSync(0);
   }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      window.clearTimeout(syncTimer);
+      syncTimer = void 0;
+      syncController?.abort();
+    } else resumeSynchronization();
+  });
+  window.addEventListener("focus", resumeSynchronization);
+  window.addEventListener("online", resumeSynchronization);
+  window.addEventListener("storage", (event) => {
+    if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_META].includes(event.key))) requestSync(0);
+  });
   async function ensureProfile(user) {
     const s = getSB();
     const { data } = await s.from("profiles").select("*").eq("id", user.id).maybeSingle();
@@ -20465,15 +20573,19 @@ ${suffix}`;
     for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
     return new Blob([arr], { type: mime });
   }
+  var numberAnimations = /* @__PURE__ */ new WeakMap();
   function tweenText(el, to) {
+    const previous = numberAnimations.get(el);
+    if (previous !== void 0) cancelAnimationFrame(previous);
+    numberAnimations.delete(el);
     if (to === null) {
       el.textContent = "\u2014";
       delete el.dataset.val;
       return;
     }
-    const cur = parseFloat(el.dataset.val ?? el.textContent ?? "");
+    const cur = parseFloat(el.textContent ?? "");
     const from = isNaN(cur) ? to : cur;
-    if (Math.abs(from - to) < 5e-3) {
+    if (Math.abs(from - to) < 5e-3 || window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       el.textContent = fmt(to);
       el.dataset.val = String(to);
       return;
@@ -20485,9 +20597,10 @@ ${suffix}`;
       const p = Math.min(1, (now - start) / dur);
       const e = 1 - Math.pow(1 - p, 3);
       el.textContent = fmt(from + (to - from) * e);
-      if (p < 1) requestAnimationFrame(step);
+      if (p < 1 && el.isConnected) numberAnimations.set(el, requestAnimationFrame(step));
+      else numberAnimations.delete(el);
     };
-    requestAnimationFrame(step);
+    numberAnimations.set(el, requestAnimationFrame(step));
   }
   var q = (sel) => {
     const el = document.querySelector(sel);
@@ -20608,6 +20721,7 @@ ${suffix}`;
     requestAnimationFrame(() => {
       to.classList.add("is-visible");
       if (after) after();
+      flushSynchronizedRender();
     });
   }
   var isRegisterMode = false;
@@ -20696,6 +20810,7 @@ ${suffix}`;
   }
   logoutBtn.addEventListener("click", () => {
     void (async () => {
+      stopRealtime();
       if (CLOUD) await getSB().auth.signOut();
       currentUser = null;
       currentAlbumId = null;
@@ -20712,12 +20827,12 @@ ${suffix}`;
       card.classList.add("enter");
     })();
   });
-  function renderAlbums() {
+  function renderAlbums(animate = true) {
     const grid = q("#albums");
     grid.innerHTML = "";
     albums.forEach((a, i) => {
       const el = document.createElement("article");
-      el.className = "album reveal";
+      el.className = animate ? "album reveal" : "album";
       el.style.setProperty("--d", `${(0.2 + i * 0.07).toFixed(2)}s`);
       const avg = albumScoreOf(a.id);
       const avgStr = avg === null ? "\u2014" : fmt(avg);
@@ -20753,7 +20868,7 @@ ${suffix}`;
     });
     const add = document.createElement("button");
     add.type = "button";
-    add.className = "album album--add reveal";
+    add.className = animate ? "album album--add reveal" : "album album--add";
     add.style.setProperty("--d", `${(0.2 + albums.length * 0.07).toFixed(2)}s`);
     add.innerHTML = '<span class="album__plus">+</span><span class="album__addtext">\u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0430\u043B\u044C\u0431\u043E\u043C</span>';
     add.addEventListener("click", () => openAdd());
@@ -21194,8 +21309,10 @@ ${suffix}`;
     const t = e.target;
     if (t.closest("[data-confirm-close]")) closeConfirm(false);
   });
-  var ratingEditing = false;
+  var ratingPointerTrackId = null;
   var saveTimers = /* @__PURE__ */ new Map();
+  var ratingWrites = /* @__PURE__ */ new Map();
+  var confirmingRatings = /* @__PURE__ */ new Set();
   function setTrackSave(trackId, s) {
     const li = trackList.querySelector(`[data-id="${trackId}"]`);
     const el = li?.querySelector(".track__save");
@@ -21230,59 +21347,95 @@ ${suffix}`;
     updateRatingDisplays(trackId);
     scheduleTrackSave(trackId);
   }
-  function scheduleTrackSave(trackId) {
-    const existing = saveTimers.get(trackId);
-    if (existing) window.clearTimeout(existing);
-    const t = window.setTimeout(() => void persistTrackRating(trackId), 500);
-    saveTimers.set(trackId, t);
+  function stageRatingSave(trackId) {
+    const value = currentUser ? trackRatings[trackId]?.[currentUser.id] : null;
+    const pending = { value: value ? { ...value } : null };
+    pendingRatings.set(trackId, pending);
+    return pending;
   }
-  async function persistTrackRating(trackId) {
-    if (!currentUser) return;
-    const entry = trackRatings[trackId]?.[currentUser.id];
-    setTrackSave(trackId, "save");
-    try {
-      if (CLOUD) {
-        if (entry) {
-          await getSB().from("ratings").upsert(
-            { track_id: trackId, profile_id: currentUser.id, score: entry.score },
-            { onConflict: "track_id,profile_id" }
-          );
-        } else {
-          await getSB().from("ratings").delete().eq("track_id", trackId).eq("profile_id", currentUser.id);
+  function scheduleTrackSave(trackId) {
+    stageRatingSave(trackId);
+    window.clearTimeout(saveTimers.get(trackId));
+    saveTimers.set(trackId, window.setTimeout(() => {
+      saveTimers.delete(trackId);
+      void persistTrackRating(trackId).catch((err) => toast(messageOf(err)));
+    }, 500));
+  }
+  function persistTrackRating(trackId) {
+    if (!currentUser) return Promise.resolve();
+    window.clearTimeout(saveTimers.get(trackId));
+    saveTimers.delete(trackId);
+    const existing = ratingWrites.get(trackId);
+    if (existing) return existing;
+    const profileId = currentUser.id;
+    const epoch = syncEpoch;
+    const task = (async () => {
+      while (epoch === syncEpoch && currentUser?.id === profileId) {
+        const pending = pendingRatings.get(trackId);
+        if (!pending || pending.savedAfterRead !== void 0) return;
+        pending.failed = false;
+        setTrackSave(trackId, "save");
+        try {
+          if (CLOUD) {
+            const result = pending.value ? await getSB().from("ratings").upsert(
+              { track_id: trackId, profile_id: profileId, ...pending.value },
+              { onConflict: "track_id,profile_id" }
+            ) : await getSB().from("ratings").delete().eq("track_id", trackId).eq("profile_id", profileId);
+            if (result.error) throw result.error;
+          } else saveLocalRatings();
+        } catch (err) {
+          if (epoch !== syncEpoch) return;
+          if (pendingRatings.get(trackId) !== pending) continue;
+          pending.failed = true;
+          setTrackSave(trackId, "err");
+          throw err;
         }
-      } else {
-        saveLocalRatings();
+        if (epoch !== syncEpoch) return;
+        if (pendingRatings.get(trackId) !== pending) continue;
+        pending.savedAfterRead = dataReadRevision;
+        setTrackSave(trackId, "done");
+        requestSync(0);
+        return;
       }
-      setTrackSave(trackId, "done");
-    } catch (err) {
-      setTrackSave(trackId, "err");
-      toast(messageOf(err));
-    }
+    })().finally(() => {
+      if (ratingWrites.get(trackId) === task) ratingWrites.delete(trackId);
+    });
+    ratingWrites.set(trackId, task);
+    return task;
   }
   async function toggleRatingConfirm(trackId) {
-    if (!currentUser) return;
+    if (!currentUser || confirmingRatings.has(trackId)) return;
     const entry = trackRatings[trackId]?.[currentUser.id];
     if (!entry) return;
-    const next = !entry.confirmed;
+    const epoch = syncEpoch;
+    const previous = entry.confirmed;
+    const next = !previous;
     entry.confirmed = next;
+    const pending = stageRatingSave(trackId);
+    confirmingRatings.add(trackId);
     if (!CLOUD) saveLocalRatings();
-    const li = trackList.querySelector(`[data-id="${trackId}"]`);
-    if (li) applyRatingLockState(li, next);
+    syncTrackRatingControls();
     renderConfirmState();
     try {
-      if (CLOUD) {
-        await getSB().from("ratings").upsert(
-          { track_id: trackId, profile_id: currentUser.id, score: entry.score, confirmed: next },
-          { onConflict: "track_id,profile_id" }
-        );
-      }
-      toast(next ? "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430" : "\u041E\u0446\u0435\u043D\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u043C\u0435\u043D\u044F\u0442\u044C");
+      await persistTrackRating(trackId);
+      if (epoch === syncEpoch) toast(next ? "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430" : "\u041E\u0446\u0435\u043D\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u043C\u0435\u043D\u044F\u0442\u044C");
     } catch (err) {
-      entry.confirmed = !next;
-      if (!CLOUD) saveLocalRatings();
-      if (li) applyRatingLockState(li, entry.confirmed);
+      if (epoch !== syncEpoch) return;
+      if (pendingRatings.get(trackId) === pending) {
+        const mine = trackRatings[trackId]?.[currentUser.id];
+        if (mine) {
+          mine.confirmed = previous;
+          pending.value = { ...mine };
+        }
+        if (!CLOUD) saveLocalRatings();
+      }
       renderConfirmState();
       toast(messageOf(err));
+    } finally {
+      if (epoch === syncEpoch) {
+        confirmingRatings.delete(trackId);
+        syncTrackRatingControls();
+      }
     }
   }
   function applyRatingLockState(li, confirmed) {
@@ -21320,7 +21473,39 @@ ${suffix}`;
     const after = esc(t.title.slice(idx + name.length));
     return `${before}<a class="track__feat" data-artist="${esc(name)}" href="#">${mid}</a>${after}`;
   }
+  function peerRatingHTML(trackId) {
+    const peer = peerRatingOf(trackId);
+    return peer?.confirmed ? `<span class="track__peer" title="\u043E\u0446\u0435\u043D\u043A\u0430 ${esc(peer.username)} \xB7 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430">
+         ${avatarMarkup(peer, "track__peer-who")}
+         <span class="track__peer-val">${fmt(peer.score)}</span>
+       </span>` : "";
+  }
+  function syncTrackRatingControls() {
+    const myId = currentUser?.id;
+    if (!myId) return;
+    for (const li of trackList.querySelectorAll(".track")) {
+      const id = li.dataset.id;
+      const mine = trackRatings[id]?.[myId];
+      const slider = li.querySelector(".track__slider");
+      const num = li.querySelector(".track__numinput");
+      const editing = document.activeElement === slider || document.activeElement === num || ratingPointerTrackId === id;
+      if (!editing) {
+        if (slider) slider.value = String(mine?.score ?? 5);
+        if (num) num.value = mine ? fmt(mine.score) : "";
+      }
+      applyRatingLockState(li, mine?.confirmed === true);
+      const confirm = li.querySelector(".track__confirm-btn");
+      if (confirm) confirm.disabled = !mine || confirmingRatings.has(id);
+      const html = peerRatingHTML(id);
+      if (li.dataset.peerHtml !== html) {
+        li.querySelector(".track__peer")?.remove();
+        li.querySelector(".track__title, .track__rename-input")?.insertAdjacentHTML("afterend", html);
+        li.dataset.peerHtml = html;
+      }
+    }
+  }
   function renderTracks(enterId) {
+    tracksRenderDeferred = false;
     const al = currentAlbum();
     const locked = al?.tracksLocked ?? false;
     const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
@@ -21333,7 +21518,6 @@ ${suffix}`;
       const tavg = trackScoreOf(t.id);
       const tavgStr = tavg === null ? "\u2014" : fmt(tavg);
       const mineStr = typeof mineScore === "number" ? fmt(mineScore) : "";
-      const peer = peerRatingOf(t.id);
       const canRename = !locked && !t.locked;
       const canOrder = !locked;
       const li = document.createElement("li");
@@ -21349,10 +21533,8 @@ ${suffix}`;
         isAdmin() ? `<button class="track__btn" data-act="lock" type="button" aria-label="${t.locked ? "\u0421\u043D\u044F\u0442\u044C \u0444\u0438\u043A\u0441\u0430\u0446\u0438\u044E \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F" : "\u0417\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435"}" title="${t.locked ? "\u0421\u043D\u044F\u0442\u044C \u0444\u0438\u043A\u0441\u0430\u0446\u0438\u044E \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F" : "\u0417\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435"}">${t.locked ? UNLOCK_SVG : LOCK_SVG}</button>` : "",
         canOrder ? `<button class="track__btn track__btn--del" data-act="del" type="button" aria-label="\u0423\u0434\u0430\u043B\u0438\u0442\u044C">${DEL_SVG}</button>` : ""
       ].join("");
-      const peerBadge = peer && peer.confirmed ? `<span class="track__peer" title="\u043E\u0446\u0435\u043D\u043A\u0430 ${esc(peer.username)} \xB7 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430">
-           ${avatarMarkup(peer, "track__peer-who")}
-           <span class="track__peer-val">${fmt(peer.score)}</span>
-         </span>` : "";
+      const peerBadge = peerRatingHTML(t.id);
+      li.dataset.peerHtml = peerBadge;
       li.innerHTML = `
       <div class="track__row1">
         <span class="track__handle"${canOrder ? ' draggable="true"' : ""} aria-hidden="true">${GRIP_SVG}</span>
@@ -21371,6 +21553,8 @@ ${suffix}`;
         <span class="track__save" aria-live="polite"></span>
       </div>`;
       trackList.appendChild(li);
+      const pending = pendingRatings.get(t.id);
+      if (pending) setTrackSave(t.id, pending.failed ? "err" : pending.savedAfterRead !== void 0 ? "done" : "save");
     });
     avTracksCount.textContent = `${list.length} ${tracksPlural(list.length)}`;
     trackForm.hidden = locked;
@@ -21385,7 +21569,6 @@ ${suffix}`;
   trackList.addEventListener("input", (e) => {
     const target = e.target;
     if (target.classList.contains("track__slider")) {
-      ratingEditing = true;
       const li = target.closest(".track");
       if (!li || !li.dataset.id) return;
       const v = round2(parseFloat(target.value));
@@ -21393,9 +21576,8 @@ ${suffix}`;
       if (num) num.value = fmt(v);
       setTrackRating(li.dataset.id, v);
       const cbtn = li.querySelector(".track__confirm-btn");
-      if (cbtn) cbtn.disabled = false;
+      if (cbtn) cbtn.disabled = confirmingRatings.has(li.dataset.id);
     } else if (target.classList.contains("track__numinput")) {
-      ratingEditing = true;
       const li = target.closest(".track");
       if (!li || !li.dataset.id) return;
       const raw = target.value.trim();
@@ -21414,20 +21596,30 @@ ${suffix}`;
       if (slider) slider.value = String(v);
       setTrackRating(li.dataset.id, v);
       const cbtn = li.querySelector(".track__confirm-btn");
-      if (cbtn) cbtn.disabled = false;
+      if (cbtn) cbtn.disabled = confirmingRatings.has(li.dataset.id);
     }
   });
   trackList.addEventListener("pointerdown", (e) => {
     const target = e.target;
-    if (target.classList.contains("track__slider") || target.classList.contains("track__numinput")) {
-      ratingEditing = true;
+    if (target.matches(".track__slider, .track__numinput")) {
+      ratingPointerTrackId = target.closest(".track")?.dataset.id ?? null;
     }
   });
-  document.addEventListener("pointerup", () => {
-    window.setTimeout(() => {
-      ratingEditing = false;
-    }, 200);
-  });
+  function finishTrackInteraction() {
+    requestAnimationFrame(() => {
+      flushDeferredTrackRender();
+      syncTrackRatingControls();
+    });
+  }
+  trackList.addEventListener("focusout", finishTrackInteraction);
+  trackList.addEventListener("dragend", finishTrackInteraction);
+  for (const event of ["pointerup", "pointercancel"]) {
+    document.addEventListener(event, () => {
+      if (!ratingPointerTrackId) return;
+      ratingPointerTrackId = null;
+      finishTrackInteraction();
+    });
+  }
   var lastFeatExtract = "";
   function resetTrackForm() {
     trackInput.value = "";

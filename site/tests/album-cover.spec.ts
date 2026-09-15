@@ -443,6 +443,7 @@ async function cloud(page: Page) {
     if (table === 'profiles') return json([profile]);
     if (table === 'albums') return json([state.album]);
     if (table === 'tracks' || table === 'ratings') return json([]);
+    if (table === 'single_ratings') return json([]); // синглов в этом сценарии нет
     throw new Error(`Unexpected test request: ${request.method()} ${url}`);
   });
   await page.goto('/');

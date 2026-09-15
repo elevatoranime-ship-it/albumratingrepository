@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
-  <title>Пространство · альбомы</title>
-  <link rel="stylesheet" href="styles.css?v=36" />
+  <title>Пространство · альбомы и синглы</title>
+  <link rel="stylesheet" href="styles.css?v=39" />
 </head>
 <body>
 
@@ -111,7 +111,7 @@
       <div class="home">
         <header class="hdr">
           <div class="hdr__titles reveal" style="--d:.05s">
-            <h1 class="hdr__title">Альбомы</h1>
+            <h1 class="hdr__title" id="home-hdr-title">Альбомы</h1>
             <svg class="hdr__underline" viewBox="0 0 170 12" fill="none" preserveAspectRatio="none" aria-hidden="true">
               <path d="M5 7C30 3.6 58 8.6 84 5.8C108 3.4 140 6.8 164 5"
                     stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
@@ -120,7 +120,8 @@
           <div class="hdr__right reveal" style="--d:.12s">
             <span class="hdr__hello">привет, <strong id="home-title">Гость</strong></span>
             <div class="hdr__actions">
-              <button class="btn btn--ghost btn--sm" id="artists-btn" type="button">рейтинг артистов</button>
+              <button class="btn btn--ghost btn--sm" id="artists-btn" type="button"
+                      aria-haspopup="tablist"><span id="rank-btn-label">рейтинг артистов</span></button>
               <button class="btn btn--ghost btn--sm hdr__profile" id="profile-btn" type="button">
                 <span class="hdr__avatar" id="home-avatar"></span>
                 <span>мой профиль</span>
@@ -129,6 +130,14 @@
             </div>
           </div>
         </header>
+
+        <nav class="seg reveal" id="home-switch" role="tablist" aria-label="Что показывать" style="--d:.15s">
+          <span class="seg__thumb" id="seg-thumb" aria-hidden="true"></span>
+          <button class="seg__btn is-active" id="seg-albums" type="button" role="tab"
+                  aria-selected="true" aria-controls="albums">альбомы</button>
+          <button class="seg__btn" id="seg-singles" type="button" role="tab"
+                  aria-selected="false" aria-controls="albums">синглы</button>
+        </nav>
 
         <p class="home__meta reveal" id="home-meta" style="--d:.18s">альбомы…</p>
 
@@ -227,6 +236,14 @@
           <ol class="tracklist" id="track-list"></ol>
         </div>
 
+        <div class="av__singles reveal" id="av-singles-section" style="--d:.33s" hidden>
+          <div class="av__tracks-head">
+            <h2 class="av__tracks-title">синглы</h2>
+            <span class="av__tracks-count" id="av-singles-count"></span>
+          </div>
+          <div class="sgrid" id="av-singles"></div>
+        </div>
+
         <div class="av__danger reveal" style="--d:.36s">
           <button class="btn btn--danger" id="album-delete-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
@@ -240,11 +257,11 @@
       </div>
     </section>
 
-    <!-- ===== ДОБАВЛЕНИЕ АЛЬБОМА ===== -->
-    <section class="view view--add" id="view-add" aria-label="Добавить альбом">
+    <!-- ===== ДОБАВЛЕНИЕ РЕЛИЗА (альбом / сингл) ===== -->
+    <section class="view view--add" id="view-add" aria-label="Добавить релиз">
       <div class="add">
         <div class="add__top">
-          <button class="iconbtn" id="add-back" type="button" aria-label="Назад к альбомам">
+          <button class="iconbtn" id="add-back" type="button" aria-label="Назад">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M15 18l-6-6 6-6"/>
@@ -254,7 +271,7 @@
 
         <div class="card add__panel" id="add-panel">
           <header class="add__head reveal" style="--d:.05s">
-            <h1 class="add__title">Новый альбом</h1>
+            <h1 class="add__title" id="add-title">Новый альбом</h1>
             <svg class="add__underline" viewBox="0 0 120 10" fill="none" preserveAspectRatio="none" aria-hidden="true">
               <path d="M4 6.6C28 3.4 52 8.4 76 5.6C92 3.8 106 6.6 116 5"
                     stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -276,7 +293,7 @@
             </div>
 
             <div class="field reveal" style="--d:.18s">
-              <span class="field__label">Название альбома *</span>
+              <span class="field__label" id="title-label">Название альбома *</span>
               <input class="field__input field__input--plain" id="title-input" type="text"
                      autocomplete="off" spellcheck="false" placeholder="например, Blonde" />
               <p class="form__error" id="title-error" role="alert" aria-live="polite"></p>
@@ -286,6 +303,16 @@
               <span class="field__label">Год *</span>
               <input class="field__input field__input--plain field__input--year" id="year-input" type="text"
                      inputmode="numeric" autocomplete="off" placeholder="2024" maxlength="4" />
+            </div>
+
+            <div class="field field--parent reveal" id="parent-field" style="--d:.27s" hidden>
+              <span class="field__label">Сингл к альбому <em>— необязательно</em></span>
+              <div class="combobox" id="parent-box">
+                <input class="field__input field__input--plain" id="parent-input" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="начните вводить название…" />
+                <ul class="combo__list" id="parent-list" hidden></ul>
+              </div>
+              <p class="cover-pick__note" id="parent-note">связанные синглы видны на странице альбома, а их обложка берётся у него, пока своя не задана</p>
             </div>
 
             <div class="field reveal" style="--d:.3s">
@@ -310,13 +337,13 @@
                        autocomplete="off" spellcheck="false" placeholder="…или вставьте ссылку на обложку" />
                 <p class="form__error" id="cover-url-error" role="alert" aria-live="polite"></p>
               </div>
-              <p class="cover-pick__note">файл или ссылка — обложку можно будет заменить и позже, на странице альбома</p>
+              <p class="cover-pick__note" id="cover-note">файл или ссылка — обложку можно будет заменить и позже, на странице альбома</p>
             </div>
 
             <p class="form__error" id="add-error" role="alert" aria-live="polite"></p>
 
             <button class="btn btn--block reveal" id="add-submit" type="submit" style="--d:.36s">
-              <span class="btn__label">Добавить альбом</span>
+              <span class="btn__label" id="add-submit-label">Добавить альбом</span>
               <span class="btn__spinner" aria-hidden="true"></span>
             </button>
           </form>
@@ -343,6 +370,7 @@
             <div class="artist__score-meta">
               <span class="artist__score-of">/10</span>
               <span class="artist__score-caption">средний балл</span>
+              <span class="artist__score-note">альбомы и синглы · только подтверждённые оценки</span>
             </div>
           </div>
         </header>
@@ -352,7 +380,12 @@
           <div class="albums" id="artist-own"></div>
         </section>
 
-        <section class="artist__section reveal" id="artist-feat-section" style="--d:.24s" hidden>
+        <section class="artist__section reveal" id="artist-singles-section" style="--d:.21s" hidden>
+          <h2 class="artist__sec-title">синглы</h2>
+          <div class="albums" id="artist-singles"></div>
+        </section>
+
+        <section class="artist__section reveal" id="artist-feat-section" style="--d:.27s" hidden>
           <h2 class="artist__sec-title">при участии</h2>
           <div class="albums" id="artist-feat"></div>
         </section>
@@ -378,9 +411,125 @@
               <path d="M5 6.4C34 3.2 66 8.6 96 5.4C118 3 136 6.8 145 5"
                     stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
-            <p class="rank__sub">по среднему баллу за все альбомы</p>
+            <p class="rank__sub">по среднему баллу · только подтверждённые оценки</p>
           </header>
           <ol class="rank__list reveal" id="artist-rank-list" style="--d:.18s"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== СТРАНИЦА СИНГЛА ===== -->
+    <section class="view view--single" id="view-single" aria-label="Страница сингла">
+      <div class="singleview">
+        <div class="av__top reveal" style="--d:.04s">
+          <button class="iconbtn" id="single-back" type="button" aria-label="Назад">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="sv__hero">
+          <div class="sv__art reveal" style="--d:.1s">
+            <figure class="sv__cover">
+              <img id="sv-cover-img" alt="" />
+              <span class="sv__year" id="sv-year"></span>
+              <span class="sv__badge">сингл</span>
+            </figure>
+            <button class="btn btn--ghost btn--sm av__cover-edit" id="sv-cover-edit" type="button"
+                    aria-haspopup="dialog" aria-controls="album-cover-dialog" hidden>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <rect x="3" y="3" width="18" height="18" rx="4"/>
+                <circle cx="8.5" cy="8.5" r="1.5"/>
+                <path d="m21 15-5-5L6 21"/>
+              </svg>
+              <span id="sv-cover-edit-label">добавить обложку</span>
+            </button>
+          </div>
+
+          <div class="sv__info reveal" style="--d:.16s">
+            <h1 class="sv__title" id="sv-title"></h1>
+            <p class="sv__artist" id="sv-artist"></p>
+
+            <div class="sv__parent" id="sv-parent">
+              <span class="sv__parent-label" id="sv-parent-label">сингл вне альбома</span>
+              <button class="sv__parent-edit" id="sv-parent-edit" type="button">изменить</button>
+            </div>
+            <p class="sv__origin" id="sv-origin" hidden></p>
+
+            <div class="sv__score">
+              <span class="sv__avg-num" id="sv-avg">—</span>
+              <div class="sv__avg-meta">
+                <span class="sv__avg-of">/10</span>
+                <span class="sv__avg-caption">средний балл сингла</span>
+                <span class="av__confirm-state" id="sv-confirm-state" hidden></span>
+              </div>
+            </div>
+
+            <p class="sv__hint">в рейтинг синглов попадают только подтверждённые оценки</p>
+          </div>
+        </div>
+
+        <div class="sv__rate reveal" style="--d:.22s">
+          <div class="sv__rate-head">
+            <span class="sv__rate-label">моя оценка</span>
+            <span class="sv__mine" id="sv-mine">—</span>
+            <span class="sv__peer" id="sv-peer"></span>
+          </div>
+          <div class="av__mine-controls sv__controls">
+            <input class="track__slider" id="sv-slider" type="range" min="0" max="10" step="0.01" value="5"
+                   aria-label="Моя оценка сингла" />
+            <input class="track__numinput" id="sv-num" type="number" min="0" max="10" step="0.01" inputmode="decimal"
+                   placeholder="—" aria-label="Моя оценка числом" />
+            <button class="track__confirm-btn" id="sv-confirm-btn" type="button" disabled
+                    aria-label="Подтвердить оценку" title="Подтвердить оценку"></button>
+            <span class="track__save" id="sv-save" aria-live="polite"></span>
+          </div>
+          <p class="sv__note" id="sv-note">передвиньте ползунок или введите число, затем подтвердите — до подтверждения балл не влияет на рейтинг</p>
+        </div>
+
+        <div class="av__impact sv__impact reveal" id="sv-impact" style="--d:.28s" hidden>
+          <span class="av__impact-label">вклад в общий балл</span>
+          <div class="av__chips" id="sv-chips"></div>
+        </div>
+
+        <div class="sv__danger reveal" style="--d:.34s">
+          <button class="btn btn--danger" id="single-delete-btn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 7h16"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              <path d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/><path d="M10 11v6M14 11v6"/>
+            </svg>
+            <span>удалить сингл</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== РЕЙТИНГ СИНГЛОВ ===== -->
+    <section class="view view--rank" id="view-srank" aria-label="Рейтинг синглов">
+      <div class="rankview">
+        <div class="av__top reveal" style="--d:.04s">
+          <button class="iconbtn" id="srank-back" type="button" aria-label="Назад">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="rank__panel">
+          <header class="rank__head reveal" style="--d:.1s">
+            <h1 class="rank__title">рейтинг синглов</h1>
+            <svg class="rank__underline" viewBox="0 0 150 10" fill="none" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M5 6.4C34 3.2 66 8.6 96 5.4C118 3 136 6.8 145 5"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <p class="rank__sub">по среднему баллу · только подтверждённые оценки</p>
+          </header>
+          <ol class="rank__list reveal" id="single-rank-list" style="--d:.18s"></ol>
         </div>
       </div>
     </section>
@@ -461,6 +610,32 @@
     </form>
   </dialog>
 
+  <!-- ===== ПРИВЯЗКА СИНГЛА К АЛЬБОМУ ===== -->
+  <dialog class="cover-editor linkdlg" id="single-link-dialog" aria-labelledby="single-link-title">
+    <form id="single-link-form" novalidate>
+      <h2 class="confirm__title" id="single-link-title">Альбом сингла</h2>
+      <p class="cover-editor__album" id="single-link-name"></p>
+      <p class="confirm__text">К какому альбому относится этот сингл. Поле можно оставить пустым.</p>
+
+      <div class="combobox" id="single-link-box">
+        <input class="field__input field__input--plain" id="single-link-input" type="text"
+               autocomplete="off" spellcheck="false" placeholder="выберите или введите название…"
+               aria-label="Альбом" />
+        <ul class="combo__list" id="single-link-list" hidden></ul>
+      </div>
+      <p class="form__error" id="single-link-error" role="alert" aria-live="polite"></p>
+
+      <div class="confirm__actions">
+        <button class="btn btn--ghost" id="single-link-unlink" type="button">отвязать</button>
+        <button class="btn btn--ghost" id="single-link-cancel" type="button">отмена</button>
+        <button class="btn" id="single-link-save" type="submit">
+          <span class="btn__label">сохранить</span>
+          <span class="btn__spinner" aria-hidden="true"></span>
+        </button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- ===== МОДАЛЬНОЕ ПОДТВЕРЖДЕНИЕ ФИНАЛЬНОГО ВЫБОРА ===== -->
   <div class="confirm" id="confirm-modal" hidden>
     <div class="confirm__backdrop" data-confirm-close></div>
@@ -475,6 +650,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="app.js?v=30"></script>
+  <script src="app.js?v=38"></script>
 </body>
 </html>

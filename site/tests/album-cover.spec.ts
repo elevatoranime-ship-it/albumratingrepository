@@ -4,8 +4,9 @@ const EMAIL = 'killmiplag@demo.local'; // обычный участник, не 
 const album = {
   id: 'existing-album', artist: 'Артист', title: 'Альбом без обложки', year: 2025,
   cover: '', tracksLocked: true, cohesion: 2, albumType: 'album',
+  kind: 'album', parentId: null, // релизы различаются типом: альбом или сингл
 };
-const track = { id: 'track-1', albumId: album.id, title: 'Первый трек', position: 0, locked: true, featArtist: null };
+const track = { id: 'track-1', albumId: album.id, title: 'Первый трек', position: 0, locked: true, featArtist: null, singleId: null };
 const ratings = { [track.id]: { [EMAIL]: { score: 8.75, confirmed: true } } };
 const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200"><rect width="1800" height="1200" fill="#b7a8ef"/></svg>';
 const imageFile = { name: 'cover.svg', mimeType: 'image/svg+xml', buffer: Buffer.from(svg) };
@@ -442,6 +443,7 @@ async function cloud(page: Page) {
     if (table === 'profiles') return json([profile]);
     if (table === 'albums') return json([state.album]);
     if (table === 'tracks' || table === 'ratings') return json([]);
+    if (table === 'single_ratings') return json([]); // синглов в этом сценарии нет
     throw new Error(`Unexpected test request: ${request.method()} ${url}`);
   });
   await page.goto('/');

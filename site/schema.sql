@@ -20,23 +20,33 @@ create policy "profiles_insert" on public.profiles for insert with check (auth.u
 create policy "profiles_update" on public.profiles for update using (auth.uid() = id);
 
 
--- 2) Альбомы
+-- 2) Релизы: альбомы и синглы в одной таблице (kind различает тип).
+--    Сингл — такая же строка, отличаются только поля kind / parent_album_id
+--    и способ оценки (см. пункт 3c).
 create table if not exists public.albums (
-  id            uuid primary key default gen_random_uuid(),
-  artist        text not null,
-  title         text not null,
-  year          integer not null,
-  cover_url     text,                          -- ссылка на обложку (URL или путь в storage)
-  tracks_locked boolean not null default false, -- количество треков зафиксировано (админ)
-  cohesion      smallint,                        -- целостность/концептуальность (1..5, финально)
-  album_type    text,                            -- 'album' | 'ep' | 'compilation' (финально)
-  created_by    uuid references public.profiles(id) on delete set null,
-  created_at    timestamptz not null default now()
+  id              uuid primary key default gen_random_uuid(),
+  artist          text not null,
+  title           text not null,
+  year            integer not null,
+  cover_url       text,                          -- ссылка на обложку (URL или путь в storage)
+  tracks_locked   boolean not null default false, -- количество треков зафиксировано (админ)
+  cohesion        smallint,                        -- целостность/концептуальность (1..5, финально)
+  album_type      text,                            -- 'album' | 'ep' | 'compilation' (финально)
+  kind            text not null default 'album'    -- 'album' | 'single'
+                  check (kind in ('album', 'single')),
+  parent_album_id uuid references public.albums(id) on delete set null,
+                                                   -- для сингла: альбом, к которому он относится
+  created_by      uuid references public.profiles(id) on delete set null,
+  created_at      timestamptz not null default now()
 );
 
--- защита от дубликатов на уровне БД (артист + название, без учёта регистра)
-create unique index if not exists albums_unique
-  on public.albums (lower(artist), lower(title));
+-- защита от дубликатов на уровне БД (артист + название + тип релиза,
+-- без учёта регистра): сингл и альбом могут носить одно и то же название
+create unique index if not exists albums_unique_kind
+  on public.albums (lower(artist), lower(title), kind);
+
+-- устаревший индекс без учёта типа релиза (если база создавалась раньше)
+drop index if exists public.albums_unique;
 
 alter table public.albums enable row level security;
 
@@ -73,6 +83,8 @@ create table if not exists public.tracks (
   position    integer not null default 0,
   locked      boolean not null default false,   -- название трека зафиксировано (админ)
   feat_artist text,                             -- артист на фите (ft./feat./&), необязательно
+  single_id   uuid references public.albums(id) on delete set null,
+                                                -- трек помечен как сингл → карточка сингла
   created_at  timestamptz not null default now()
 );
 
@@ -103,12 +115,32 @@ create policy "ratings_update" on public.ratings for update using (auth.uid() = 
 create policy "ratings_delete" on public.ratings for delete using (auth.uid() = profile_id);
 
 
+-- 3c) Оценки СИНГЛОВ (одна оценка на релиз, а не на трек).
+--     Таблица хранит только оценки строк с kind = 'single'.
+create table if not exists public.single_ratings (
+  album_id   uuid not null references public.albums(id) on delete cascade,
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  score      numeric(4,2) not null check (score >= 0 and score <= 10),
+  confirmed  boolean not null default false,   -- подтверждена участником (финальная)
+  updated_at timestamptz not null default now(),
+  primary key (album_id, profile_id)
+);
+
+alter table public.single_ratings enable row level security;
+
+create policy "single_ratings_read"   on public.single_ratings for select using (auth.role() = 'authenticated');
+create policy "single_ratings_insert" on public.single_ratings for insert with check (auth.uid() = profile_id);
+create policy "single_ratings_update" on public.single_ratings for update using (auth.uid() = profile_id);
+create policy "single_ratings_delete" on public.single_ratings for delete using (auth.uid() = profile_id);
+
+
 -- 4) Права для роли authenticated (важно: иначе таблицы не будут читаться)
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on public.profiles to authenticated;
 grant select, insert, update, delete on public.albums   to authenticated;
 grant select, insert, update, delete on public.ratings   to authenticated;
 grant select, insert, update, delete on public.tracks    to authenticated;
+grant select, insert, update, delete on public.single_ratings to authenticated;
 
 
 -- 5) Хранилище обложек
@@ -161,4 +193,11 @@ begin
   alter publication supabase_realtime add table public.profiles;
 exception when others then
   raise notice 'realtime profiles skipped: %', SQLERRM;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table public.single_ratings;
+exception when others then
+  raise notice 'realtime single_ratings skipped: %', SQLERRM;
 end $$;

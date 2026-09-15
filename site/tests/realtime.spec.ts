@@ -103,6 +103,7 @@ function backend() {
         if (table === 'profiles') return json(url.searchParams.has('id') ? USERS.filter((u) => `eq.${u.id}` === url.searchParams.get('id')) : USERS);
         if (table === 'albums') return json(state.albums);
         if (table === 'tracks') return json(state.tracks);
+        if (table === 'single_ratings') return json([]); // синглов в этих сценариях нет
         if (table === 'ratings') {
           state.ratingReads += 1;
           state.activeReads += 1;
@@ -155,7 +156,7 @@ async function start(page: Page, cloud = backend()) {
   await openAlbum(page);
   return { ...cloud, errors };
 }
-const mine = (page: Page) => page.locator('.track__numinput').first();
+const mine = (page: Page) => page.locator('#track-list .track__numinput').first();
 const avg = (page: Page) => page.locator('#av-avg');
 
 test('two participants see scores and confirmations without reload or losing keyboard focus', async ({ page, browser }) => {
@@ -166,14 +167,14 @@ test('two participants see scores and confirmations without reload or losing key
     await other.goto('/');
     await login(other, USERS[1].email);
     await openAlbum(other);
-    await other.locator('.track__confirm-btn').click(); // снять подтверждение второй оценки
+    await other.locator('#track-list .track__confirm-btn').click(); // снять подтверждение второй оценки
     await mine(page).fill('8');
     const input = await mine(page).elementHandle();
     await mine(other).fill('9');
-    await other.locator('.track__confirm-btn').click();
+    await other.locator('#track-list .track__confirm-btn').click();
     await expect(avg(page)).toHaveText('8.5');
     await expect(avg(other)).toHaveText('8.5');
-    await expect(page.locator('.track__peer-val')).toHaveText('9');
+    await expect(page.locator('#track-list .track__peer-val')).toHaveText('9');
     await expect(mine(page)).toBeFocused();
     await expect(mine(page)).toHaveValue('8');
     expect(await input!.evaluate((el) => el.isConnected)).toBe(true);
@@ -185,7 +186,7 @@ test('two participants see scores and confirmations without reload or losing key
 
 test('peer updates patch averages during a held slider gesture without replacing it', async ({ page }) => {
   const cloud = await start(page);
-  const slider = page.locator('.track__slider');
+  const slider = page.locator('#track-list .track__slider');
   const handle = await slider.elementHandle();
   await slider.dispatchEvent('pointerdown', { pointerId: 1 });
   await slider.evaluate((el: HTMLInputElement) => { el.value = '7'; el.dispatchEvent(new Event('input', { bubbles: true })); });
@@ -196,7 +197,7 @@ test('peer updates patch averages during a held slider gesture without replacing
   await page.dispatchEvent('body', 'pointercancel');
   cloud.peer(null);
   await expect(avg(page)).toHaveText('7');
-  await expect(page.locator('.track__peer')).toHaveCount(0);
+  await expect(page.locator('#track-list .track__peer')).toHaveCount(0);
 });
 
 test('a read begun before the save acknowledgement cannot restore the old score', async ({ page }) => {
@@ -226,9 +227,9 @@ test('rapid edits serialize writes and immediate confirmation cannot be undone b
   await mine(page).fill('7');
   await expect.poll(() => cloud.state.writes.length).toBe(1);
   await mine(page).fill('9');
-  await page.locator('.track__confirm-btn').click();
+  await page.locator('#track-list .track__confirm-btn').click();
   write.resolve();
-  await expect(page.locator('.track__save')).toHaveText('сохранено');
+  await expect(page.locator('#track-list .track__save')).toHaveText('сохранено');
   await expect(mine(page)).toBeDisabled();
   expect(cloud.state.maxActiveWrites).toBe(1);
   expect(cloud.state.ratings.find((r) => r.profile_id === USERS[0].id)).toMatchObject({ score: 9, confirmed: true });
@@ -242,7 +243,7 @@ test('missed Realtime events are recovered by the five-second fallback', async (
   cloud.state.broadcast = false;
   cloud.peer(10);
   await expect(avg(page)).toHaveText('7', { timeout: 8000 });
-  await expect(page.locator('.track__peer-val')).toHaveText('10');
+  await expect(page.locator('#track-list .track__peer-val')).toHaveText('10');
 });
 
 test('home, artist profile and rankings update while they are open', async ({ page }) => {
@@ -254,12 +255,14 @@ test('home, artist profile and rankings update while they are open', async ({ pa
   await page.locator('#albums .album__artist-link').first().click();
   await expect(page.locator('#view-artist')).toHaveClass(/is-visible/);
   cloud.peer(10);
-  await expect(page.locator('#artist-score')).toHaveText('7');
+  // В рейтингах (в том числе у артиста) учитываются только подтверждённые оценки:
+  // моя оценка 4 не подтверждена, поэтому балл артиста — это оценка второго участника.
+  await expect(page.locator('#artist-score')).toHaveText('10');
   await page.locator('#artist-back').click();
   await page.locator('#artists-btn').click();
   await expect(page.locator('#view-rank')).toHaveClass(/is-visible/);
   cloud.peer(6);
-  await expect(page.locator('.rank__score')).toHaveText('5');
+  await expect(page.locator('#artist-rank-list .rank__score')).toHaveText('6');
 });
 
 test('transient read errors do not clear data; coming online refreshes immediately', async ({ page }) => {
@@ -279,14 +282,14 @@ test('failed saves show an error, retain the draft, and retry after reconnecting
   const cloud = await start(page);
   cloud.state.failWrites = true;
   await mine(page).fill('8');
-  await expect(page.locator('.track__save')).toHaveText('ошибка');
+  await expect(page.locator('#track-list .track__save')).toHaveText('ошибка');
   cloud.peer(10);
   await expect(avg(page)).toHaveText('9');
   await expect(mine(page)).toHaveValue('8');
   expect(cloud.state.ratings.find((r) => r.profile_id === USERS[0].id)?.score).toBe(4);
   cloud.state.failWrites = false;
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect(page.locator('.track__save')).toHaveText('сохранено');
+  await expect(page.locator('#track-list .track__save')).toHaveText('сохранено');
   expect(cloud.state.ratings.find((r) => r.profile_id === USERS[0].id)?.score).toBe(8);
 });
 
@@ -330,7 +333,7 @@ test('logout stops polling and a second login creates a fresh subscription', asy
 test('rating events preserve a track rename draft', async ({ page }) => {
   const cloud = await start(page);
   await page.locator('[data-act="rename"]').click();
-  const input = page.locator('.track__rename-input');
+  const input = page.locator('#track-list .track__rename-input');
   await input.fill('Название ещё редактируется');
   const handle = await input.elementHandle();
   cloud.peer(9);
@@ -345,10 +348,10 @@ test('unconfirmed peer ratings affect averages but their badges stay hidden', as
   const cloud = await start(page);
   cloud.peer(10, false);
   await expect(avg(page)).toHaveText('7');
-  await expect(page.locator('.track__peer')).toHaveCount(0);
+  await expect(page.locator('#track-list .track__peer')).toHaveCount(0);
   cloud.peer(10, true);
-  await expect(page.locator('.track__peer-val')).toHaveText('10');
-  await page.locator('.track__confirm-btn').click();
+  await expect(page.locator('#track-list .track__peer-val')).toHaveText('10');
+  await page.locator('#track-list .track__confirm-btn').click();
   await expect(page.locator('#av-confirm-state')).toHaveClass(/is-final/);
   cloud.peer(10, false);
   await expect(page.locator('#av-confirm-state')).not.toHaveClass(/is-final/);
@@ -363,17 +366,17 @@ test('clearing an own score stays cleared while its DELETE is in flight', async 
   cloud.peer(10);
   await expect(avg(page)).toHaveText('10');
   await expect(mine(page)).toHaveValue('');
-  await expect(page.locator('.track__confirm-btn')).toBeDisabled();
+  await expect(page.locator('#track-list .track__confirm-btn')).toBeDisabled();
   write.resolve();
-  await expect(page.locator('.track__save')).toHaveText('сохранено');
+  await expect(page.locator('#track-list .track__save')).toHaveText('сохранено');
   expect(cloud.state.ratings.some((r) => r.profile_id === USERS[0].id)).toBe(false);
 });
 
 test('confirmation failure restores editing instead of falsely displaying success', async ({ page }) => {
   const cloud = await start(page);
   cloud.state.failWrites = true;
-  await page.locator('.track__confirm-btn').click();
-  await expect(page.locator('.track__save')).toHaveText('ошибка');
+  await page.locator('#track-list .track__confirm-btn').click();
+  await expect(page.locator('#track-list .track__save')).toHaveText('ошибка');
   await expect(mine(page)).toBeEnabled();
   await expect(page.locator('#av-confirm-state')).not.toHaveClass(/is-final/);
   expect(cloud.state.ratings.find((r) => r.profile_id === USERS[0].id)?.confirmed).toBe(false);
@@ -412,11 +415,11 @@ test('track structure updates wait for editing to finish; ratings do not', async
   cloud.notify('tracks');
   cloud.peer(8.5);
   await expect(avg(page)).toHaveText('8');
-  await expect(page.locator('.track')).toHaveCount(1);
+  await expect(page.locator('#track-list .track')).toHaveCount(1);
   await expect(mine(page)).toHaveValue('7.50');
   expect(await handle!.evaluate((el) => el.isConnected)).toBe(true);
   await mine(page).blur();
-  await expect(page.locator('.track')).toHaveCount(2);
+  await expect(page.locator('#track-list .track')).toHaveCount(2);
   await expect(mine(page)).toHaveValue('7.5');
 });
 
@@ -424,14 +427,14 @@ test('updating ratings does not scroll or recreate the track list', async ({ pag
   const cloud = backend();
   for (let i = 1; i < 25; i += 1) cloud.state.tracks.push({ ...TRACK, id: `track-${i}`, title: `Трек ${i}`, position: i });
   await start(page, cloud);
-  const input = page.locator('.track__numinput').nth(12);
+  const input = page.locator('#track-list .track__numinput').nth(12);
   await input.focus();
   await input.fill('8');
   const top = await page.locator('#view-album').evaluate((el) => el.scrollTop);
   expect(top).toBeGreaterThan(0);
   const handle = await input.elementHandle();
   cloud.peer(10);
-  await expect(page.locator('.track__peer-val')).toHaveText('10');
+  await expect(page.locator('#track-list .track__peer-val')).toHaveText('10');
   expect(await page.locator('#view-album').evaluate((el) => el.scrollTop)).toBe(top);
   expect(await handle!.evaluate((el) => el.isConnected)).toBe(true);
   await expect(input).toBeFocused();

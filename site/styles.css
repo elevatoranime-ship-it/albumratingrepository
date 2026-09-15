@@ -708,6 +708,11 @@ body {
    список подсказок не перекрывался следующим полем */
 .field--artist { position: relative; z-index: 40; }
 
+/* то же для поля «сингл к альбому»: его список подсказок должен
+   рисоваться поверх следующего поля, а не просвечивать сквозь него
+   (иначе курсор попадает в поле обложки, а не в подсказку) */
+.field--parent { position: relative; z-index: 40; }
+
 /* подтверждение выбора артиста: подсветка рамки + галочка */
 .field--artist .field__input {
   transition: border-color 0.35s var(--ease-out), box-shadow 0.35s var(--ease-out),
@@ -2065,7 +2070,7 @@ body { -webkit-tap-highlight-color: transparent; }
           max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left)); }
 
 /* плавный нативный скролл на тач-экранах */
-.view--home, .view--album, .view--artist, .view--rank, .view--profile, .view--add {
+.view--home, .view--album, .view--artist, .view--rank, .view--profile, .view--add, .view--single {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
 }
@@ -2080,7 +2085,7 @@ body { -webkit-tap-highlight-color: transparent; }
   .track__numinput,
   .track__rename-input { font-size: 16px !important; }
 
-  .view--home, .view--album, .view--artist, .view--rank, .view--profile, .view--add {
+  .view--home, .view--album, .view--artist, .view--rank, .view--profile, .view--add, .view--single {
     padding: 22px 18px calc(120px + env(safe-area-inset-bottom));
     padding-left: max(18px, env(safe-area-inset-left));
     padding-right: max(18px, env(safe-area-inset-right));
@@ -2227,4 +2232,335 @@ body { -webkit-tap-highlight-color: transparent; }
   .artist__score-num { font-size: 42px; }
   .track__row2 { column-gap: 8px; row-gap: 8px; }
   .track__numinput { width: 62px; }
+}
+
+/* ==========================================================================
+   v9 — СИНГЛЫ: переключатель, карточки, страница сингла, рейтинг синглов
+   ========================================================================== */
+
+/* --- переключатель «альбомы | синглы» на главной --- */
+.seg {
+  position: relative;
+  display: inline-flex;
+  margin-top: 26px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+}
+.seg__btn {
+  position: relative;
+  z-index: 1;
+  padding: 8px 22px;
+  background: none;
+  border: 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.4s var(--ease-out);
+}
+.seg__btn.is-active { color: var(--text); }
+.seg__btn:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 3px; }
+.seg__thumb {
+  position: absolute;
+  top: 4px; bottom: 4px;
+  left: 4px; width: 0;
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  background: var(--accent-soft);
+  transition: left 0.45s var(--ease-out), width 0.45s var(--ease-out);
+}
+@media (prefers-reduced-motion: reduce) {
+  .seg__thumb { transition: none; }
+}
+
+/* --- карточка сингла в общей сетке --- */
+.album__badge {
+  position: absolute;
+  top: 10px; left: 10px;
+  padding: 3px 9px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #101014;
+  background: var(--accent);
+  border-radius: 999px;
+}
+.album__parent {
+  margin-top: 5px;
+  font-size: 11.5px;
+  font-style: italic;
+  color: var(--text-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.album__parent b { color: var(--text-dim); font-weight: 500; font-style: normal; }
+.album__votes-count { font-size: 11.5px; color: var(--text-faint); }
+
+/* --- компактные карточки синглов (страница альбома) --- */
+.av__singles { margin-top: 40px; position: relative; z-index: 1; }
+.sgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 12px;
+}
+.scard {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 12px 10px 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: transform 0.35s var(--ease-out), border-color 0.35s var(--ease-out),
+              background-color 0.35s var(--ease-out);
+}
+.scard:hover { border-color: var(--accent-line); background: #1c1c21; transform: translateY(-2px); }
+.scard__cover {
+  width: 46px; height: 46px; flex: none;
+  border-radius: 9px; overflow: hidden;
+  border: 1px solid var(--line);
+  background: #0d0d10;
+}
+.scard__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.scard__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.scard__title {
+  font-size: 14px; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.scard__meta { font-size: 11.5px; color: var(--text-faint); }
+.scard__score { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* --- бейдж «сингл» на треке --- */
+.track__single {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 9px;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: 999px;
+  cursor: pointer;
+  flex: none;
+  transition: background-color 0.3s var(--ease-out), color 0.3s var(--ease-out);
+}
+.track__single:hover { background: rgba(183, 168, 239, 0.22); }
+.track__single:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+.track--single .track__title { cursor: pointer; }
+
+/* --- страница сингла --- */
+.view--single {
+  position: fixed; inset: 0;
+  overflow-y: auto;
+  padding: 40px 28px 96px;
+  transform: translateY(10px) scale(0.99);
+}
+.singleview { max-width: 640px; margin: 0 auto; }
+.view--single .reveal { opacity: 1; transform: none; }
+.view--single.is-visible .reveal { animation: riseSoft 0.7s var(--ease-out) both; animation-delay: var(--d, 0s); }
+
+.sv__hero {
+  display: grid;
+  grid-template-columns: minmax(0, 230px) minmax(0, 1fr);
+  gap: 30px;
+  align-items: start;
+  margin-top: 8px;
+}
+.sv__cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: #0d0d10;
+  box-shadow: 0 38px 78px -34px rgba(0, 0, 0, 0.92);
+}
+.sv__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.sv__year {
+  position: absolute; right: 10px; bottom: 10px;
+  padding: 3px 9px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: rgba(243, 241, 236, 0.9);
+  background: rgba(10, 10, 12, 0.74);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 999px;
+}
+.sv__badge {
+  position: absolute; top: 10px; left: 10px;
+  padding: 3px 10px;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #101014;
+  background: var(--accent);
+  border-radius: 999px;
+}
+.sv__title {
+  font-family: var(--serif);
+  font-size: 38px;
+  font-weight: 400;
+  line-height: 1.08;
+  color: var(--text);
+}
+.sv__artist { margin-top: 8px; font-size: 15px; color: var(--text-faint); }
+.sv__parent {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  margin-top: 20px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--text-dim);
+}
+.sv__parent-link {
+  color: var(--accent-strong);
+  border-bottom: 1px solid var(--accent-line);
+  cursor: pointer;
+}
+.sv__parent-edit {
+  padding: 0;
+  background: none; border: 0;
+  font: inherit; font-size: 12px;
+  color: var(--text-faint);
+  border-bottom: 1px dashed var(--line-strong);
+  cursor: pointer;
+  transition: color 0.3s var(--ease-out), border-color 0.3s var(--ease-out);
+}
+.sv__parent-edit:hover { color: var(--text); border-color: var(--text-faint); }
+.sv__parent-edit:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 3px; }
+.sv__origin {
+  margin-top: 10px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+.sv__score { display: flex; align-items: baseline; gap: 14px; margin-top: 26px; }
+.sv__avg-num {
+  font-size: 58px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.sv__avg-meta { display: flex; flex-direction: column; gap: 4px; }
+.sv__avg-of { font-size: 14px; color: var(--text-faint); }
+.sv__avg-caption { font-family: var(--serif); font-style: italic; font-size: 12.5px; color: var(--text-faint); }
+.sv__hint { margin-top: 16px; font-size: 11.5px; line-height: 1.5; color: var(--text-faint); opacity: 0.8; }
+
+.sv__rate {
+  margin-top: 34px;
+  padding: 22px 24px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+}
+.sv__rate-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+.sv__rate-label { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--text-dim); }
+.sv__mine { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 2.4em; color: var(--text); }
+.sv__controls { max-width: 460px; }
+.sv__note { margin-top: 14px; font-size: 11.5px; line-height: 1.55; color: var(--text-faint); }
+.sv__impact { margin-top: 28px; }
+.sv__danger { margin-top: 44px; display: flex; justify-content: center; }
+
+@media (max-width: 700px) {
+  .seg { margin-top: 20px; }
+  .sv__hero { grid-template-columns: 1fr; gap: 22px; }
+  .sv__artwork, .sv__art { max-width: min(230px, 62vw); }
+  .sv__title { font-size: 31px; }
+  .sv__avg-num { font-size: 50px; }
+  .sv__rate { padding: 18px 16px 16px; }
+  .sv__danger .btn { width: 100%; justify-content: center; }
+  .sgrid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .seg__btn { padding: 8px 16px; font-size: 12.5px; }
+  .track__single { font-size: 9.5px; padding: 2px 7px; }
+}
+
+@media (max-width: 380px) {
+  .sv__title { font-size: 27px; }
+  .sv__avg-num { font-size: 44px; }
+}
+
+/* --- подпись под баллом артиста --- */
+.artist__score-note {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-faint);
+  max-width: 210px;
+}
+
+/* --- диалог привязки сингла к альбому --- */
+.linkdlg .combobox { margin-bottom: 6px; }
+.linkdlg .confirm__actions { margin-top: 22px; flex-wrap: wrap; }
+.linkdlg #single-link-unlink { margin-right: auto; }
+.linkdlg .combo__list { max-height: 190px; overflow-y: auto; }
+
+/* --- дополнительно к v9: мелочи страницы сингла --- */
+.home__notice {
+  grid-column: 1 / -1;
+  padding: 18px 20px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--text-dim);
+}
+
+.sv__artist-link {
+  color: var(--text-faint);
+  border-bottom: 1px solid transparent;
+  cursor: pointer;
+  transition: color 0.3s var(--ease-out), border-color 0.3s var(--ease-out);
+}
+.sv__artist-link:hover { color: var(--text); border-color: var(--line-strong); }
+
+.sv__mine.is-empty { color: var(--text-faint); }
+
+.rank__empty {
+  padding: 26px 8px;
+  text-align: center;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+.rank.is-unranked { opacity: 0.62; }
+.rank.is-unranked .rank__score { color: var(--text-faint); }
+
+.track__btn.is-on { color: var(--accent-strong); border-color: var(--accent-line); }
+.track__slider.is-locked,
+.track__numinput.is-locked { opacity: 0.55; }
+
+.artist__feat-singles { margin-top: 14px; }
+
+/* --- карточка сингла в общей сетке: акцентная рамка обложки --- */
+.album--single .album__cover::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--accent-line);
+  pointer-events: none;
+}
+.album--single .album__avg-num { color: var(--accent-strong); }
+
+/* --- страница сингла: узкие экраны --- */
+@media (max-width: 560px) {
+  .sv__hero { grid-template-columns: 1fr; gap: 18px; }
+  .sv__cover { max-width: 240px; }
+  .sv__title { font-size: 27px; }
+  .sv__avg-num { font-size: 44px; }
 }

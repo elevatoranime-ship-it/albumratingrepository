@@ -277,7 +277,9 @@ test('фит из названия сингла показывается в бл
   await expect(page.locator('#artist-feat')).toContainText('Мегахит');
 
   // «ft.» в названии на экране сингла автоматически показывается как «feat.»
-  await page.locator('#artist-back').click();
+  await page.locator('#artist-back').click();   // со страницы артиста — назад, на страницу сингла
+  await page.locator('#single-back').click();   // и на главную, где лежат карточки
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
   await feat.locator('.album__title').click();
   await expect(page.locator('#sv-title')).toHaveText('Антология');
   await expect(page.locator('#sv-artist')).toHaveText('Основной (feat. Гость)');

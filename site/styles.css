@@ -2295,7 +2295,7 @@ body { -webkit-tap-highlight-color: transparent; }
   font-size: 11.5px;
   font-style: italic;
   color: var(--text-faint);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: normal; overflow-wrap: anywhere;
 }
 .album__parent b { color: var(--text-dim); font-weight: 500; font-style: normal; }
 .album__votes-count { font-size: 11.5px; color: var(--text-faint); }
@@ -2413,7 +2413,8 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 .sv__artist { margin-top: 8px; font-size: 15px; color: var(--text-faint); }
 .sv__parent {
-  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  --parent-control-gap: 12px;
+  display: block;
   margin-top: 20px;
   padding-top: 14px;
   border-top: 1px solid var(--line);
@@ -2505,7 +2506,7 @@ body { -webkit-tap-highlight-color: transparent; }
 .linkdlg .combobox { margin-bottom: 6px; }
 .linkdlg .confirm__actions { margin-top: 22px; flex-wrap: wrap; }
 .linkdlg #single-link-unlink { margin-right: auto; }
-.linkdlg .combo__list { max-height: 190px; overflow-y: auto; }
+.linkdlg .combo__list { position: static; margin-top: 6px; max-height: 190px; overflow-y: auto; }
 
 /* --- дополнительно к v9: мелочи страницы сингла --- */
 .home__notice {
@@ -2564,3 +2565,28 @@ body { -webkit-tap-highlight-color: transparent; }
   .sv__title { font-size: 27px; }
   .sv__avg-num { font-size: 44px; }
 }
+
+/* Несколько альбомов сингла: текстовая, серая, подчёркнутая кнопка. */
+.parent-disclosure { display: inline; }
+.parent-control-space { display: inline-block; width: var(--parent-control-gap); }
+.parent-more {
+  white-space: nowrap;
+  padding: 3px 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-style: normal;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.parent-more:hover { color: var(--text); }
+.parent-more:focus-visible, .sv__parent-link:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 3px;
+}
+.parent-list:not([hidden]) { display: inline; }
+.parent-list a { max-width: 100%; overflow-wrap: anywhere; }
+.sv__parent-label { min-width: 0; overflow-wrap: anywhere; }

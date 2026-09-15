@@ -106,7 +106,10 @@ function backend() {
           }
           return json(null, 201);
         }
-        if (table === 'tracks') return json(null, 201);
+        if (table === 'tracks') {
+          state.tracks.push({ ...body, id: `created-track-${state.tracks.length}` });
+          return json(null, 201);
+        }
       }
 
       if (request.method() === 'PATCH') {
@@ -353,7 +356,7 @@ test('метка трека: бейдж, модалка перехода и сн
   await first.locator('.track__single').click();
   await expect(page.locator('#view-single')).toHaveClass(/is-visible/);
   await expect(page.locator('#confirm-modal')).toBeHidden();
-  await expect(page.locator('#sv-origin')).toContainText('трека');
+  await expect(page.locator('#sv-origin')).toHaveText('Отмечен синглом в 1 альбоме');
   await page.locator('#single-back').click();
   await expect(page.locator('#view-album')).toHaveClass(/is-visible/);
 
@@ -516,4 +519,219 @@ test('если миграция не выполнена, раздел сингл
   await expect(page.locator('#home-meta')).toHaveText('синглы недоступны');
   await page.locator('#seg-albums').click();
   await expect(cards(page)).toHaveCount(2); // альбомы продолжают работать
+});
+
+
+const SECOND_ALBUM = { ...ALBUM, id: 'album-second', title: 'MUSIC' };
+
+test('несколько альбомов: ввод через запятую, подсказка, ссылки и треки на каждом альбоме', async ({ page }) => {
+  const cloud = backend();
+  cloud.state.albums.push(SECOND_ALBUM);
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await page.locator('#albums .album--add').click();
+  await page.locator('#artist-input').fill('Артист');
+  await page.locator('#title-input').fill('Мульти-сингл');
+  await page.locator('#year-input').fill('2025');
+  await page.locator('#parent-input').fill('  Общий альбом , MUS');
+  await page.locator('#parent-list .combo__item').click();
+  await expect(page.locator('#parent-input')).toHaveValue('Общий альбом, MUSIC');
+  await page.locator('#parent-input').fill(' Общий альбом, MUSIC, общий альбом, ');
+  await page.locator('#add-submit').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  const card = cardByTitle(page, 'Мульти-сингл');
+  await expect(page.locator('#albums .parent-more')).toHaveCount(0);
+  await expect(card.locator('.parent-list')).toHaveCount(0);
+  await card.locator('.album__title').click();
+  const label = page.locator('#sv-parent-label');
+  const more = label.locator('.parent-more');
+  await expect(more).toHaveText('показать еще...');
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
+  await expect(label.locator('.parent-list')).toBeHidden();
+  await more.focus();
+  await page.keyboard.press('Enter');
+  await expect(more).toHaveAttribute('aria-expanded', 'true');
+  await expect(label.locator('.parent-list a')).toHaveText(['«MUSIC»']);
+  await expect(label.locator('.sv__parent-link')).toHaveCount(2);
+  await expect(label).toHaveText('сингл к альбомам «Общий альбом» и «MUSIC» скрыть');
+  const insert = cloud.state.writes.find((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/albums'));
+  expect(insert?.body).toMatchObject({ parent_album_id: ALBUM.id, parent_album_ids: [ALBUM.id, SECOND_ALBUM.id] });
+  expect(cloud.state.tracks.filter((t) => t.single_id === 'created-single').map((t) => t.album_id)).toEqual([ALBUM.id, SECOND_ALBUM.id]);
+  await label.locator('.parent-list a').click();
+  await expect(page.locator('#av-title')).toHaveText('MUSIC');
+  await expect(page.locator('#av-singles')).toContainText('Мульти-сингл');
+  await expect(page.locator('#track-list')).toContainText('Мульти-сингл');
+  await page.locator('#av-singles .scard').click();
+  await label.locator('.sv__parent-link').first().click();
+  await expect(page.locator('#av-title')).toHaveText(ALBUM.title);
+  await expect(page.locator('#av-singles')).toContainText('Мульти-сингл');
+});
+
+test('редактор нескольких привязок: ошибка без записи, сохранение, перезагрузка и отвязка', async ({ page }) => {
+  const cloud = backend();
+  cloud.state.albums.push(SECOND_ALBUM);
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await cardByTitle(page, SINGLE.title).locator('.album__title').click();
+  await page.locator('#sv-parent-edit').click();
+  await page.locator('#single-link-input').fill('Общий альбом, несуществующий');
+  await page.locator('#single-link-save').click();
+  await expect(page.locator('#single-link-error')).toContainText('не найден');
+  expect(cloud.state.writes.filter((w) => w.path.startsWith('/rest/v1/albums'))).toEqual([]);
+  await page.locator('#single-link-input').fill('Общий альбом, MUSIC');
+  await page.locator('#single-link-save').click();
+  await expect(page.locator('#single-link-dialog')).not.toBeVisible();
+  await expect(page.locator('#sv-parent-label .parent-more')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  await page.locator('#seg-singles').click();
+  await cardByTitle(page, SINGLE.title).locator('.album__title').click();
+  await page.locator('#sv-parent-edit').click();
+  await expect(page.locator('#single-link-input')).toHaveValue('Общий альбом, MUSIC');
+  await page.locator('#single-link-input').fill('MUSIC');
+  await page.locator('#single-link-save').click();
+  await expect(page.locator('#single-link-dialog')).not.toBeVisible();
+  await expect(page.locator('#sv-parent-label')).toHaveText('сингл к альбому «MUSIC»');
+  await expect(page.locator('#sv-parent-label .parent-more')).toHaveCount(0);
+  await page.locator('#sv-parent-edit').click();
+  await page.locator('#single-link-input').fill('');
+  await page.locator('#single-link-save').click();
+  await expect(page.locator('#sv-parent-label')).toHaveText('сингл вне альбома');
+  const patches = cloud.state.writes.filter((w) => w.method === 'PATCH' && w.path.startsWith('/rest/v1/albums'));
+  expect(patches.map((w) => w.body)).toEqual([
+    { parent_album_id: ALBUM.id, parent_album_ids: [ALBUM.id, SECOND_ALBUM.id] },
+    { parent_album_id: SECOND_ALBUM.id, parent_album_ids: [SECOND_ALBUM.id] },
+    { parent_album_id: null, parent_album_ids: [] },
+  ]);
+});
+
+test('название с запятой и одинаковые названия: точный выбор из подсказок', async ({ page }) => {
+  const cloud = backend();
+  cloud.state.albums.push({ ...SECOND_ALBUM, title: 'Hello, World' }, { ...ALBUM, id: 'duplicate-title', artist: 'Другой' });
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await cardByTitle(page, SOLO.title).locator('.album__title').click();
+  await page.locator('#sv-parent-edit').click();
+  await page.locator('#single-link-input').fill('Общий альбом');
+  await page.locator('#single-link-save').click();
+  await expect(page.locator('#single-link-error')).toContainText('неоднозначно');
+  await page.locator('#single-link-input').fill('Hello');
+  await page.locator('#single-link-list .combo__item').click();
+  await expect(page.locator('#single-link-input')).toHaveValue('"Hello, World"');
+  await page.locator('#single-link-input').fill('"Hello, World", Общий');
+  await page.locator('#single-link-list .combo__item').filter({ hasText: 'Другой' }).click();
+  await page.locator('#single-link-save').click();
+  await expect(page.locator('#single-link-dialog')).not.toBeVisible();
+  const patch = cloud.state.writes.find((w) => w.method === 'PATCH' && w.path.startsWith('/rest/v1/albums'));
+  expect(patch?.body).toMatchObject({ parent_album_ids: [SECOND_ALBUM.id, 'duplicate-title'] });
+});
+
+test('правка оценки трека-сингла синхронизирует трек второго альбома', async ({ page }) => {
+  const cloud = backend();
+  cloud.state.albums.push(SECOND_ALBUM);
+  Object.assign(cloud.state.albums[1], { parent_album_ids: [ALBUM.id, SECOND_ALBUM.id] });
+  cloud.state.tracks.push({ ...TRACK, id: 'track-on-second', album_id: SECOND_ALBUM.id });
+  await cloud.install(page);
+  await login(page);
+  await cardByTitle(page, ALBUM.title).locator('.album__title').click();
+  const row = page.locator('#track-list .track').first();
+  await row.locator('.track__confirm-btn').click();
+  // Подтверждение/снятие подтверждения распространяется на обе копии трека.
+  await expect.poll(() => cloud.state.ratings.find((r) => r.track_id === 'track-on-second' && r.profile_id === ME.id)?.confirmed).toBe(false);
+});
+
+
+test('дополнительные альбомы раскрываются в строку: запятые и «и» перед последним, без повторов', async ({ page }) => {
+  const cloud = backend();
+  const third = { ...ALBUM, id: 'third-album', title: 'Третий альбом' };
+  cloud.state.albums.push(SECOND_ALBUM, third);
+  Object.assign(cloud.state.albums[1], { parent_album_ids: [ALBUM.id, SECOND_ALBUM.id, third.id] });
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await expect(page.locator('#albums .parent-more')).toHaveCount(0);
+  await cardByTitle(page, SINGLE.title).locator('.album__title').click();
+  const label = page.locator('#sv-parent-label');
+  const more = label.locator('.parent-more');
+  await expect(label.locator('.parent-disclosure')).toHaveCSS('display', 'inline');
+  await expect(label.locator('.sv__parent-link:visible')).toHaveText(['«Общий альбом»']);
+  await more.click();
+  await expect(label.locator('.parent-list')).toHaveCSS('display', 'inline');
+  await expect(label.locator('.parent-list')).toHaveText(', «MUSIC» и «Третий альбом»');
+  await expect(label.locator('.sv__parent-link:visible')).toHaveText(['«Общий альбом»', '«MUSIC»', '«Третий альбом»']);
+  await expect(label).toHaveText('сингл к альбомам «Общий альбом», «MUSIC» и «Третий альбом» скрыть');
+  await more.click();
+  await expect(more).toHaveText('показать еще...');
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
+  await expect(label.locator('.parent-list')).toBeHidden();
+  await more.click();
+  await label.locator('.parent-list a').last().click();
+  await expect(page.locator('#av-title')).toHaveText(third.title);
+});
+
+
+for (const count of [0, 1, 2, 5, 11, 21, 22, 101, 111]) {
+  test(`подпись метки: ${count} альбомов, правильное склонение и отсутствие дублей`, async ({ page }) => {
+    const cloud = backend();
+    cloud.state.tracks = [];
+    for (let i = 0; i < count; i++) {
+      const album = { ...ALBUM, id: `origin-album-${i}`, title: `Альбом ${i}` };
+      cloud.state.albums.push(album);
+      // Две метки в одном альбоме считаются как один альбом.
+      cloud.state.tracks.push({ ...TRACK, id: `origin-track-${i}`, album_id: album.id });
+      cloud.state.tracks.push({ ...TRACK, id: `origin-track-duplicate-${i}`, album_id: album.id });
+    }
+    await cloud.install(page);
+    await login(page);
+    await page.locator('#seg-singles').click();
+    await cardByTitle(page, SINGLE.title).locator('.album__title').click();
+    if (!count) await expect(page.locator('#sv-origin')).toBeHidden();
+    else await expect(page.locator('#sv-origin')).toHaveText(`Отмечен синглом в ${count} ${[1, 21, 101].includes(count) ? 'альбоме' : 'альбомах'}`);
+  });
+}
+
+test('равные отступы, анимация раскрытия и быстрые повторные нажатия', async ({ page }) => {
+  const cloud = backend();
+  cloud.state.albums[0].title = 'A';
+  cloud.state.albums.push(SECOND_ALBUM);
+  Object.assign(cloud.state.albums[1], { parent_album_ids: [ALBUM.id, SECOND_ALBUM.id] });
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await cardByTitle(page, SINGLE.title).locator('.album__title').click();
+  const more = page.locator('#sv-parent-label .parent-more');
+  const list = page.locator('#sv-parent-label .parent-list');
+  // На достаточно широком экране оба промежутка равны 12px.
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const spacing = await page.evaluate(() => {
+    const first = document.querySelector('#sv-parent-label > .sv__parent-link')!.getBoundingClientRect();
+    const more = document.querySelector('#sv-parent-label .parent-more')!.getBoundingClientRect();
+    const edit = document.querySelector('#sv-parent-edit')!.getBoundingClientRect();
+    return [more.left - first.right, edit.left - more.right];
+  });
+  expect(spacing[0]).toBeCloseTo(12, 0);
+  expect(spacing[1]).toBeCloseTo(12, 0);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  // Обработчик запускает настоящую анимацию opacity на встроенном span.
+  const opening = await more.evaluate((el: HTMLButtonElement) => {
+    el.click();
+    return document.querySelector('#sv-parent-label .parent-list')!.getAnimations().length;
+  });
+  expect(opening).toBeGreaterThan(0);
+  await expect(more).toHaveAttribute('aria-expanded', 'true');
+  await expect(list).toBeVisible();
+  await more.evaluate((el: HTMLButtonElement) => { el.click(); el.click(); el.click(); });
+  await expect(more).toHaveAttribute('aria-expanded', 'false');
+  await expect(list).toBeHidden();
+  await expect(more).toHaveText('показать еще...');
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const reducedAnimations = await more.evaluate((el: HTMLButtonElement) => {
+    el.click();
+    return document.querySelector('#sv-parent-label .parent-list')!.getAnimations().length;
+  });
+  expect(reducedAnimations).toBe(0);
+  await expect(list).toBeVisible();
 });

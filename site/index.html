@@ -306,13 +306,13 @@
             </div>
 
             <div class="field field--parent reveal" id="parent-field" style="--d:.27s" hidden>
-              <span class="field__label">Сингл к альбому <em>— необязательно</em></span>
+              <span class="field__label">Альбомы сингла <em>— необязательно</em></span>
               <div class="combobox" id="parent-box">
-                <input class="field__input field__input--plain" id="parent-input" type="text"
-                       autocomplete="off" spellcheck="false" placeholder="начните вводить название…" />
+                <input class="field__input field__input--plain" id="parent-input" type="text" aria-label="Альбомы сингла"
+                       autocomplete="off" spellcheck="false" placeholder="MUSIC, другой альбом…" />
                 <ul class="combo__list" id="parent-list" hidden></ul>
               </div>
-              <p class="cover-pick__note" id="parent-note">связанные синглы видны на странице альбома, а их обложка берётся у него, пока своя не задана</p>
+              <p class="cover-pick__note" id="parent-note">перечислите альбомы через запятую; сингл будет виден на каждом из них</p>
             </div>
 
             <div class="field reveal" style="--d:.3s">
@@ -454,8 +454,7 @@
             <p class="sv__artist" id="sv-artist"></p>
 
             <div class="sv__parent" id="sv-parent">
-              <span class="sv__parent-label" id="sv-parent-label">сингл вне альбома</span>
-              <button class="sv__parent-edit" id="sv-parent-edit" type="button">изменить</button>
+              <span class="sv__parent-label" id="sv-parent-label">сингл вне альбома</span><span class="parent-control-space" aria-hidden="true"> </span><button class="sv__parent-edit" id="sv-parent-edit" type="button">изменить</button>
             </div>
             <p class="sv__origin" id="sv-origin" hidden></p>
 
@@ -613,14 +612,14 @@
   <!-- ===== ПРИВЯЗКА СИНГЛА К АЛЬБОМУ ===== -->
   <dialog class="cover-editor linkdlg" id="single-link-dialog" aria-labelledby="single-link-title">
     <form id="single-link-form" novalidate>
-      <h2 class="confirm__title" id="single-link-title">Альбом сингла</h2>
+      <h2 class="confirm__title" id="single-link-title">Альбомы сингла</h2>
       <p class="cover-editor__album" id="single-link-name"></p>
-      <p class="confirm__text">К какому альбому относится этот сингл. Поле можно оставить пустым.</p>
+      <p class="confirm__text">Перечислите альбомы через запятую или выберите из подсказок. Названия с запятой заключайте в двойные кавычки. Пустое поле убирает все привязки.</p>
 
       <div class="combobox" id="single-link-box">
         <input class="field__input field__input--plain" id="single-link-input" type="text"
-               autocomplete="off" spellcheck="false" placeholder="выберите или введите название…"
-               aria-label="Альбом" />
+               autocomplete="off" spellcheck="false" placeholder="MUSIC, другой альбом…"
+               aria-label="Альбомы сингла" />
         <ul class="combo__list" id="single-link-list" hidden></ul>
       </div>
       <p class="form__error" id="single-link-error" role="alert" aria-live="polite"></p>

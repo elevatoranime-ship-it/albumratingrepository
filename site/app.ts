@@ -2063,6 +2063,10 @@ async function toggleRatingConfirm(trackId: string): Promise<void> {
       if (!CLOUD) saveLocalRatings();
     }
     mirrorTrackToSingle(trackId, true); // откат тоже должен уехать в сингл
+    // Откат надо показать и в строке трека: без этого поле балла остаётся заблокированным,
+    // будто оценка подтверждена, хотя запись не удалась (синхронизация контролов строки
+    // раньше происходила в finally, который убрали вместе с блокировкой кнопки на время записи).
+    syncTrackRatingControls();
     renderConfirmState();
     toast(messageOf(err));
   }

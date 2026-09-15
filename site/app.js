@@ -21774,6 +21774,7 @@ ${suffix}`;
         if (!CLOUD) saveLocalRatings();
       }
       mirrorTrackToSingle(trackId, true);
+      syncTrackRatingControls();
       renderConfirmState();
       toast(messageOf(err));
     }

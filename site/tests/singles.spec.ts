@@ -301,7 +301,7 @@ test('оценка сингла уезжает на его трек в альб�
   await expect(row.locator('.track__numinput')).toHaveValue('9');
   await expect(row.locator('.track__numinput')).toBeDisabled();
   // среднее альбома считает все оценки (9 — моя подтверждённая, 6 — второго участника у сингла): (9 + 6) / 2
-  await cardByTitle(page, 'Общий альбом').locator('.album__avg-num').toHaveText('7.5');
+  await expect(cardByTitle(page, 'Общий альбом').locator('.album__avg-num')).toHaveText('7.5');
 });
 
 test('рейтинг синглов: только релизы, подтверждённые всеми участниками', async ({ page }) => {

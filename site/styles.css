@@ -2468,7 +2468,17 @@ body { -webkit-tap-highlight-color: transparent; }
 .sv__rate-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
 .sv__rate-label { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--text-dim); }
 .sv__mine { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 2.4em; color: var(--text); }
-.sv__controls { max-width: 460px; }
+
+/* Сингл — один трек: оценка занимает всю ширину панели и чуть крупнее,
+   чем компактный рядок в списке треков альбома. */
+.sv__controls { max-width: none; }
+.sv__controls input[type="range"] { height: 5px; border-radius: 3px; }
+.sv__controls input[type="range"]::-webkit-slider-thumb { width: 20px; height: 20px; box-shadow: 0 0 0 6px var(--accent-soft); }
+.sv__controls input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; box-shadow: 0 0 0 6px var(--accent-soft); }
+.sv__controls input[type="range"]::-moz-range-track { height: 5px; border-radius: 3px; }
+.sv__controls .track__numinput { width: 84px; padding: 10px; font-size: 15px; border-radius: 11px; }
+.sv__controls .track__confirm-btn { width: 38px; height: 38px; border-radius: 11px; }
+.sv__controls .track__confirm-btn svg { width: 17px; height: 17px; }
 .sv__note { margin-top: 14px; font-size: 11.5px; line-height: 1.55; color: var(--text-faint); }
 .sv__impact { margin-top: 28px; }
 .sv__danger { margin-top: 44px; display: flex; justify-content: center; }
@@ -2480,6 +2490,10 @@ body { -webkit-tap-highlight-color: transparent; }
   .sv__title { font-size: 31px; }
   .sv__avg-num { font-size: 50px; }
   .sv__rate { padding: 18px 16px 16px; }
+  /* на телефоне панель оценки остаётся компактной, как у треков */
+  .sv__controls .track__numinput { width: 76px; padding: 8px 9px; font-size: 14px; }
+  .sv__controls .track__confirm-btn { width: 34px; height: 34px; }
+  .sv__controls .track__confirm-btn svg { width: 15px; height: 15px; }
   .sv__danger .btn { width: 100%; justify-content: center; }
   .sgrid { grid-template-columns: 1fr; }
 }

@@ -20024,7 +20024,7 @@ ${suffix}`;
   ];
   var SEED_SINGLES = [
     { id: "s-nikes", title: "Nikes", artist: "Frank Ocean", year: 2016, cover: "", kind: "single", parentId: "blonde", tracksLocked: false, cohesion: null, albumType: null },
-    { id: "s-timeless", title: "Timeless", artist: "The Weeknd", year: 2024, cover: "", kind: "single", parentId: "hurry-up-tomorrow", tracksLocked: false, cohesion: null, albumType: null },
+    { id: "s-timeless", title: "Timeless & Playboi Carti", artist: "The Weeknd", year: 2024, cover: "", kind: "single", parentId: "hurry-up-tomorrow", tracksLocked: false, cohesion: null, albumType: null },
     { id: "s-mojo-jojo", title: "MOJO JOJO", artist: "Playboi Carti", year: 2025, cover: "", kind: "single", parentId: "music", parentIds: ["music", "music-demo"], tracksLocked: false, cohesion: null, albumType: null },
     { id: "s-not-like-us", title: "Not Like Us", artist: "Kendrick Lamar", year: 2024, cover: "covers/not-like-us.jpg", kind: "single", parentId: null, tracksLocked: false, cohesion: null, albumType: null }
   ];
@@ -20417,7 +20417,9 @@ ${suffix}`;
     if (viewSingle.classList.contains("is-visible")) {
       const s = currentSingle();
       if (s) {
-        if (svTitle.textContent !== s.title) svTitle.textContent = s.title;
+        if (svTitle.textContent !== singleDisplayTitle(s)) svTitle.textContent = singleDisplayTitle(s);
+        const artistHtml = singleArtistHTML(s, "sv__artist-link");
+        if (svArtist.innerHTML !== artistHtml) svArtist.innerHTML = artistHtml;
         if (svYear.textContent !== String(s.year)) svYear.textContent = String(s.year);
         if (svCoverImg.getAttribute("src") !== coverSrc(s)) renderSingleCover(s);
         renderSingleParents(s);
@@ -20709,6 +20711,38 @@ ${suffix}`;
     if (!m) return null;
     const after = title.slice((m.index ?? 0) + m[0].length).trim();
     return after || null;
+  }
+  function singleTitleInfo(a) {
+    const raw = a.title.trim();
+    const m = FEAT_RE.exec(raw);
+    if (!m) return { title: raw, featArtist: null, featAmp: false };
+    const title = raw.slice(0, m.index ?? 0).replace(/[\s([]+$/, "").trim();
+    const featArtist = raw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, "").trim();
+    if (!title || !featArtist) return { title: raw, featArtist: null, featAmp: false };
+    return { title, featArtist, featAmp: m[0] === "&" };
+  }
+  function singleDisplayTitle(a) {
+    return a.kind === "single" ? singleTitleInfo(a).title : a.title;
+  }
+  function singleFeatSuffix(a) {
+    if (a.kind !== "single") return "";
+    const info = singleTitleInfo(a);
+    if (!info.featArtist) return "";
+    return info.featAmp ? ` & ${info.featArtist}` : ` (feat. ${info.featArtist})`;
+  }
+  function singleArtistText(a) {
+    return `${a.artist}${singleFeatSuffix(a)}`;
+  }
+  function singleArtistHTML(a, linkClass) {
+    const main = `<a class="${linkClass}" data-artist="${esc(a.artist)}">${esc(a.artist)}</a>`;
+    if (a.kind !== "single") return main;
+    const info = singleTitleInfo(a);
+    if (!info.featArtist) return main;
+    const guest = `<a class="${linkClass}" data-artist="${esc(info.featArtist)}">${esc(info.featArtist)}</a>`;
+    return info.featAmp ? `${main} &amp; ${guest}` : `${main} (feat. ${guest})`;
+  }
+  function releaseFullName(a) {
+    return `${singleArtistText(a)} \u2014 ${singleDisplayTitle(a)}`;
   }
   function allArtistNames() {
     const map = /* @__PURE__ */ new Map();
@@ -21279,7 +21313,7 @@ ${suffix}`;
     editingCoverAlbumId = al.id;
     albumCoverForm.reset();
     albumCoverTitle.textContent = al.kind === "single" ? al.cover ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443 \u0441\u0438\u043D\u0433\u043B\u0430" : "\u041E\u0431\u043B\u043E\u0436\u043A\u0430 \u0441\u0438\u043D\u0433\u043B\u0430" : al.cover ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443";
-    albumCoverName.textContent = `${al.artist} \u2014 ${al.title}`;
+    albumCoverName.textContent = releaseFullName(al);
     resetAlbumCoverDraft();
     albumCoverDialog.showModal();
     void albumCoverDialog.offsetWidth;
@@ -21900,7 +21934,7 @@ ${suffix}`;
         <span class="track__handle"${canOrder ? ' draggable="true"' : ""} aria-hidden="true">${GRIP_SVG}</span>
         <span class="track__num">${i + 1}</span>
         <span class="track__title">${trackTitleHTML(t)}</span>
-        ${single ? `<button class="track__single" type="button" title="\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441\u0438\u043D\u0433\u043B\u0430 \xAB${esc(single.title)}\xBB">\u0441\u0438\u043D\u0433\u043B</button>` : ""}
+        ${single ? `<button class="track__single" type="button" title="\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441\u0438\u043D\u0433\u043B\u0430 \xAB${esc(singleDisplayTitle(single))}\xBB">\u0441\u0438\u043D\u0433\u043B</button>` : ""}
         ${peerBadge}
         ${t.locked ? `<span class="track__lock" title="\u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u043E">${LOCK_SVG}</span>` : ""}
         <span class="track__avg" data-tid="${t.id}" title="\u0441\u0440\u0435\u0434\u043D\u044F\u044F \u043F\u043E \u0442\u0440\u0435\u043A\u0443">${tavgStr}</span>
@@ -22471,17 +22505,18 @@ ${suffix}`;
     const avgStr = avg === null ? "\u2014" : fmt(avg);
     const n = trackCountOf(a.id);
     const parent = single ? parentOf(a) : void 0;
+    const title = single ? singleDisplayTitle(a) : a.title;
     el.innerHTML = `
     <div class="album__cover">
-      <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} \u2014 ${esc(a.title)}" loading="lazy">
+      <img src="${esc(coverSrc(a))}" alt="${esc(singleArtistText(a))} \u2014 ${esc(title)}" loading="lazy">
       <span class="album__year">${a.year}</span>
       ${single ? '<span class="album__badge">\u0441\u0438\u043D\u0433\u043B</span>' : ""}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ""}
       ${featScore !== null ? `<span class="album__featbadge">\u0444\u0438\u0442 ${fmt(featScore)}</span>` : ""}
     </div>
     <div class="album__body">
-      <h3 class="album__title">${esc(a.title)}</h3>
-      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</a></p>
+      <h3 class="album__title">${esc(title)}</h3>
+      <p class="album__artist">${singleArtistHTML(a, "album__artist-link")}</p>
       ${parent ? `<div class="album__parent">${parentLinksHtml(a)}</div>` : ""}
       <div class="album__rating">
         <div class="album__avg">
@@ -22516,15 +22551,16 @@ ${suffix}`;
     const parent = parentOf(s);
     const votes = singleVotesOf(s.id);
     const pending = pendingCountOf(s.id);
+    const title = singleDisplayTitle(s);
     el.innerHTML = `
     <div class="album__cover">
-      <img src="${esc(coverSrc(s))}" alt="${esc(s.artist)} \u2014 ${esc(s.title)}" loading="lazy">
+      <img src="${esc(coverSrc(s))}" alt="${esc(singleArtistText(s))} \u2014 ${esc(title)}" loading="lazy">
       <span class="album__year">${s.year}</span>
       <span class="album__badge">\u0441\u0438\u043D\u0433\u043B</span>
     </div>
     <div class="album__body">
-      <h3 class="album__title">${esc(s.title)}</h3>
-      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a></p>
+      <h3 class="album__title">${esc(title)}</h3>
+      <p class="album__artist">${singleArtistHTML(s, "album__artist-link")}</p>
       ${parent ? `<div class="album__parent">${parentLinksHtml(s)}</div>` : ""}
       <div class="album__rating">
         <div class="album__avg">
@@ -22561,7 +22597,7 @@ ${suffix}`;
     el.innerHTML = `
     <span class="scard__cover"><img src="${esc(coverSrc(s))}" alt="" loading="lazy"></span>
     <span class="scard__body">
-      <span class="scard__title">${esc(s.title)}</span>
+      <span class="scard__title">${esc(singleDisplayTitle(s))}</span>
       <span class="scard__meta">${s.year} \xB7 ${votes} ${votesPlural(votes)}</span>
     </span>
     <span class="scard__score">${avg === null ? "\u2014" : fmt(avg)}</span>`;
@@ -22654,10 +22690,12 @@ ${suffix}`;
       votes: singleVotesOf(s.id),
       pending: pendingCountOf(s.id)
     })).sort((a, b) => {
-      if (a.score === null && b.score === null) return a.single.title.localeCompare(b.single.title, "ru");
+      const ta = singleDisplayTitle(a.single);
+      const tb = singleDisplayTitle(b.single);
+      if (a.score === null && b.score === null) return ta.localeCompare(tb, "ru");
       if (a.score === null) return 1;
       if (b.score === null) return -1;
-      return b.score - a.score || a.single.title.localeCompare(b.single.title, "ru");
+      return b.score - a.score || ta.localeCompare(tb, "ru");
     });
   }
   function renderSingleRank() {
@@ -22675,14 +22713,14 @@ ${suffix}`;
       const li = document.createElement("li");
       li.className = "rank" + (pos <= 3 && r.score !== null ? ` rank--${pos}` : "") + (r.score === null ? " is-unranked" : "");
       const parent = parentOf(r.single);
-      const meta = [String(r.single.year), r.single.artist];
+      const meta = [String(r.single.year), singleArtistText(r.single)];
       meta.push(parent ? `\u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443 \xAB${parent.title}\xBB` : "\u0432\u043D\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430");
       if (r.score === null) meta.push(singleRankReason(r.single.id));
       li.innerHTML = `
       <span class="rank__pos">${pos}</span>
       <span class="rank__ava"><img src="${esc(coverSrc(r.single))}" alt="" loading="lazy"></span>
       <div class="rank__body">
-        <span class="rank__name">${esc(r.single.title)}</span>
+        <span class="rank__name">${esc(singleDisplayTitle(r.single))}</span>
         <span class="rank__meta">${esc(meta.join(" \xB7 "))}</span>
       </div>
       <span class="rank__score">${r.score === null ? "\u2014" : fmt(r.score)}</span>`;
@@ -22932,7 +22970,7 @@ ${suffix}`;
   function renderSingleCover(s) {
     const src = coverSrc(s);
     if (svCoverImg.getAttribute("src") !== src) svCoverImg.src = src;
-    svCoverImg.alt = `${s.artist} \u2014 ${s.title}`;
+    svCoverImg.alt = releaseFullName(s);
     svCoverImg.style.opacity = "";
     svCoverEdit.hidden = !currentUser;
     const parent = parentOf(s);
@@ -23023,8 +23061,8 @@ ${suffix}`;
     return true;
   }
   function renderSinglePage(s) {
-    svTitle.textContent = s.title;
-    svArtist.innerHTML = `<a class="sv__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a>`;
+    svTitle.textContent = singleDisplayTitle(s);
+    svArtist.innerHTML = singleArtistHTML(s, "sv__artist-link");
     svYear.textContent = String(s.year);
     renderSingleCover(s);
     renderSingleParents(s);
@@ -23398,7 +23436,7 @@ ${suffix}`;
     if (!s) return;
     const ok = await openConfirm(
       "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0441\u0438\u043D\u0433\u043B?",
-      `\u0421\u0438\u043D\u0433\u043B <b>\xAB${esc(s.title)}\xBB</b> \u2014 ${esc(s.artist)} \u0431\u0443\u0434\u0435\u0442 \u0443\u0434\u0430\u043B\u0451\u043D <b>\u043D\u0430\u0432\u0441\u0435\u0433\u0434\u0430</b> \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438. \u041C\u0435\u0442\u043A\u0430 \xAB\u0441\u0438\u043D\u0433\u043B\xBB \u0441 \u0442\u0440\u0435\u043A\u0430 \u0441\u043D\u0438\u043C\u0435\u0442\u0441\u044F. \u042D\u0442\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043D\u0435\u043B\u044C\u0437\u044F \u043E\u0442\u043C\u0435\u043D\u0438\u0442\u044C.`,
+      `\u0421\u0438\u043D\u0433\u043B <b>\xAB${esc(singleDisplayTitle(s))}\xBB</b> \u2014 ${esc(singleArtistText(s))} \u0431\u0443\u0434\u0435\u0442 \u0443\u0434\u0430\u043B\u0451\u043D <b>\u043D\u0430\u0432\u0441\u0435\u0433\u0434\u0430</b> \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438. \u041C\u0435\u0442\u043A\u0430 \xAB\u0441\u0438\u043D\u0433\u043B\xBB \u0441 \u0442\u0440\u0435\u043A\u0430 \u0441\u043D\u0438\u043C\u0435\u0442\u0441\u044F. \u042D\u0442\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043D\u0435\u043B\u044C\u0437\u044F \u043E\u0442\u043C\u0435\u043D\u0438\u0442\u044C.`,
       true
     );
     if (!ok) return;
@@ -23502,7 +23540,7 @@ ${suffix}`;
     if (!s || singleLinkDialog.open) return;
     singleLinkEditingId = s.id;
     singleLinkInput.value = parentsOf(s).map((a) => quoteAlbumToken(albumInputLabel(a))).join(", ");
-    singleLinkName.textContent = `${s.artist} \u2014 ${s.title}`;
+    singleLinkName.textContent = releaseFullName(s);
     singleLinkError.textContent = "";
     singleLinkError.classList.remove("is-visible");
     singleLinkSave.classList.remove("is-loading");
@@ -23613,10 +23651,11 @@ ${suffix}`;
     if (al.tracksLocked) {
       return "\u0421\u0438\u043D\u0433\u043B \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D, \u043D\u043E \u0442\u0440\u0435\u043A\u0438 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u044B \u2014 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u0442\u0440\u0435\u043A\u043E\u0432 \u043E\u043D \u043D\u0435 \u043F\u043E\u044F\u0432\u0438\u043B\u0441\u044F";
     }
-    const title = single.title.trim();
+    const info = singleTitleInfo(single);
+    const title = info.title;
     const sameArtist = al.artist.trim().toLowerCase() === single.artist.trim().toLowerCase();
-    const feat = sameArtist ? null : canonicalArtistName(single.artist);
-    const fullTitle = feat ? `${title} & ${feat}` : title;
+    const feat = sameArtist ? info.featArtist ? canonicalArtistName(info.featArtist) : null : canonicalArtistName(single.artist);
+    const fullTitle = feat && !sameArtist ? `${title} & ${feat}` : title;
     const existing = tracks.find(
       (t) => t.albumId === parentId && stripFeat(t.title).toLowerCase() === title.toLowerCase()
     );
@@ -23724,7 +23763,7 @@ ${suffix}`;
     const single = singleOfTrack(t);
     const ok = await openConfirm(
       "\u0421\u043D\u044F\u0442\u044C \u043C\u0435\u0442\u043A\u0443 \xAB\u0441\u0438\u043D\u0433\u043B\xBB?",
-      single ? `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C. \u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u0441\u0438\u043D\u0433\u043B\u0430 <b>\xAB${esc(single.title)}\xBB</b> \u0438 \u0435\u0433\u043E \u043E\u0446\u0435\u043D\u043A\u0438 \u043E\u0441\u0442\u0430\u043D\u0443\u0442\u0441\u044F \u2014 \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E, \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0441\u0438\u043D\u0433\u043B\u0430.` : `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C.`
+      single ? `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C. \u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u0441\u0438\u043D\u0433\u043B\u0430 <b>\xAB${esc(singleDisplayTitle(single))}\xBB</b> \u0438 \u0435\u0433\u043E \u043E\u0446\u0435\u043D\u043A\u0438 \u043E\u0441\u0442\u0430\u043D\u0443\u0442\u0441\u044F \u2014 \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E, \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0441\u0438\u043D\u0433\u043B\u0430.` : `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C.`
     );
     if (!ok) return;
     try {
@@ -23749,7 +23788,7 @@ ${suffix}`;
     if (!single) return;
     const ok = await openConfirm(
       "\u041F\u0435\u0440\u0435\u0439\u0442\u0438 \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441\u0438\u043D\u0433\u043B\u0430?",
-      `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043E\u0442\u043C\u0435\u0447\u0435\u043D \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B <b>\xAB${esc(single.title)}\xBB</b>. \u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0435\u0433\u043E \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438?`,
+      `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043E\u0442\u043C\u0435\u0447\u0435\u043D \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B <b>\xAB${esc(singleDisplayTitle(single))}\xBB</b>. \u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0435\u0433\u043E \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438?`,
       false,
       { ok: "\u0434\u0430", cancel: "\u043D\u0430\u0437\u0430\u0434" }
     );

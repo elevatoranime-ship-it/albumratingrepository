@@ -73,7 +73,7 @@ const SEED_ALBUMS: UiAlbum[] = [
 /* синглы: один самостоятельный (со своей обложкой) и три, привязанных к альбомам */
 const SEED_SINGLES: UiAlbum[] = [
   { id: 's-nikes', title: 'Nikes', artist: 'Frank Ocean', year: 2016, cover: '', kind: 'single', parentId: 'blonde', tracksLocked: false, cohesion: null, albumType: null },
-  { id: 's-timeless', title: 'Timeless', artist: 'The Weeknd', year: 2024, cover: '', kind: 'single', parentId: 'hurry-up-tomorrow', tracksLocked: false, cohesion: null, albumType: null },
+  { id: 's-timeless', title: 'Timeless & Playboi Carti', artist: 'The Weeknd', year: 2024, cover: '', kind: 'single', parentId: 'hurry-up-tomorrow', tracksLocked: false, cohesion: null, albumType: null },
   { id: 's-mojo-jojo', title: 'MOJO JOJO', artist: 'Playboi Carti', year: 2025, cover: '', kind: 'single', parentId: 'music', parentIds: ['music', 'music-demo'], tracksLocked: false, cohesion: null, albumType: null },
   { id: 's-not-like-us', title: 'Not Like Us', artist: 'Kendrick Lamar', year: 2024, cover: 'covers/not-like-us.jpg', kind: 'single', parentId: null, tracksLocked: false, cohesion: null, albumType: null },
 ];
@@ -500,7 +500,9 @@ function renderSynchronizedData(changed: boolean): void {
   if (viewSingle.classList.contains('is-visible')) {
     const s = currentSingle();
     if (s) {
-      if (svTitle.textContent !== s.title) svTitle.textContent = s.title;
+      if (svTitle.textContent !== singleDisplayTitle(s)) svTitle.textContent = singleDisplayTitle(s);
+      const artistHtml = singleArtistHTML(s, 'sv__artist-link');
+      if (svArtist.innerHTML !== artistHtml) svArtist.innerHTML = artistHtml;
       if (svYear.textContent !== String(s.year)) svYear.textContent = String(s.year);
       if (svCoverImg.getAttribute('src') !== coverSrc(s)) renderSingleCover(s);
       renderSingleParents(s);
@@ -861,6 +863,58 @@ function featNameOf(title: string): string | null {
   if (!m) return null;
   const after = title.slice((m.index ?? 0) + m[0].length).trim();
   return after || null;
+}
+
+/* --- фит в названии сингла: название остаётся чистым, гостя показываем в блоке артиста --- */
+interface SingleTitleInfo { title: string; featArtist: string | null; featAmp: boolean; }
+
+/**
+ * «Название & Гость» / «Название (feat. Гость)» / «Название ft. Гость»
+ * → чистое название + имя гостя. Запись («&» или «feat.») сохраняется для блока артиста.
+ */
+function singleTitleInfo(a: UiAlbum): SingleTitleInfo {
+  const raw = a.title.trim();
+  const m = FEAT_RE.exec(raw);
+  if (!m) return { title: raw, featArtist: null, featAmp: false };
+  const title = raw.slice(0, m.index ?? 0).replace(/[\s([]+$/, '').trim();
+  const featArtist = raw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, '').trim();
+  if (!title || !featArtist) return { title: raw, featArtist: null, featAmp: false };
+  return { title, featArtist, featAmp: m[0] === '&' };
+}
+
+/** Название сингла без фита — для заголовков, карточек и рейтинга. */
+function singleDisplayTitle(a: UiAlbum): string {
+  return a.kind === 'single' ? singleTitleInfo(a).title : a.title;
+}
+
+/** Дополнение к артисту сингла: « & Гость» или « (feat. Гость)»; «ft.» показываем как «feat.». */
+function singleFeatSuffix(a: UiAlbum): string {
+  if (a.kind !== 'single') return '';
+  const info = singleTitleInfo(a);
+  if (!info.featArtist) return '';
+  return info.featAmp ? ` & ${info.featArtist}` : ` (feat. ${info.featArtist})`;
+}
+
+/** Артист сингла одним текстом: «Артист», «Артист & Гость» или «Артист (feat. Гость)». */
+function singleArtistText(a: UiAlbum): string {
+  return `${a.artist}${singleFeatSuffix(a)}`;
+}
+
+/** Блок артиста сингла: основной исполнитель и гость — ссылки на профили. */
+function singleArtistHTML(a: UiAlbum, linkClass: string): string {
+  const main = `<a class="${linkClass}" data-artist="${esc(a.artist)}">${esc(a.artist)}</a>`;
+  if (a.kind !== 'single') return main;
+  const info = singleTitleInfo(a);
+  if (!info.featArtist) return main;
+  const guest = `<a class="${linkClass}" data-artist="${esc(info.featArtist)}">${esc(info.featArtist)}</a>`;
+  return info.featAmp
+    ? `${main} &amp; ${guest}`
+    : `${main} (feat. ${guest})`;
+}
+
+/** «Артист (feat. Гость) — Название» для подписей и диалогов. */
+function releaseFullName(a: UiAlbum): string {
+  return `${singleArtistText(a)} — ${singleDisplayTitle(a)}`;
 }
 
 /* все артисты: основные из альбомов и синглов + фиты из треков и названий синглов */
@@ -1515,7 +1569,7 @@ function openAlbumCoverEditor(): void {
   albumCoverTitle.textContent = al.kind === 'single'
     ? (al.cover ? 'Изменить обложку сингла' : 'Обложка сингла')
     : (al.cover ? 'Изменить обложку' : 'Добавить обложку');
-  albumCoverName.textContent = `${al.artist} — ${al.title}`;
+  albumCoverName.textContent = releaseFullName(al);
   resetAlbumCoverDraft();
   albumCoverDialog.showModal();
   // Фиксируем начальные стили после showModal(), чтобы окно и фон плавно появились.
@@ -2214,7 +2268,7 @@ function renderTracks(enterId?: string): void {
         <span class="track__handle"${canOrder ? ' draggable="true"' : ''} aria-hidden="true">${GRIP_SVG}</span>
         <span class="track__num">${i + 1}</span>
         <span class="track__title">${trackTitleHTML(t)}</span>
-        ${single ? `<button class="track__single" type="button" title="Открыть страницу сингла «${esc(single.title)}»">сингл</button>` : ''}
+        ${single ? `<button class="track__single" type="button" title="Открыть страницу сингла «${esc(singleDisplayTitle(single))}»">сингл</button>` : ''}
         ${peerBadge}
         ${t.locked ? `<span class="track__lock" title="название зафиксировано">${LOCK_SVG}</span>` : ''}
         <span class="track__avg" data-tid="${t.id}" title="средняя по треку">${tavgStr}</span>
@@ -2793,17 +2847,18 @@ function makeAlbumCard(a: UiAlbum, featScore: number | null = null, animate = fa
   const avgStr = avg === null ? '—' : fmt(avg);
   const n = trackCountOf(a.id);
   const parent = single ? parentOf(a) : undefined;
+  const title = single ? singleDisplayTitle(a) : a.title;
   el.innerHTML = `
     <div class="album__cover">
-      <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} — ${esc(a.title)}" loading="lazy">
+      <img src="${esc(coverSrc(a))}" alt="${esc(singleArtistText(a))} — ${esc(title)}" loading="lazy">
       <span class="album__year">${a.year}</span>
       ${single ? '<span class="album__badge">сингл</span>' : ''}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ''}
       ${featScore !== null ? `<span class="album__featbadge">фит ${fmt(featScore)}</span>` : ''}
     </div>
     <div class="album__body">
-      <h3 class="album__title">${esc(a.title)}</h3>
-      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</a></p>
+      <h3 class="album__title">${esc(title)}</h3>
+      <p class="album__artist">${singleArtistHTML(a, 'album__artist-link')}</p>
       ${parent ? `<div class="album__parent">${parentLinksHtml(a)}</div>` : ''}
       <div class="album__rating">
         <div class="album__avg">
@@ -2842,15 +2897,16 @@ function makeSingleCard(s: UiAlbum, animate = false, index = 0): HTMLElement {
   const parent = parentOf(s);
   const votes = singleVotesOf(s.id);
   const pending = pendingCountOf(s.id);
+  const title = singleDisplayTitle(s);
   el.innerHTML = `
     <div class="album__cover">
-      <img src="${esc(coverSrc(s))}" alt="${esc(s.artist)} — ${esc(s.title)}" loading="lazy">
+      <img src="${esc(coverSrc(s))}" alt="${esc(singleArtistText(s))} — ${esc(title)}" loading="lazy">
       <span class="album__year">${s.year}</span>
       <span class="album__badge">сингл</span>
     </div>
     <div class="album__body">
-      <h3 class="album__title">${esc(s.title)}</h3>
-      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a></p>
+      <h3 class="album__title">${esc(title)}</h3>
+      <p class="album__artist">${singleArtistHTML(s, 'album__artist-link')}</p>
       ${parent ? `<div class="album__parent">${parentLinksHtml(s)}</div>` : ''}
       <div class="album__rating">
         <div class="album__avg">
@@ -2889,7 +2945,7 @@ function makeSingleRow(s: UiAlbum): HTMLElement {
   el.innerHTML = `
     <span class="scard__cover"><img src="${esc(coverSrc(s))}" alt="" loading="lazy"></span>
     <span class="scard__body">
-      <span class="scard__title">${esc(s.title)}</span>
+      <span class="scard__title">${esc(singleDisplayTitle(s))}</span>
       <span class="scard__meta">${s.year} · ${votes} ${votesPlural(votes)}</span>
     </span>
     <span class="scard__score">${avg === null ? '—' : fmt(avg)}</span>`;
@@ -3001,10 +3057,12 @@ function singleRanks(): SingleRank[] {
       pending: pendingCountOf(s.id),
     }))
     .sort((a, b) => {
-      if (a.score === null && b.score === null) return a.single.title.localeCompare(b.single.title, 'ru');
+      const ta = singleDisplayTitle(a.single);
+      const tb = singleDisplayTitle(b.single);
+      if (a.score === null && b.score === null) return ta.localeCompare(tb, 'ru');
       if (a.score === null) return 1;
       if (b.score === null) return -1;
-      return b.score - a.score || a.single.title.localeCompare(b.single.title, 'ru');
+      return b.score - a.score || ta.localeCompare(tb, 'ru');
     });
 }
 
@@ -3023,14 +3081,14 @@ function renderSingleRank(): void {
     const li = document.createElement('li');
     li.className = 'rank' + (pos <= 3 && r.score !== null ? ` rank--${pos}` : '') + (r.score === null ? ' is-unranked' : '');
     const parent = parentOf(r.single);
-    const meta: string[] = [String(r.single.year), r.single.artist];
+    const meta: string[] = [String(r.single.year), singleArtistText(r.single)];
     meta.push(parent ? `к альбому «${parent.title}»` : 'вне альбома');
     if (r.score === null) meta.push(singleRankReason(r.single.id));
     li.innerHTML = `
       <span class="rank__pos">${pos}</span>
       <span class="rank__ava"><img src="${esc(coverSrc(r.single))}" alt="" loading="lazy"></span>
       <div class="rank__body">
-        <span class="rank__name">${esc(r.single.title)}</span>
+        <span class="rank__name">${esc(singleDisplayTitle(r.single))}</span>
         <span class="rank__meta">${esc(meta.join(' · '))}</span>
       </div>
       <span class="rank__score">${r.score === null ? '—' : fmt(r.score)}</span>`;
@@ -3308,7 +3366,7 @@ function currentSingle(): UiAlbum | undefined {
 function renderSingleCover(s: UiAlbum): void {
   const src = coverSrc(s);
   if (svCoverImg.getAttribute('src') !== src) svCoverImg.src = src;
-  svCoverImg.alt = `${s.artist} — ${s.title}`;
+  svCoverImg.alt = releaseFullName(s);
   svCoverImg.style.opacity = ''; // сброс после анимации осыпания
   svCoverEdit.hidden = !currentUser;
   const parent = parentOf(s);
@@ -3416,8 +3474,8 @@ function handleParentClick(e: MouseEvent): boolean {
 }
 
 function renderSinglePage(s: UiAlbum): void {
-  svTitle.textContent = s.title;
-  svArtist.innerHTML = `<a class="sv__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a>`;
+  svTitle.textContent = singleDisplayTitle(s);
+  svArtist.innerHTML = singleArtistHTML(s, 'sv__artist-link');
   svYear.textContent = String(s.year);
   renderSingleCover(s);
 
@@ -3838,7 +3896,7 @@ async function handleDeleteSingle(): Promise<void> {
   if (!s) return;
   const ok = await openConfirm(
     'Удалить сингл?',
-    `Сингл <b>«${esc(s.title)}»</b> — ${esc(s.artist)} будет удалён <b>навсегда</b> вместе с оценками. Метка «сингл» с трека снимется. Это действие нельзя отменить.`,
+    `Сингл <b>«${esc(singleDisplayTitle(s))}»</b> — ${esc(singleArtistText(s))} будет удалён <b>навсегда</b> вместе с оценками. Метка «сингл» с трека снимется. Это действие нельзя отменить.`,
     true,
   );
   if (!ok) return;
@@ -3948,7 +4006,7 @@ function openSingleLinkEditor(): void {
   if (!s || singleLinkDialog.open) return;
   singleLinkEditingId = s.id;
   singleLinkInput.value = parentsOf(s).map((a) => quoteAlbumToken(albumInputLabel(a))).join(', ');
-  singleLinkName.textContent = `${s.artist} — ${s.title}`;
+  singleLinkName.textContent = releaseFullName(s);
   singleLinkError.textContent = '';
   singleLinkError.classList.remove('is-visible');
   singleLinkSave.classList.remove('is-loading');
@@ -4067,10 +4125,17 @@ async function attachSingleTrack(singleId: string, parentId: string): Promise<st
   if (al.tracksLocked) {
     return 'Сингл привязан, но треки альбома зафиксированы — в списке треков он не появился';
   }
-  const title = single.title.trim();
+  // Название трека строим от чистого названия сингла: фит из названия сингла
+  // живёт в блоке артиста сингла, а не в названии трека чужого альбома.
+  const info = singleTitleInfo(single);
+  const title = info.title;
   const sameArtist = al.artist.trim().toLowerCase() === single.artist.trim().toLowerCase();
-  const feat = sameArtist ? null : canonicalArtistName(single.artist);
-  const fullTitle = feat ? `${title} & ${feat}` : title;
+  // Свой альбом: гость из названия остаётся фит-ссылкой на треке.
+  // Чужой альбом: совместка «Название & Артист сингла».
+  const feat = sameArtist
+    ? (info.featArtist ? canonicalArtistName(info.featArtist) : null)
+    : canonicalArtistName(single.artist);
+  const fullTitle = feat && !sameArtist ? `${title} & ${feat}` : title;
 
   const existing = tracks.find(
     (t) => t.albumId === parentId && stripFeat(t.title).toLowerCase() === title.toLowerCase(),
@@ -4170,7 +4235,7 @@ async function unmarkTrackAsSingle(t: UiTrack): Promise<void> {
   const ok = await openConfirm(
     'Снять метку «сингл»?',
     single
-      ? `Трек <b>«${esc(t.title)}»</b> перестанет быть синглом. Карточка сингла <b>«${esc(single.title)}»</b> и его оценки останутся — удалить его можно отдельно, на странице сингла.`
+      ? `Трек <b>«${esc(t.title)}»</b> перестанет быть синглом. Карточка сингла <b>«${esc(singleDisplayTitle(single))}»</b> и его оценки останутся — удалить его можно отдельно, на странице сингла.`
       : `Трек <b>«${esc(t.title)}»</b> перестанет быть синглом.`,
   );
   if (!ok) return;
@@ -4198,7 +4263,7 @@ async function promptSingleFromTrack(t: UiTrack): Promise<void> {
   if (!single) return;
   const ok = await openConfirm(
     'Перейти на страницу сингла?',
-    `Трек <b>«${esc(t.title)}»</b> отмечен как сингл <b>«${esc(single.title)}»</b>. Открыть его страницу с оценками?`,
+    `Трек <b>«${esc(t.title)}»</b> отмечен как сингл <b>«${esc(singleDisplayTitle(single))}»</b>. Открыть его страницу с оценками?`,
     false,
     { ok: 'да', cancel: 'назад' },
   );

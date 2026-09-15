@@ -246,6 +246,62 @@ test('страница сингла: чужая неподтверждённая
   expect(upserts[upserts.length - 1].body).toMatchObject({ album_id: SINGLE.id, profile_id: ME.id, score: 9, confirmed: true });
 });
 
+test('фит из названия сингла показывается в блоке артиста, а не в названии', async ({ page }) => {
+  const cloud = backend();
+  cloud.state.albums.push(
+    { ...SOLO, id: 'single-collab', title: 'Мегахит & Гость', artist: 'Основной', year: 2025 },
+    { ...SOLO, id: 'single-feat', title: 'Антология (ft. Гость)', artist: 'Основной', year: 2025 },
+  );
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+
+  // карточки на главной: название чистое, гостя показывает строка артиста
+  const collab = cardByTitle(page, 'Мегахит');
+  await expect(collab.locator('.album__title')).toHaveText('Мегахит');
+  await expect(collab.locator('.album__artist')).toHaveText('Основной & Гость');
+  const feat = cardByTitle(page, 'Антология');
+  await expect(feat.locator('.album__title')).toHaveText('Антология');
+  await expect(feat.locator('.album__artist')).toHaveText('Основной (feat. Гость)');
+
+  // страница сингла: «&» остаётся «&», оба имени — ссылки на профили
+  await collab.locator('.album__title').click();
+  await expect(page.locator('#sv-title')).toHaveText('Мегахит');
+  await expect(page.locator('#sv-artist')).toHaveText('Основной & Гость');
+  const guest = page.locator('#sv-artist a').nth(1);
+  await expect(guest).toHaveAttribute('data-artist', 'Гость');
+  await guest.click();
+  await expect(page.locator('#view-artist')).toHaveClass(/is-visible/);
+  await expect(page.locator('#artist-name')).toHaveText('Гость');
+  // гость видит совместный сингл в разделе «при участии» — с чистым названием
+  await expect(page.locator('#artist-feat')).toContainText('Мегахит');
+
+  // «ft.» в названии на экране сингла автоматически показывается как «feat.»
+  await page.locator('#artist-back').click();
+  await feat.locator('.album__title').click();
+  await expect(page.locator('#sv-title')).toHaveText('Антология');
+  await expect(page.locator('#sv-artist')).toHaveText('Основной (feat. Гость)');
+
+  // привязка совместки к чужому альбому: трек создаётся от чистого названия,
+  // без двойного «& Гость & Артист»
+  await page.locator('#sv-parent-edit').click();
+  await expect(page.locator('#single-link-name')).toHaveText('Основной & Гость — Мегахит');
+  await page.locator('#single-link-input').fill('Общий');
+  await page.locator('#single-link-list .combo__item').first().click();
+  await page.locator('#single-link-save').click();
+  await expect(page.locator('#single-link-dialog')).not.toBeVisible();
+  const trackInsert = cloud.state.writes.filter((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/tracks')).pop();
+  expect(trackInsert?.body).toMatchObject({ album_id: ALBUM.id, title: 'Мегахит & Основной', feat_artist: 'Основной', single_id: 'single-collab' });
+
+  // рейтинг синглов: чистые названия, полный состав исполнителей — в подписи
+  await page.locator('#single-back').click();
+  await page.locator('#artists-btn').click();
+  await expect(page.locator('#view-srank')).toHaveClass(/is-visible/);
+  const row = page.locator('#single-rank-list .rank').filter({ hasText: 'Мегахит' });
+  await expect(row.locator('.rank__name')).toHaveText('Мегахит');
+  await expect(row.locator('.rank__meta')).toContainText('Основной & Гость');
+});
+
 test('трек-сингл и релиз делят оценку: подтверждение на альбоме видно на сингле', async ({ page }) => {
   const cloud = backend();
   await cloud.install(page);

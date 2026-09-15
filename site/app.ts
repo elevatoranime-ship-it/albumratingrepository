@@ -2056,6 +2056,17 @@ async function toggleRatingConfirm(trackId: string): Promise<void> {
   }
 }
 
+/* Иконка кнопки подтверждения перерисовывается только вместе с состоянием.
+   Если переписать innerHTML кнопки, по которой уже прошёл mousedown (например, её
+   нажали сразу после ввода балла — синхронизация успевает сработать на blur поля),
+   то узел под курсором исчезнет и браузер не пришлёт click: кнопка «не нажимается». */
+function setConfirmIcon(btn: HTMLButtonElement, confirmed: boolean): void {
+  const icon = confirmed ? 'pencil' : 'check';
+  if (btn.dataset.icon === icon) return;
+  btn.dataset.icon = icon;
+  btn.innerHTML = confirmed ? PENCIL_SVG : CHECK_SVG;
+}
+
 function applyRatingLockState(li: HTMLLIElement, confirmed: boolean): void {
   li.classList.toggle('is-rated-locked', confirmed);
   const slider = li.querySelector<HTMLInputElement>('.track__slider');
@@ -2064,7 +2075,7 @@ function applyRatingLockState(li: HTMLLIElement, confirmed: boolean): void {
   if (slider) slider.disabled = confirmed;
   if (num) num.disabled = confirmed;
   if (btn) {
-    btn.innerHTML = confirmed ? PENCIL_SVG : CHECK_SVG;
+    setConfirmIcon(btn, confirmed);
     btn.title = confirmed ? 'Изменить оценку' : 'Подтвердить оценку';
     btn.setAttribute('aria-label', confirmed ? 'Изменить оценку' : 'Подтвердить оценку');
   }
@@ -3423,7 +3434,7 @@ function syncSingleControls(): void {
   svSlider.disabled = confirmed;
   svNum.disabled = confirmed;
   svConfirmBtn.disabled = !mine || confirmingSingles.has(s.id);
-  svConfirmBtn.innerHTML = confirmed ? PENCIL_SVG : CHECK_SVG;
+  setConfirmIcon(svConfirmBtn, confirmed);
   const label = confirmed ? 'Изменить оценку' : 'Подтвердить оценку';
   svConfirmBtn.title = label;
   svConfirmBtn.setAttribute('aria-label', label);

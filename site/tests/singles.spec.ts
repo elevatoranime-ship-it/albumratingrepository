@@ -206,70 +206,23 @@ test('страница сингла: чужая неподтверждённая
   await expect(page.locator('#sv-slider')).toBeEnabled();
   await expect(page.locator('#sv-confirm-state')).toContainText('не подтверждён');
   await expect(page.locator('.toast')).toHaveText('Оценку можно менять — сингл пока не в рейтинге');
-  const tFill = Date.now();
   await page.locator('#sv-num').fill('9');
   await expect(page.locator('#sv-avg')).toHaveText('7.5');    // (9 + 6) / 2 — черновик виден на странице
-  const tAfterAvg = Date.now();
-  // ВРЕМЕННАЯ диагностика: события, точка клика, состояние кнопки
+  // Регресс: раньше балл вводили в поле и сразу жали ✓ — синхронизация на blur пересоздавала
+  // иконку кнопки (внутренний svg), узел под курсором исчезал между mousedown и mouseup,
+  // и браузер вообще не присылал click. Теперь иконка меняется только вместе с состоянием.
   await page.evaluate(() => {
-    type Row = Record<string, unknown>;
-    const log: Row[] = [];
-    (window as unknown as { __diag: Row[] }).__diag = log;
-    const describe = (el: Element | null | undefined) => (el ? `${el.tagName.toLowerCase()}#${el.id}.${el.className}` : 'null');
-    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
-      document.addEventListener(type, (event) => {
-        const me = event as MouseEvent;
-        const btn = document.querySelector('#sv-confirm-btn');
-        const rect = btn?.getBoundingClientRect();
-        log.push({
-          t: type,
-          target: describe(me.target as Element | null),
-          point: [Math.round(me.clientX), Math.round(me.clientY)],
-          hit: describe(document.elementFromPoint(me.clientX, me.clientY)),
-          btnRect: rect ? [Math.round(rect.x), Math.round(rect.y), Math.round(rect.width), Math.round(rect.height)] : null,
-          active: describe(document.activeElement),
-        });
-      }, true);
-    }
-    const btn0 = document.querySelector('#sv-confirm-btn');
-    if (btn0) {
-      log.push({ t: 'before', count: document.querySelectorAll('#sv-confirm-btn').length, disabled: (btn0 as HTMLButtonElement).disabled, label: btn0.getAttribute('aria-label') });
-      new MutationObserver((records) => {
-        for (const r of records) log.push({ t: 'mutation', attr: r.attributeName, now: (r.target as Element).getAttribute(r.attributeName ?? '') });
-      }).observe(btn0, { attributes: true });
-      // следим за смещением кнопки все 1.5 с после клика
-      const ticks: string[] = [];
-      const tick = () => {
-        const b = document.querySelector('#sv-confirm-btn');
-        const rr = b?.getBoundingClientRect();
-        ticks.push(rr ? `${Math.round(rr.x)},${Math.round(rr.y)}` : 'нет');
-      };
-      tick();
-      const timer = setInterval(tick, 100);
-      setTimeout(() => { clearInterval(timer); log.push({ t: 'rects', ticks }); }, 1500);
-    }
+    const nodes: { down: Element | null; up: Element | null } = { down: null, up: null };
+    (window as unknown as { __clickNodes: typeof nodes }).__clickNodes = nodes;
+    const btn = document.querySelector('#sv-confirm-btn');
+    btn?.addEventListener('pointerdown', () => { nodes.down = document.querySelector('#sv-confirm-btn svg'); }, true);
+    btn?.addEventListener('pointerup', () => { nodes.up = document.querySelector('#sv-confirm-btn svg'); }, true);
   });
   await page.locator('#sv-confirm-btn').click();
-  const tClick = Date.now();
-  await page.waitForTimeout(1500);
-  const diag = await page.evaluate(() => ({
-    label: document.querySelector('#sv-confirm-btn')?.getAttribute('aria-label') ?? null,
-    btnDisabled: (document.querySelector('#sv-confirm-btn') as HTMLButtonElement | null)?.disabled ?? null,
-    state: document.querySelector('#sv-confirm-state')?.textContent ?? null,
-    avg: document.querySelector('#sv-avg')?.textContent ?? null,
-    num: (document.querySelector('#sv-num') as HTMLInputElement | null)?.value ?? null,
-    sliderDisabled: (document.querySelector('#sv-slider') as HTMLInputElement | null)?.disabled ?? null,
-    toast: document.querySelector('.toast')?.textContent ?? null,
-    active: document.activeElement ? `${document.activeElement.tagName.toLowerCase()}#${document.activeElement.id}` : null,
-    log: (window as unknown as { __diag?: unknown[] }).__diag ?? [],
-  }));
-  console.log('::warning title=diag-single::' + JSON.stringify({
-    timing: { avgAfterFill: tAfterAvg - tFill, clickAfterAvg: tClick - tAfterAvg },
-    diag,
-    rows: cloud.state.singleRatings,
-    writes: cloud.state.writes.filter((w) => w.path.includes('single_ratings')),
-    pageErrors: pageErrors.get(page) ?? [],
-  }));
+  expect(await page.evaluate(() => {
+    const nodes = (window as unknown as { __clickNodes?: { down: Element | null; up: Element | null } }).__clickNodes;
+    return Boolean(nodes?.down) && nodes?.down === nodes?.up;
+  })).toBe(true);
   await expect(page.locator('#sv-confirm-btn')).toHaveAttribute('aria-label', 'Изменить оценку');
   await expect(page.locator('#sv-slider')).toBeDisabled();
   // второй участник ещё не подтвердил — релиз пока вне рейтинга, и уведомление об этом честное

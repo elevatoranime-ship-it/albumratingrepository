@@ -21774,6 +21774,12 @@ ${suffix}`;
       }
     }
   }
+  function setConfirmIcon(btn, confirmed) {
+    const icon = confirmed ? "pencil" : "check";
+    if (btn.dataset.icon === icon) return;
+    btn.dataset.icon = icon;
+    btn.innerHTML = confirmed ? PENCIL_SVG : CHECK_SVG;
+  }
   function applyRatingLockState(li, confirmed) {
     li.classList.toggle("is-rated-locked", confirmed);
     const slider = li.querySelector(".track__slider");
@@ -21782,7 +21788,7 @@ ${suffix}`;
     if (slider) slider.disabled = confirmed;
     if (num) num.disabled = confirmed;
     if (btn) {
-      btn.innerHTML = confirmed ? PENCIL_SVG : CHECK_SVG;
+      setConfirmIcon(btn, confirmed);
       btn.title = confirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443";
       btn.setAttribute("aria-label", confirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443");
     }
@@ -23048,7 +23054,7 @@ ${suffix}`;
     svSlider.disabled = confirmed;
     svNum.disabled = confirmed;
     svConfirmBtn.disabled = !mine || confirmingSingles.has(s.id);
-    svConfirmBtn.innerHTML = confirmed ? PENCIL_SVG : CHECK_SVG;
+    setConfirmIcon(svConfirmBtn, confirmed);
     const label = confirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443";
     svConfirmBtn.title = label;
     svConfirmBtn.setAttribute("aria-label", label);

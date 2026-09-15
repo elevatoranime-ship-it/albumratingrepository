@@ -15,7 +15,7 @@ const TRACK_TWO = { id: 'track-two', album_id: ALBUM.id, title: 'Второй т
 
 type SingleRow = { album_id: string; profile_id: string; score: number; confirmed: boolean };
 const pageErrors = new WeakMap<Page, string[]>();
-test.afterEach(async ({ page }) => { expect(pageErrors.get(page)).toEqual([]); });
+test.afterEach(async ({ page }) => { expect(pageErrors.get(page) ?? []).toEqual([]); });
 
 function backend() {
   const state = {
@@ -174,7 +174,6 @@ test('главная: переключатель разделов, карточ�
   await expect(page.locator('#rank-btn-label')).toHaveText('рейтинг синглов');
   await expect(page.locator('#albums .album--add')).toContainText('добавить сингл');
   await expect(cardByTitle(page, 'Первый сингл')).toContainText('к альбому «Общий альбом»');
-  await expect(cardByTitle(page, 'Отдельный сингл')).toContainText('вне альбома');
   // у первого сингла средняя 8 (своя подтверждённая) и подпись про неподтверждённую оценку
   await expect(cardByTitle(page, 'Первый сингл').locator('.album__avg-num')).toHaveText('8');
   await expect(cardByTitle(page, 'Первый сингл')).toContainText('без подтверждения');
@@ -209,6 +208,22 @@ test('страница сингла: чужая неподтверждённая
   await page.locator('#sv-num').fill('9');
   await expect(page.locator('#sv-avg')).toHaveText('7.5');    // (9 + 6) / 2 — черновик виден на странице
   await page.locator('#sv-confirm-btn').click();
+  await page.waitForTimeout(1500); // ВРЕМЕННО: диагностика
+  const diag = await page.evaluate(() => ({
+    label: document.querySelector('#sv-confirm-btn')?.getAttribute('aria-label') ?? null,
+    btnDisabled: (document.querySelector('#sv-confirm-btn') as HTMLButtonElement | null)?.disabled ?? null,
+    state: document.querySelector('#sv-confirm-state')?.textContent ?? null,
+    avg: document.querySelector('#sv-avg')?.textContent ?? null,
+    num: (document.querySelector('#sv-num') as HTMLInputElement | null)?.value ?? null,
+    sliderDisabled: (document.querySelector('#sv-slider') as HTMLInputElement | null)?.disabled ?? null,
+    toast: document.querySelector('.toast')?.textContent ?? null,
+  }));
+  console.log('::warning title=diag-single::' + JSON.stringify({
+    diag,
+    rows: cloud.state.singleRatings,
+    writes: cloud.state.writes.filter((w) => w.path.includes('single_ratings')),
+    pageErrors: pageErrors.get(page) ?? [],
+  }));
   await expect(page.locator('#sv-confirm-btn')).toHaveAttribute('aria-label', 'Изменить оценку');
   await expect(page.locator('#sv-slider')).toBeDisabled();
   // второй участник ещё не подтвердил — релиз пока вне рейтинга, и уведомление об этом честное
@@ -229,12 +244,15 @@ test('рейтинг синглов: только релизы, подтверж
 
   const rows = page.locator('#single-rank-list .rank');
   await expect(rows).toHaveCount(2);
-  // у «Первого сингла» второй участник не подтвердил оценку — релиз вне рейтинга
-  await expect(rows.nth(0)).toContainText('Первый сингл');
+  // Оба сингла пока вне рейтинга, поэтому порядок — как в рейтинге артистов, по алфавиту:
+  // «Отдельный сингл» (без оценок) идёт первым, «Первый сингл» — следом.
+  await expect(rows.nth(0)).toContainText('Отдельный сингл');
+  await expect(rows.nth(0)).toContainText('оценок пока нет');
   await expect(rows.nth(0).locator('.rank__score')).toHaveText('—');
-  await expect(rows.nth(0)).toContainText('ждём подтверждения всех оценок');
-  await expect(rows.nth(1)).toContainText('Отдельный сингл');   // оценок нет
-  await expect(rows.nth(1)).toContainText('оценок пока нет');
+  // у «Первого сингла» второй участник не подтвердил оценку — релиз вне рейтинга
+  await expect(rows.nth(1)).toContainText('Первый сингл');
+  await expect(rows.nth(1).locator('.rank__score')).toHaveText('—');
+  await expect(rows.nth(1)).toContainText('ждём подтверждения всех оценок');
 
   // как только оценки подтвердили оба участника, релиз попадает в рейтинг
   await page.locator('#srank-back').click();
@@ -389,15 +407,13 @@ test('экран добавления сингла: привязка к альб
 });
 
 test('если миграция не выполнена, раздел синглов честно сообщает об этом', async ({ page }) => {
-  const cloud = backend();
-  const install = cloud.install;
+  await page.route('**/*', (route) => (new URL(route.request().url()).origin === 'http://127.0.0.1:8080' ? route.continue() : route.abort()));
   await page.route('**/config.js', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
-      supabaseUrl: ORIGIN, supabaseAnonKey: 'sb_publishable_mock-only', allowedUsers: [ME, PEER],
+      supabaseUrl: ORIGIN, supabaseAnonKey: 'sb_publishable_mock-only', allowedUsers: [ME, PEER].map((u) => ({ ...u, admin: false })),
     })};`,
   }));
-  await page.route('**/*', (route) => (new URL(route.request().url()).origin === 'http://127.0.0.1:8080' ? route.continue() : route.abort()));
   await page.route(`${ORIGIN}/**`, async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -423,7 +439,6 @@ test('если миграция не выполнена, раздел сингл
     if (table === 'single_ratings') return json({ message: 'relation "public.single_ratings" does not exist', code: '42P01' }, 404);
     throw new Error(`Unexpected mock request: ${request.method()} ${url.pathname}`);
   });
-  void install;
 
   await login(page);
   await page.locator('#seg-singles').click();

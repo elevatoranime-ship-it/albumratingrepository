@@ -135,8 +135,63 @@ do $$ begin
   alter publication supabase_realtime add table public.profiles;
 exception when others then raise notice 'realtime profiles skipped: %', SQLERRM; end $$;
 
--- 8) Проверка результата
-select column_name, data_type, column_default
+-- 8) СИНГЛЫ: тип релиза, привязка к альбому, метка трека и оценки синглов.
+--    Синглы живут в той же таблице albums (kind = 'single').
+
+alter table public.albums
+  add column if not exists kind text not null default 'album';
+alter table public.albums
+  add column if not exists parent_album_id uuid references public.albums(id) on delete set null;
+
+do $$ begin
+  alter table public.albums
+    add constraint albums_kind_check check (kind in ('album', 'single'));
+exception when duplicate_object then null; end $$;
+
+-- метка «трек — сингл» (ссылка на карточку сингла)
+alter table public.tracks
+  add column if not exists single_id uuid references public.albums(id) on delete set null;
+
+-- уникальность теперь с учётом типа релиза: одноимённые альбом и сингл возможны
+drop index if exists public.albums_unique;
+create unique index if not exists albums_unique_kind
+  on public.albums (lower(artist), lower(title), kind);
+
+-- оценки синглов (одна оценка на релиз)
+create table if not exists public.single_ratings (
+  album_id   uuid not null references public.albums(id) on delete cascade,
+  profile_id uuid not null references public.profiles(id) on delete cascade,
+  score      numeric(4,2) not null check (score >= 0 and score <= 10),
+  confirmed  boolean not null default false,
+  updated_at timestamptz not null default now(),
+  primary key (album_id, profile_id)
+);
+
+alter table public.single_ratings enable row level security;
+drop policy if exists "single_ratings_read"   on public.single_ratings;
+drop policy if exists "single_ratings_insert" on public.single_ratings;
+drop policy if exists "single_ratings_update" on public.single_ratings;
+drop policy if exists "single_ratings_delete" on public.single_ratings;
+create policy "single_ratings_read"   on public.single_ratings for select using (auth.role() = 'authenticated');
+create policy "single_ratings_insert" on public.single_ratings for insert with check (auth.uid() = profile_id);
+create policy "single_ratings_update" on public.single_ratings for update using (auth.uid() = profile_id);
+create policy "single_ratings_delete" on public.single_ratings for delete using (auth.uid() = profile_id);
+
+grant select, insert, update, delete on public.single_ratings to authenticated;
+
+-- Realtime: оценки синглов приходят так же, как оценки треков.
+do $$ begin
+  alter publication supabase_realtime add table public.single_ratings;
+exception when others then raise notice 'realtime single_ratings skipped: %', SQLERRM; end $$;
+
+-- 9) Проверка результата: новые поля релизов и таблица оценок синглов
+select table_name, column_name, data_type, column_default
 from information_schema.columns
-where table_schema = 'public' and table_name = 'ratings'
-order by ordinal_position;
+where table_schema = 'public'
+  and (
+    table_name = 'ratings'
+    or (table_name = 'albums' and column_name in ('kind', 'parent_album_id'))
+    or (table_name = 'tracks' and column_name = 'single_id')
+    or table_name = 'single_ratings'
+  )
+order by table_name, ordinal_position;

@@ -20013,25 +20013,51 @@ ${suffix}`;
     return sb;
   }
   var SEED_ALBUMS = [
-    { id: "music", title: "MUSIC", artist: "Playboi Carti", year: 2025, cover: "covers/music.jpg", tracksLocked: false, cohesion: null, albumType: "album" },
-    { id: "afterlyfe", title: "Aft\xEBrLyfe", artist: "Yeat", year: 2023, cover: "covers/afterlyfe.jpg", tracksLocked: false, cohesion: null, albumType: "album" },
-    { id: "chromakopia", title: "CHROMAKOPIA", artist: "Tyler, The Creator", year: 2024, cover: "covers/chromakopia.jpg", tracksLocked: false, cohesion: null, albumType: "album" },
-    { id: "gnx", title: "GNX", artist: "Kendrick Lamar", year: 2024, cover: "covers/gnx.jpg", tracksLocked: false, cohesion: null, albumType: "album" },
-    { id: "hurry-up-tomorrow", title: "Hurry Up Tomorrow", artist: "The Weeknd", year: 2025, cover: "covers/hurry-up-tomorrow.jpg", tracksLocked: false, cohesion: null, albumType: "album" },
-    { id: "blonde", title: "Blonde", artist: "Frank Ocean", year: 2016, cover: "covers/blonde.jpg", tracksLocked: false, cohesion: null, albumType: "album" }
+    { id: "music", title: "MUSIC", artist: "Playboi Carti", year: 2025, cover: "covers/music.jpg", kind: "album", parentId: null, tracksLocked: false, cohesion: null, albumType: "album" },
+    { id: "afterlyfe", title: "Aft\xEBrLyfe", artist: "Yeat", year: 2023, cover: "covers/afterlyfe.jpg", kind: "album", parentId: null, tracksLocked: false, cohesion: null, albumType: "album" },
+    { id: "chromakopia", title: "CHROMAKOPIA", artist: "Tyler, The Creator", year: 2024, cover: "covers/chromakopia.jpg", kind: "album", parentId: null, tracksLocked: false, cohesion: null, albumType: "album" },
+    { id: "gnx", title: "GNX", artist: "Kendrick Lamar", year: 2024, cover: "covers/gnx.jpg", kind: "album", parentId: null, tracksLocked: false, cohesion: null, albumType: "album" },
+    { id: "hurry-up-tomorrow", title: "Hurry Up Tomorrow", artist: "The Weeknd", year: 2025, cover: "covers/hurry-up-tomorrow.jpg", kind: "album", parentId: null, tracksLocked: false, cohesion: null, albumType: "album" },
+    { id: "blonde", title: "Blonde", artist: "Frank Ocean", year: 2016, cover: "covers/blonde.jpg", kind: "album", parentId: null, tracksLocked: false, cohesion: null, albumType: "album" }
   ];
+  var SEED_SINGLES = [
+    { id: "s-nikes", title: "Nikes", artist: "Frank Ocean", year: 2016, cover: "", kind: "single", parentId: "blonde", tracksLocked: false, cohesion: null, albumType: null },
+    { id: "s-timeless", title: "Timeless", artist: "The Weeknd", year: 2024, cover: "", kind: "single", parentId: "hurry-up-tomorrow", tracksLocked: false, cohesion: null, albumType: null },
+    { id: "s-mojo-jojo", title: "MOJO JOJO", artist: "Playboi Carti", year: 2025, cover: "", kind: "single", parentId: "music", tracksLocked: false, cohesion: null, albumType: null },
+    { id: "s-not-like-us", title: "Not Like Us", artist: "Kendrick Lamar", year: 2024, cover: "covers/not-like-us.jpg", kind: "single", parentId: null, tracksLocked: false, cohesion: null, albumType: null }
+  ];
+  var SEED_SINGLE_RATINGS = {
+    "s-nikes": {
+      "killmiplag@demo.local": { score: 9.4, confirmed: true },
+      "elevator@demo.local": { score: 8.6, confirmed: true }
+    },
+    "s-not-like-us": {
+      "killmiplag@demo.local": { score: 9.6, confirmed: true },
+      "elevator@demo.local": { score: 9.8, confirmed: true }
+    },
+    "s-timeless": {
+      "killmiplag@demo.local": { score: 7.2, confirmed: true },
+      "elevator@demo.local": { score: 8, confirmed: false }
+    }
+  };
   var currentUser = null;
   var albums = [];
   var tracks = [];
   var trackRatings = {};
+  var singleRatings = {};
+  var singlesReady = true;
   var currentAlbumId = null;
+  var currentSingleId = null;
   var currentArtistName = null;
+  var homeMode = "album";
   var viewStack = [{ view: "home" }];
   var profileCache = /* @__PURE__ */ new Map();
   var LS_KEY = "albums_local_v1";
   var LS_TRACKS = "tracks_local_v1";
   var LS_RATINGS = "track_ratings_local_v1";
+  var LS_SINGLE_RATINGS = "single_ratings_local_v1";
   var LS_META = "profile_meta_local_v1";
+  var LS_HOME_MODE = "home_mode_local_v1";
   function loadLocalMeta() {
     try {
       const raw = localStorage.getItem(LS_META);
@@ -20046,21 +20072,30 @@ ${suffix}`;
     } catch {
     }
   }
+  function normalizeAlbum(a) {
+    return {
+      id: a.id,
+      artist: a.artist,
+      title: a.title,
+      year: a.year,
+      cover: a.cover ?? "",
+      kind: a.kind === "single" ? "single" : "album",
+      parentId: a.parentId ?? null,
+      tracksLocked: Boolean(a.tracksLocked),
+      cohesion: a.cohesion ?? null,
+      albumType: a.albumType ?? null
+    };
+  }
   function loadLocalAlbums() {
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed.map((a) => ({
-          ...a,
-          tracksLocked: Boolean(a.tracksLocked),
-          cohesion: a.cohesion ?? null,
-          albumType: a.albumType ?? null
-        }));
+        if (Array.isArray(parsed)) return parsed.map((a) => normalizeAlbum(a));
       }
     } catch {
     }
-    return SEED_ALBUMS.map((a) => ({ ...a }));
+    return [...SEED_ALBUMS, ...SEED_SINGLES].map((a) => ({ ...a }));
   }
   function loadLocalTracks() {
     try {
@@ -20068,30 +20103,62 @@ ${suffix}`;
       if (raw) {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) {
-          return parsed.map((t) => ({ ...t, locked: Boolean(t.locked), featArtist: t.featArtist ?? null }));
+          return parsed.map((t) => ({
+            ...t,
+            locked: Boolean(t.locked),
+            featArtist: t.featArtist ?? null,
+            singleId: t.singleId ?? null
+          }));
         }
       }
     } catch {
     }
     return [];
   }
+  function parseRatingRows(parsed) {
+    const out = {};
+    for (const [rid, map] of Object.entries(parsed)) {
+      out[rid] = {};
+      for (const [pid, v] of Object.entries(map)) {
+        out[rid][pid] = typeof v === "number" ? { score: v, confirmed: false } : { score: v.score, confirmed: Boolean(v.confirmed) };
+      }
+    }
+    return out;
+  }
   function loadLocalRatings() {
     try {
       const raw = localStorage.getItem(LS_RATINGS);
       if (raw) {
         const parsed = JSON.parse(raw);
-        const out = {};
-        for (const [tid, map] of Object.entries(parsed)) {
-          out[tid] = {};
-          for (const [pid, v] of Object.entries(map)) {
-            out[tid][pid] = typeof v === "number" ? { score: v, confirmed: false } : { score: v.score, confirmed: Boolean(v.confirmed) };
-          }
-        }
-        return out;
+        return parseRatingRows(parsed);
       }
     } catch {
     }
     return {};
+  }
+  function loadLocalSingleRatings() {
+    try {
+      const raw = localStorage.getItem(LS_SINGLE_RATINGS);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return parseRatingRows(parsed);
+      }
+    } catch {
+    }
+    return parseRatingRows(SEED_SINGLE_RATINGS);
+  }
+  function loadHomeMode() {
+    try {
+      return localStorage.getItem(LS_HOME_MODE) === "single" ? "single" : "album";
+    } catch {
+      return "album";
+    }
+  }
+  function saveHomeMode() {
+    try {
+      localStorage.setItem(LS_HOME_MODE, homeMode);
+    } catch {
+    }
   }
   function saveLocalAlbums() {
     try {
@@ -20111,41 +20178,50 @@ ${suffix}`;
     } catch {
     }
   }
+  function saveLocalSingleRatings() {
+    try {
+      localStorage.setItem(LS_SINGLE_RATINGS, JSON.stringify(singleRatings));
+    } catch {
+    }
+  }
   var dataReadRevision = 0;
   var pendingRatings = /* @__PURE__ */ new Map();
-  function mergeRatings(incoming, readRevision) {
+  var pendingSingleRatings = /* @__PURE__ */ new Map();
+  function mergePending(incoming, pendingMap, readRevision) {
     const myId = currentUser?.id;
     if (!myId) return incoming;
-    for (const [trackId, pending] of pendingRatings) {
+    for (const [releaseId, pending] of pendingMap) {
       if (pending.savedAfterRead !== void 0 && readRevision > pending.savedAfterRead) {
-        pendingRatings.delete(trackId);
+        pendingMap.delete(releaseId);
         continue;
       }
-      if (pending.value) (incoming[trackId] ?? (incoming[trackId] = {}))[myId] = { ...pending.value };
-      else if (incoming[trackId]) {
-        delete incoming[trackId][myId];
-        if (!Object.keys(incoming[trackId]).length) delete incoming[trackId];
+      if (pending.value) (incoming[releaseId] ?? (incoming[releaseId] = {}))[myId] = { ...pending.value };
+      else if (incoming[releaseId]) {
+        delete incoming[releaseId][myId];
+        if (!Object.keys(incoming[releaseId]).length) delete incoming[releaseId];
       }
     }
     return incoming;
   }
   async function refreshData(signal) {
-    var _a;
+    var _a, _b;
     const revision = ++dataReadRevision;
     const userId = currentUser?.id;
     if (CLOUD) {
       const s = getSB();
-      const [pa, aa, ta, ra] = await Promise.all([
+      const [pa, aa, ta, ra, sa] = await Promise.all([
         s.from("profiles").select("id, username, initials, avatar_url"),
         s.from("albums").select("*").order("created_at", { ascending: true }),
         s.from("tracks").select("*"),
-        s.from("ratings").select("*")
+        s.from("ratings").select("*"),
+        s.from("single_ratings").select("*")
       ].map((query) => signal ? query.abortSignal(signal) : query));
       if (revision !== dataReadRevision || userId !== currentUser?.id) return;
       if (pa.error) throw pa.error;
       if (aa.error) throw aa.error;
       if (ta.error) throw ta.error;
       if (ra.error) throw ra.error;
+      singlesReady = !sa.error;
       profileCache.clear();
       for (const p of pa.data ?? []) {
         profileCache.set(p.id, { username: p.username, initials: p.initials, avatarUrl: p.avatar_url ?? null });
@@ -20154,13 +20230,29 @@ ${suffix}`;
         const me = profileCache.get(currentUser.id);
         if (me) currentUser.username = me.username, currentUser.avatarUrl = me.avatarUrl;
       }
-      albums = (aa.data ?? []).map((x) => ({ id: x.id, artist: x.artist, title: x.title, year: x.year, cover: x.cover_url ?? "", tracksLocked: Boolean(x.tracks_locked), cohesion: x.cohesion ?? null, albumType: x.album_type ?? null }));
-      tracks = (ta.data ?? []).map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null }));
+      albums = (aa.data ?? []).map((x) => normalizeAlbum({
+        id: x.id,
+        artist: x.artist,
+        title: x.title,
+        year: x.year,
+        cover: x.cover_url ?? "",
+        kind: x.kind === "single" ? "single" : "album",
+        parentId: x.parent_album_id ?? null,
+        tracksLocked: Boolean(x.tracks_locked),
+        cohesion: x.cohesion ?? null,
+        albumType: x.album_type ?? null
+      }));
+      tracks = (ta.data ?? []).map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null, singleId: t.single_id ?? null }));
       const incoming = {};
       for (const r of ra.data ?? []) {
         (incoming[_a = r.track_id] ?? (incoming[_a] = {}))[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
       }
-      trackRatings = mergeRatings(incoming, revision);
+      trackRatings = mergePending(incoming, pendingRatings, revision);
+      const incomingSingles = {};
+      for (const r of sa.data ?? []) {
+        (incomingSingles[_b = r.album_id] ?? (incomingSingles[_b] = {}))[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
+      }
+      singleRatings = singlesReady ? mergePending(incomingSingles, pendingSingleRatings, revision) : {};
     } else {
       profileCache.clear();
       const meta = loadLocalMeta();
@@ -20178,7 +20270,9 @@ ${suffix}`;
       }
       albums = loadLocalAlbums();
       tracks = loadLocalTracks();
-      trackRatings = mergeRatings(loadLocalRatings(), revision);
+      trackRatings = mergePending(loadLocalRatings(), pendingRatings, revision);
+      singleRatings = mergePending(loadLocalSingleRatings(), pendingSingleRatings, revision);
+      singlesReady = true;
     }
   }
   var SYNC_INTERVAL_MS = 5e3;
@@ -20214,7 +20308,7 @@ ${suffix}`;
     syncActive = true;
     const epoch = ++syncEpoch;
     if (CLOUD) {
-      realtimeChannel = getSB().channel("db-changes").on("postgres_changes", { event: "*", schema: "public", table: "albums" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "tracks" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "ratings" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => requestSync()).subscribe((status) => {
+      realtimeChannel = getSB().channel("db-changes").on("postgres_changes", { event: "*", schema: "public", table: "albums" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "tracks" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "ratings" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "single_ratings" }, () => requestSync()).on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, () => requestSync()).subscribe((status) => {
         if (epoch !== syncEpoch) return;
         if (status === "SUBSCRIBED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") {
           requestSync(0);
@@ -20236,10 +20330,15 @@ ${suffix}`;
     tracksRenderDeferred = finalizeRenderDeferred = false;
     for (const timer of saveTimers.values()) window.clearTimeout(timer);
     saveTimers.clear();
+    singleSaveTimers.clear();
     pendingRatings.clear();
+    pendingSingleRatings.clear();
     ratingWrites.clear();
+    singleWrites.clear();
     confirmingRatings.clear();
+    confirmingSingles.clear();
     ratingPointerTrackId = null;
+    singlePointerActive = false;
     if (realtimeChannel) {
       const channel = realtimeChannel;
       realtimeChannel = null;
@@ -20251,7 +20350,7 @@ ${suffix}`;
     const epoch = syncEpoch;
     syncInFlight = true;
     syncQueued = false;
-    const before = JSON.stringify([albums, tracks, trackRatings, [...profileCache]]);
+    const before = JSON.stringify([albums, tracks, trackRatings, singleRatings, [...profileCache]]);
     const beforeAlbums = JSON.stringify(albums);
     const beforeTracks = JSON.stringify(tracks);
     const controller = new AbortController();
@@ -20262,7 +20361,7 @@ ${suffix}`;
       if (epoch !== syncEpoch) return;
       if (beforeAlbums !== JSON.stringify(albums)) finalizeRenderDeferred = true;
       if (beforeTracks !== JSON.stringify(tracks) || beforeAlbums !== JSON.stringify(albums)) tracksRenderDeferred = true;
-      const changed = before !== JSON.stringify([albums, tracks, trackRatings, [...profileCache]]);
+      const changed = before !== JSON.stringify([albums, tracks, trackRatings, singleRatings, [...profileCache]]);
       syncRenderPending || (syncRenderPending = changed);
       flushSynchronizedRender();
     } catch {
@@ -20292,6 +20391,31 @@ ${suffix}`;
       if (viewHome.classList.contains("is-visible")) renderAlbums(false);
       if (viewArtist.classList.contains("is-visible")) renderArtistPage();
       if (viewRank.classList.contains("is-visible")) renderArtistRank();
+      if (viewSrank.classList.contains("is-visible")) renderSingleRank();
+      if (viewAlbum.classList.contains("is-visible")) renderAlbumSingles();
+      if (viewSingle.classList.contains("is-visible") && !currentSingle()) {
+        viewStack.length = 0;
+        viewStack.push({ view: "home" });
+        void swapTo(viewSingle, viewHome, () => {
+          viewHome.scrollTop = 0;
+        });
+        renderAlbums();
+        toast("\u042D\u0442\u043E\u0442 \u0441\u0438\u043D\u0433\u043B \u0443\u0434\u0430\u043B\u0451\u043D");
+      }
+    }
+    if (viewSingle.classList.contains("is-visible")) {
+      const s = currentSingle();
+      if (s) {
+        if (svTitle.textContent !== s.title) svTitle.textContent = s.title;
+        if (svYear.textContent !== String(s.year)) svYear.textContent = String(s.year);
+        if (svCoverImg.getAttribute("src") !== coverSrc(s)) renderSingleCover(s);
+        const parent = parentOf(s);
+        svParentLabel.innerHTML = parent ? `\u0441\u0438\u043D\u0433\u043B \u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443 <a class="sv__parent-link" data-album="${esc(parent.id)}">\xAB${esc(parent.title)}\xBB</a>` : "\u0441\u0438\u043D\u0433\u043B \u0432\u043D\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430";
+        const origin = singleOriginText(s);
+        svOrigin.hidden = !origin;
+        svOrigin.textContent = origin;
+        updateSingleDisplays();
+      }
     }
     if (viewAlbum.classList.contains("is-visible")) {
       const al = currentAlbum();
@@ -20319,6 +20443,10 @@ ${suffix}`;
       if (pending.failed) void persistTrackRating(trackId).catch(() => {
       });
     }
+    for (const [singleId, pending] of pendingSingleRatings) {
+      if (pending.failed) void persistSingleRating(singleId).catch(() => {
+      });
+    }
     requestSync(0);
   }
   document.addEventListener("visibilitychange", () => {
@@ -20331,7 +20459,7 @@ ${suffix}`;
   window.addEventListener("focus", resumeSynchronization);
   window.addEventListener("online", resumeSynchronization);
   window.addEventListener("storage", (event) => {
-    if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_META].includes(event.key))) requestSync(0);
+    if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_SINGLE_RATINGS, LS_META].includes(event.key))) requestSync(0);
   });
   async function ensureProfile(user) {
     const s = getSB();
@@ -20424,12 +20552,17 @@ ${suffix}`;
   function typeLabelOf(v) {
     return TYPE_OPTIONS.find((o) => o.value === v)?.label ?? "";
   }
+  var meanOf = (vals) => vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
   function trackScoreOf(trackId) {
     const r = trackRatings[trackId];
     if (!r) return null;
-    const vals = Object.values(r).map((x) => x.score);
-    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    return meanOf(Object.values(r).map((x) => x.score));
   }
+  var releasesOf = (kind) => albums.filter((a) => a.kind === kind);
+  var albumsOnly = () => releasesOf("album");
+  var singlesOnly = () => releasesOf("single");
+  var singleById = (id) => albums.find((a) => a.id === id && a.kind === "single");
+  var parentOf = (a) => a.parentId ? albums.find((x) => x.id === a.parentId && x.kind === "album") : void 0;
   function albumScoreOf(albumId) {
     const vals = [];
     for (const t of tracks) {
@@ -20437,7 +20570,43 @@ ${suffix}`;
       const r = trackRatings[t.id];
       if (r) for (const v of Object.values(r)) vals.push(v.score);
     }
-    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+    return meanOf(vals);
+  }
+  function singleScoreOf(singleId) {
+    const r = singleRatings[singleId];
+    if (!r) return null;
+    return meanOf(Object.values(r).map((x) => x.score));
+  }
+  function albumConfirmedScoreOf(albumId) {
+    const vals = [];
+    for (const t of tracks) {
+      if (t.albumId !== albumId) continue;
+      const r = trackRatings[t.id];
+      if (r) {
+        for (const v of Object.values(r)) if (v.confirmed) vals.push(v.score);
+      }
+    }
+    return meanOf(vals);
+  }
+  function singleConfirmedScoreOf(singleId) {
+    const r = singleRatings[singleId];
+    if (!r) return null;
+    return meanOf(Object.values(r).filter((v) => v.confirmed).map((v) => v.score));
+  }
+  function singleRankedScoreOf(singleId) {
+    return singleAllConfirmed(singleId) ? singleScoreOf(singleId) : null;
+  }
+  function singleRankReason(singleId) {
+    return singleVotesOf(singleId) === 0 ? "\u043E\u0446\u0435\u043D\u043E\u043A \u043F\u043E\u043A\u0430 \u043D\u0435\u0442" : "\u0436\u0434\u0451\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u0441\u0435\u0445 \u043E\u0446\u0435\u043D\u043E\u043A";
+  }
+  function pendingCountOf(singleId) {
+    const r = singleRatings[singleId];
+    if (!r) return 0;
+    return Object.values(r).filter((v) => !v.confirmed).length;
+  }
+  function singleVotesOf(singleId) {
+    const r = singleRatings[singleId];
+    return r ? Object.keys(r).length : 0;
   }
   function peerRatingOf(trackId) {
     if (!currentUser) return null;
@@ -20449,6 +20618,16 @@ ${suffix}`;
       return { score: v.score, confirmed: v.confirmed, username: info?.username ?? "\u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A", initials: info?.initials ?? "?", avatarUrl: info?.avatarUrl ?? null };
     }
     return null;
+  }
+  function singleAllConfirmed(singleId) {
+    if (profileCache.size < 2) return false;
+    const r = singleRatings[singleId];
+    if (!r) return false;
+    for (const pid of profileCache.keys()) {
+      const e = r[pid];
+      if (!e || !e.confirmed) return false;
+    }
+    return true;
   }
   function albumAllConfirmed(albumId) {
     if (profileCache.size < 2) return false;
@@ -20488,8 +20667,26 @@ ${suffix}`;
     if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "\u0444\u0438\u0442\u0430";
     return "\u0444\u0438\u0442\u043E\u0432";
   }
+  function singlesPlural(n) {
+    const m10 = n % 10;
+    const m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return "\u0441\u0438\u043D\u0433\u043B";
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "\u0441\u0438\u043D\u0433\u043B\u0430";
+    return "\u0441\u0438\u043D\u0433\u043B\u043E\u0432";
+  }
+  function votesPlural(n) {
+    const m10 = n % 10;
+    const m100 = n % 100;
+    if (m10 === 1 && m100 !== 11) return "\u043E\u0446\u0435\u043D\u043A\u0430";
+    if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "\u043E\u0446\u0435\u043D\u043A\u0438";
+    return "\u043E\u0446\u0435\u043D\u043E\u043A";
+  }
   function coverSrc(a) {
     if (a.cover) return a.cover;
+    if (a.kind === "single" && a.parentId) {
+      const p = albums.find((x) => x.id === a.parentId);
+      if (p && p.cover) return p.cover;
+    }
     const initial = (a.title.trim().charAt(0) || "?").toUpperCase();
     const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><rect width='600' height='600' fill='#15151a'/><circle cx='300' cy='300' r='210' fill='none' stroke='rgba(183,168,239,0.16)' stroke-width='1.5'/><text x='300' y='345' font-family='Georgia, serif' font-size='210' fill='rgba(243,241,236,0.8)' text-anchor='middle'>" + esc(initial) + "</text></svg>";
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
@@ -20511,6 +20708,10 @@ ${suffix}`;
       const n = (t.featArtist ?? "").trim();
       if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), n);
     }
+    for (const s of singlesOnly()) {
+      const n = (featNameOf(s.title) ?? "").replace(/[),.\s]+$/, "").trim();
+      if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), n);
+    }
     return [...map.values()].sort((a, b) => a.localeCompare(b, "ru"));
   }
   function canonicalArtistName(raw) {
@@ -20520,7 +20721,21 @@ ${suffix}`;
   }
   function artistOwnAlbums(name) {
     const k = name.toLowerCase();
-    return albums.filter((a) => a.artist.toLowerCase() === k);
+    return albums.filter((a) => a.kind === "album" && a.artist.toLowerCase() === k);
+  }
+  function artistOwnSingles(name) {
+    const k = name.toLowerCase();
+    return albums.filter((a) => a.kind === "single" && a.artist.toLowerCase() === k);
+  }
+  function artistFeatureSingles(name) {
+    const k = name.toLowerCase();
+    const out = [];
+    for (const s of singlesOnly()) {
+      if (s.artist.toLowerCase() === k) continue;
+      const feat = (featNameOf(s.title) ?? "").replace(/[),.\s]+$/, "").trim().toLowerCase();
+      if (feat && feat === k) out.push({ single: s, score: singleConfirmedScoreOf(s.id) });
+    }
+    return out;
   }
   function artistFeatureAlbums(name) {
     const k = name.toLowerCase();
@@ -20542,13 +20757,34 @@ ${suffix}`;
   function artistScoreOf(name) {
     const vals = [];
     for (const a of artistOwnAlbums(name)) {
-      const s = albumScoreOf(a.id);
+      const s = albumConfirmedScoreOf(a.id);
       if (s !== null) vals.push(s);
     }
     for (const f of artistFeatureAlbums(name)) {
+      const s = confirmedFeatureAlbumScoreOf(f.album, name);
+      if (s !== null) vals.push(s);
+    }
+    for (const s of artistOwnSingles(name)) {
+      const v = singleConfirmedScoreOf(s.id);
+      if (v !== null) vals.push(v);
+    }
+    for (const f of artistFeatureSingles(name)) {
       if (f.score !== null) vals.push(f.score);
     }
     return vals.length ? round2(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  }
+  function confirmedFeatureAlbumScoreOf(album, artistName2) {
+    const k = artistName2.toLowerCase();
+    const vals = [];
+    for (const t of tracks) {
+      if (t.albumId !== album.id) continue;
+      if ((t.featArtist ?? "").toLowerCase() !== k) continue;
+      const r = trackRatings[t.id];
+      if (r) {
+        for (const v of Object.values(r)) if (v.confirmed) vals.push(v.score);
+      }
+    }
+    return meanOf(vals);
   }
   var sleep3 = (ms) => new Promise((r) => setTimeout(r, ms));
   var toastTimer;
@@ -20676,6 +20912,8 @@ ${suffix}`;
   var artistOwn = q("#artist-own");
   var artistFeat = q("#artist-feat");
   var artistOwnSection = q("#artist-own-section");
+  var artistSingles = q("#artist-singles");
+  var artistSinglesSection = q("#artist-singles-section");
   var artistFeatSection = q("#artist-feat-section");
   var rankBack = q("#rank-back");
   var rankList = q("#artist-rank-list");
@@ -20688,6 +20926,51 @@ ${suffix}`;
   var profName = q("#prof-name");
   var profError = q("#prof-error");
   var profSave = q("#prof-save");
+  var homeSwitch = q("#home-switch");
+  var segAlbums = q("#seg-albums");
+  var segSingles = q("#seg-singles");
+  var segThumb = q("#seg-thumb");
+  var homeHdrTitle = q("#home-hdr-title");
+  var rankBtnLabel = q("#rank-btn-label");
+  var viewSingle = q("#view-single");
+  var singleBack = q("#single-back");
+  var svCoverImg = q("#sv-cover-img");
+  var svCoverEdit = q("#sv-cover-edit");
+  var svCoverEditLabel = q("#sv-cover-edit-label");
+  var svYear = q("#sv-year");
+  var svTitle = q("#sv-title");
+  var svArtist = q("#sv-artist");
+  var svParentLabel = q("#sv-parent-label");
+  var svParentEdit = q("#sv-parent-edit");
+  var svOrigin = q("#sv-origin");
+  var svAvg = q("#sv-avg");
+  var svConfirmState = q("#sv-confirm-state");
+  var svImpact = q("#sv-impact");
+  var svChips = q("#sv-chips");
+  var svMine = q("#sv-mine");
+  var svPeer = q("#sv-peer");
+  var svSlider = q("#sv-slider");
+  var svNum = q("#sv-num");
+  var svConfirmBtn = q("#sv-confirm-btn");
+  var svSave = q("#sv-save");
+  var svNote = q("#sv-note");
+  var singleDeleteBtn = q("#single-delete-btn");
+  var viewSrank = q("#view-srank");
+  var srankBack = q("#srank-back");
+  var singleRankList = q("#single-rank-list");
+  var avSinglesSection = q("#av-singles-section");
+  var avSingles = q("#av-singles");
+  var avSinglesCount = q("#av-singles-count");
+  var singleLinkDialog = q("#single-link-dialog");
+  var singleLinkForm = q("#single-link-form");
+  var singleLinkName = q("#single-link-name");
+  var singleLinkBox = q("#single-link-box");
+  var singleLinkInput = q("#single-link-input");
+  var singleLinkList = q("#single-link-list");
+  var singleLinkUnlink = q("#single-link-unlink");
+  var singleLinkCancel = q("#single-link-cancel");
+  var singleLinkSave = q("#single-link-save");
+  var singleLinkError = q("#single-link-error");
   var confirmModal = q("#confirm-modal");
   var confirmTitle = q("#confirm-title");
   var confirmText = q("#confirm-text");
@@ -20696,6 +20979,14 @@ ${suffix}`;
   var addPanel = q("#add-panel");
   var addBack = q("#add-back");
   var addForm = q("#add-form");
+  var addTitle = q("#add-title");
+  var titleLabel = q("#title-label");
+  var coverNote = q("#cover-note");
+  var parentField = q("#parent-field");
+  var parentBox = q("#parent-box");
+  var parentInput = q("#parent-input");
+  var parentList = q("#parent-list");
+  var parentNote = q("#parent-note");
   var artistBox = q("#artist-box");
   var artistField = q("#artist-field");
   var artistInput = q("#artist-input");
@@ -20710,6 +21001,7 @@ ${suffix}`;
   var coverUrl = q("#cover-url");
   var coverUrlError = q("#cover-url-error");
   var addSubmit = q("#add-submit");
+  var addSubmitLabel = q("#add-submit-label");
   var addError = q("#add-error");
   async function swapTo(from, to, after) {
     from.classList.add("is-leaving");
@@ -20802,6 +21094,7 @@ ${suffix}`;
     success.classList.remove("is-visible");
     await swapTo(viewLogin, viewHome, () => {
       viewHome.scrollTop = 0;
+      moveSegThumb();
     });
     passwordInput.value = "";
     password2Input.value = "";
@@ -20814,7 +21107,9 @@ ${suffix}`;
       if (CLOUD) await getSB().auth.signOut();
       currentUser = null;
       currentAlbumId = null;
+      currentSingleId = null;
       currentArtistName = null;
+      pendingSingleRatings.clear();
       viewStack.length = 0;
       viewStack.push({ view: "home" });
       await swapTo(viewHome, viewLogin);
@@ -20827,51 +21122,70 @@ ${suffix}`;
       card.classList.add("enter");
     })();
   });
+  function moveSegThumb() {
+    const btn = homeMode === "album" ? segAlbums : segSingles;
+    if (!btn.offsetWidth) return;
+    segThumb.style.width = `${btn.offsetWidth}px`;
+    segThumb.style.left = `${btn.offsetLeft}px`;
+    homeSwitch.dataset.mode = homeMode;
+  }
+  function applyHomeMode() {
+    const albumMode = homeMode === "album";
+    segAlbums.classList.toggle("is-active", albumMode);
+    segSingles.classList.toggle("is-active", !albumMode);
+    segAlbums.setAttribute("aria-selected", String(albumMode));
+    segSingles.setAttribute("aria-selected", String(!albumMode));
+    segAlbums.tabIndex = albumMode ? 0 : -1;
+    segSingles.tabIndex = albumMode ? -1 : 0;
+    homeHdrTitle.textContent = albumMode ? "\u0410\u043B\u044C\u0431\u043E\u043C\u044B" : "\u0421\u0438\u043D\u0433\u043B\u044B";
+    rankBtnLabel.textContent = albumMode ? "\u0440\u0435\u0439\u0442\u0438\u043D\u0433 \u0430\u0440\u0442\u0438\u0441\u0442\u043E\u0432" : "\u0440\u0435\u0439\u0442\u0438\u043D\u0433 \u0441\u0438\u043D\u0433\u043B\u043E\u0432";
+    moveSegThumb();
+  }
+  function singlesUnavailable() {
+    return CLOUD && !singlesReady;
+  }
+  function setHomeMode(mode, rerender = true) {
+    if (homeMode !== mode) {
+      homeMode = mode;
+      saveHomeMode();
+    }
+    applyHomeMode();
+    if (rerender) renderAlbums();
+  }
+  segAlbums.addEventListener("click", () => setHomeMode("album"));
+  segSingles.addEventListener("click", () => setHomeMode("single"));
+  homeSwitch.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const next = homeMode === "album" ? "single" : "album";
+    setHomeMode(next);
+    (next === "album" ? segAlbums : segSingles).focus();
+  });
+  window.addEventListener("resize", moveSegThumb);
   function renderAlbums(animate = true) {
     const grid = q("#albums");
     grid.innerHTML = "";
-    albums.forEach((a, i) => {
-      const el = document.createElement("article");
-      el.className = animate ? "album reveal" : "album";
-      el.style.setProperty("--d", `${(0.2 + i * 0.07).toFixed(2)}s`);
-      const avg = albumScoreOf(a.id);
-      const avgStr = avg === null ? "\u2014" : fmt(avg);
-      const n = trackCountOf(a.id);
-      el.innerHTML = `
-      <div class="album__cover">
-        <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} \u2014 ${esc(a.title)}" loading="lazy">
-        <span class="album__year">${a.year}</span>
-        ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ""}
-      </div>
-      <div class="album__body">
-        <h3 class="album__title">${esc(a.title)}</h3>
-        <p class="album__artist"><a class="album__artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</a></p>
-        <div class="album__rating">
-          <div class="album__avg">
-            <span class="album__avg-num">${avgStr}</span>
-            <span class="album__avg-of">/10</span>
-          </div>
-          <div class="album__votes"><span class="album__count">${n} ${tracksPlural(n)}</span></div>
-        </div>
-      </div>`;
-      el.addEventListener("click", (ev) => {
-        if (ev.target.closest(".album__artist-link")) return;
-        void openAlbum(a.id);
-      });
-      el.addEventListener("animationend", () => {
-        if (el.classList.contains("reveal")) {
-          el.classList.remove("reveal");
-          el.style.animation = "none";
-        }
-      });
+    const singleMode = homeMode === "single";
+    const list = singleMode ? singlesOnly() : albumsOnly();
+    if (singleMode && singlesUnavailable()) {
+      const hint = document.createElement("p");
+      hint.className = "home__notice";
+      hint.textContent = "\u0420\u0430\u0437\u0434\u0435\u043B \u0441\u0438\u043D\u0433\u043B\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0451\u043D \u043A \u0431\u0430\u0437\u0435: \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0435 migrate.sql \u0432 Supabase, \u0438 \u0441\u0438\u043D\u0433\u043B\u044B \u0441\u0442\u0430\u043D\u0443\u0442 \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B.";
+      grid.appendChild(hint);
+      homeMeta.textContent = "\u0441\u0438\u043D\u0433\u043B\u044B \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B";
+      applyHomeMode();
+      return;
+    }
+    list.forEach((a, i) => {
+      const el = singleMode ? makeSingleCard(a, animate, i) : makeAlbumCard(a, null, animate, i);
       grid.appendChild(el);
     });
     const add = document.createElement("button");
     add.type = "button";
     add.className = animate ? "album album--add reveal" : "album album--add";
-    add.style.setProperty("--d", `${(0.2 + albums.length * 0.07).toFixed(2)}s`);
-    add.innerHTML = '<span class="album__plus">+</span><span class="album__addtext">\u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0430\u043B\u044C\u0431\u043E\u043C</span>';
-    add.addEventListener("click", () => openAdd());
+    add.style.setProperty("--d", `${(0.2 + list.length * 0.07).toFixed(2)}s`);
+    add.innerHTML = `<span class="album__plus">+</span><span class="album__addtext">\u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C ${singleMode ? "\u0441\u0438\u043D\u0433\u043B" : "\u0430\u043B\u044C\u0431\u043E\u043C"}</span>`;
+    add.addEventListener("click", () => openAdd(singleMode ? "single" : "album"));
     add.addEventListener("animationend", () => {
       if (add.classList.contains("reveal")) {
         add.classList.remove("reveal");
@@ -20879,9 +21193,16 @@ ${suffix}`;
       }
     });
     grid.appendChild(add);
-    const rated = albums.filter((a) => albumScoreOf(a.id) !== null);
-    const overall = rated.length ? rated.reduce((s, a) => s + albumScoreOf(a.id), 0) / rated.length : null;
-    homeMeta.textContent = `${albums.length} ${plural(albums.length)}${overall !== null ? " \xB7 \u0441\u0440\u0435\u0434\u043D\u044F\u044F \u043E\u0446\u0435\u043D\u043A\u0430 " + fmt(overall) : ""}`;
+    if (singleMode) {
+      const values = singlesOnly().map((s) => singleScoreOf(s.id)).filter((v) => v !== null);
+      const overall = meanOf(values);
+      homeMeta.textContent = `${list.length} ${singlesPlural(list.length)}${overall !== null ? " \xB7 \u0441\u0440\u0435\u0434\u043D\u044F\u044F \u043E\u0446\u0435\u043D\u043A\u0430 " + fmt(overall) : ""}${values.length < list.length ? " \xB7 \u0447\u0430\u0441\u0442\u044C \u043E\u0446\u0435\u043D\u043E\u043A \u0435\u0449\u0451 \u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430" : ""}`;
+    } else {
+      const values = albumsOnly().map((a) => albumScoreOf(a.id)).filter((v) => v !== null);
+      const overall = meanOf(values);
+      homeMeta.textContent = `${list.length} ${plural(list.length)}${overall !== null ? " \xB7 \u0441\u0440\u0435\u0434\u043D\u044F\u044F \u043E\u0446\u0435\u043D\u043A\u0430 " + fmt(overall) : ""}`;
+    }
+    applyHomeMode();
   }
   function currentAlbum() {
     return albums.find((a) => a.id === currentAlbumId);
@@ -20902,6 +21223,7 @@ ${suffix}`;
     avAvg.textContent = score === null ? "\u2014" : fmt(score);
     delete avAvg.dataset.val;
     renderTracks();
+    renderAlbumSingles();
     renderImpact();
     renderConfirmState();
     renderFinalize();
@@ -20940,11 +21262,11 @@ ${suffix}`;
     return albumCoverRequest;
   }
   function openAlbumCoverEditor() {
-    const al = currentAlbum();
+    const al = currentAlbum() ?? currentSingle();
     if (!al || !currentUser || albumCoverDialog.open) return;
     editingCoverAlbumId = al.id;
     albumCoverForm.reset();
-    albumCoverTitle.textContent = al.cover ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443";
+    albumCoverTitle.textContent = al.kind === "single" ? al.cover ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443 \u0441\u0438\u043D\u0433\u043B\u0430" : "\u041E\u0431\u043B\u043E\u0436\u043A\u0430 \u0441\u0438\u043D\u0433\u043B\u0430" : al.cover ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443";
     albumCoverName.textContent = `${al.artist} \u2014 ${al.title}`;
     resetAlbumCoverDraft();
     albumCoverDialog.showModal();
@@ -21007,6 +21329,7 @@ ${suffix}`;
     }
   }
   avCoverEdit.addEventListener("click", openAlbumCoverEditor);
+  svCoverEdit.addEventListener("click", openAlbumCoverEditor);
   albumCoverPick.addEventListener("click", () => albumCoverFile.click());
   albumCoverCancel.addEventListener("click", closeAlbumCoverEditor);
   albumCoverDialog.addEventListener("cancel", (e) => {
@@ -21062,6 +21385,11 @@ ${suffix}`;
     albums = next;
     const al = currentAlbum();
     if (al?.id === albumId) renderAlbumCover(al);
+    const s = currentSingle();
+    if (s?.id === albumId) {
+      renderSingleCover(s);
+      if (currentAlbumId) renderAlbumSingles();
+    }
   }
   albumCoverForm.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -21283,12 +21611,15 @@ ${suffix}`;
     renderFinalize("type");
   }
   var confirmResolve = null;
-  function openConfirm(title, text, danger = false) {
+  var confirmSeq = 0;
+  function openConfirm(title, text, danger = false, labels = {}) {
     return new Promise((resolve) => {
+      confirmSeq += 1;
       confirmTitle.textContent = title;
       confirmText.innerHTML = text;
       confirmOk.classList.toggle("is-danger", danger);
-      confirmOk.textContent = danger ? "\u0443\u0434\u0430\u043B\u0438\u0442\u044C" : "\u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C";
+      confirmOk.textContent = labels.ok ?? (danger ? "\u0443\u0434\u0430\u043B\u0438\u0442\u044C" : "\u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C");
+      confirmCancel.textContent = labels.cancel ?? "\u043E\u0442\u043C\u0435\u043D\u0430";
       confirmModal.hidden = false;
       requestAnimationFrame(() => confirmModal.classList.add("is-open"));
       confirmResolve = resolve;
@@ -21297,9 +21628,14 @@ ${suffix}`;
   function closeConfirm(ok) {
     confirmModal.classList.remove("is-open");
     const res = confirmResolve;
+    const seq = confirmSeq;
     confirmResolve = null;
     window.setTimeout(() => {
       confirmModal.hidden = true;
+      if (seq !== confirmSeq) return;
+      confirmOk.textContent = "\u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C";
+      confirmCancel.textContent = "\u043E\u0442\u043C\u0435\u043D\u0430";
+      confirmOk.classList.remove("is-danger");
     }, 320);
     res?.(ok);
   }
@@ -21460,6 +21796,8 @@ ${suffix}`;
   var PENCIL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4L8 20l-5 1 1-5L17 3z"/></svg>';
   var CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>';
   var PENDING_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>';
+  var SINGLE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3M5.4 5.4l2.1 2.1M16.5 16.5l2.1 2.1M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1"/></svg>';
+  var UNMARK_SINGLE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3"/><path d="M4 20L20 4"/></svg>';
   function trackTitleHTML(t) {
     const name = (t.featArtist ?? "").trim();
     const escTitle = esc(t.title);
@@ -21520,16 +21858,20 @@ ${suffix}`;
       const mineStr = typeof mineScore === "number" ? fmt(mineScore) : "";
       const canRename = !locked && !t.locked;
       const canOrder = !locked;
+      const single = singleOfTrack(t);
       const li = document.createElement("li");
       li.className = "track";
       if (t.locked) li.classList.add("is-locked");
       if (locked) li.classList.add("is-frozen");
       if (mineConfirmed) li.classList.add("is-rated-locked");
+      if (single) li.classList.add("track--single");
       li.dataset.id = t.id;
+      if (single) li.dataset.singleId = single.id;
       const actions = [
         canRename ? `<button class="track__btn" data-act="rename" type="button" aria-label="\u041F\u0435\u0440\u0435\u0438\u043C\u0435\u043D\u043E\u0432\u0430\u0442\u044C">${PENCIL_SVG}</button>` : "",
         canOrder ? `<button class="track__btn" data-act="up" type="button" aria-label="\u0412\u044B\u0448\u0435"${i === 0 ? " disabled" : ""}>${UP_SVG}</button>` : "",
         canOrder ? `<button class="track__btn" data-act="down" type="button" aria-label="\u041D\u0438\u0436\u0435"${i === list.length - 1 ? " disabled" : ""}>${DOWN_SVG}</button>` : "",
+        `<button class="track__btn${single ? " is-on" : ""}" data-act="${single ? "unsingle" : "single"}" type="button" title="${single ? "\u0421\u043D\u044F\u0442\u044C \u043C\u0435\u0442\u043A\u0443 \xAB\u0441\u0438\u043D\u0433\u043B\xBB" : "\u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B"}" aria-label="${single ? "\u0421\u043D\u044F\u0442\u044C \u043C\u0435\u0442\u043A\u0443 \xAB\u0441\u0438\u043D\u0433\u043B\xBB" : "\u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B"}">${single ? UNMARK_SINGLE_SVG : SINGLE_SVG}</button>`,
         isAdmin() ? `<button class="track__btn" data-act="lock" type="button" aria-label="${t.locked ? "\u0421\u043D\u044F\u0442\u044C \u0444\u0438\u043A\u0441\u0430\u0446\u0438\u044E \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F" : "\u0417\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435"}" title="${t.locked ? "\u0421\u043D\u044F\u0442\u044C \u0444\u0438\u043A\u0441\u0430\u0446\u0438\u044E \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F" : "\u0417\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435"}">${t.locked ? UNLOCK_SVG : LOCK_SVG}</button>` : "",
         canOrder ? `<button class="track__btn track__btn--del" data-act="del" type="button" aria-label="\u0423\u0434\u0430\u043B\u0438\u0442\u044C">${DEL_SVG}</button>` : ""
       ].join("");
@@ -21540,6 +21882,7 @@ ${suffix}`;
         <span class="track__handle"${canOrder ? ' draggable="true"' : ""} aria-hidden="true">${GRIP_SVG}</span>
         <span class="track__num">${i + 1}</span>
         <span class="track__title">${trackTitleHTML(t)}</span>
+        ${single ? `<button class="track__single" type="button" title="\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441\u0438\u043D\u0433\u043B\u0430 \xAB${esc(single.title)}\xBB">\u0441\u0438\u043D\u0433\u043B</button>` : ""}
         ${peerBadge}
         ${t.locked ? `<span class="track__lock" title="\u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u043E">${LOCK_SVG}</span>` : ""}
         <span class="track__avg" data-tid="${t.id}" title="\u0441\u0440\u0435\u0434\u043D\u044F\u044F \u043F\u043E \u0442\u0440\u0435\u043A\u0443">${tavgStr}</span>
@@ -21719,7 +22062,7 @@ ${suffix}`;
         newId = (data?.[0]).id;
       } else {
         newId = "t" + Date.now().toString(36);
-        tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist });
+        tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist, singleId: null });
         saveLocalTracks();
       }
       if (CLOUD) await refreshData();
@@ -21866,11 +22209,27 @@ ${suffix}`;
     }
   }
   trackList.addEventListener("click", (e) => {
+    const target = e.target;
+    if (target.closest(".track__slider, .track__numinput, .track__rename-input, .track__confirm-btn, .track__btn, .track__feat, .track__handle, .track__single")) return;
+    const marked = target.closest(".track--single");
+    if (!marked?.dataset.id) return;
+    const row = tracks.find((t) => t.id === marked.dataset.id);
+    if (row && singleOfTrack(row)) void promptSingleFromTrack(row);
+  });
+  trackList.addEventListener("click", (e) => {
     const featLink = e.target.closest(".track__feat");
     if (featLink) {
       e.preventDefault();
       const name = featLink.dataset.artist;
       if (name) void openArtist(name);
+      return;
+    }
+    const singleBadge = e.target.closest(".track__single");
+    if (singleBadge) {
+      const li2 = singleBadge.closest(".track");
+      const row = li2?.dataset.id ? tracks.find((t) => t.id === li2.dataset.id) : void 0;
+      const single = row ? singleOfTrack(row) : void 0;
+      if (single) void openSingle(single.id);
       return;
     }
     const confirmBtn = e.target.closest(".track__confirm-btn");
@@ -21888,11 +22247,14 @@ ${suffix}`;
     const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
     const idx = list.findIndex((t) => t.id === id);
     const act = btn.dataset.act;
+    const track = tracks.find((t) => t.id === id);
     if (act === "up") void moveTrack(idx, idx - 1);
     else if (act === "down") void moveTrack(idx, idx + 1);
     else if (act === "del") void deleteTrack(id);
     else if (act === "lock") void toggleTrackLock(id);
     else if (act === "rename") startRename(li);
+    else if (act === "single" && track) void markTrackAsSingle(track);
+    else if (act === "unsingle" && track) void unmarkTrackAsSingle(track);
   });
   trackList.addEventListener("dragstart", (e) => {
     const handle = e.target.closest(".track__handle");
@@ -21979,7 +22341,7 @@ ${suffix}`;
     return closest.element;
   }
   function visibleView() {
-    for (const v of [viewHome, viewAlbum, viewArtist, viewProfile, viewRank]) {
+    for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewAdd]) {
       if (v.classList.contains("is-visible")) return v;
     }
     return null;
@@ -22001,6 +22363,7 @@ ${suffix}`;
     switch (prev.view) {
       case "album": {
         currentAlbumId = prev.albumId ?? null;
+        currentSingleId = null;
         const al = albums.find((a) => a.id === prev.albumId);
         if (al) renderAlbumPage(al);
         await swapTo(from, viewAlbum, () => {
@@ -22008,8 +22371,19 @@ ${suffix}`;
         });
         break;
       }
+      case "single": {
+        currentSingleId = prev.singleId ?? null;
+        currentAlbumId = null;
+        const s = albums.find((a) => a.id === prev.singleId);
+        if (s) renderSinglePage(s);
+        await swapTo(from, viewSingle, () => {
+          viewSingle.scrollTop = 0;
+        });
+        break;
+      }
       case "artist": {
         currentAlbumId = null;
+        currentSingleId = null;
         if (currentArtistName) renderArtistPage();
         await swapTo(from, viewArtist, () => {
           viewArtist.scrollTop = 0;
@@ -22018,6 +22392,7 @@ ${suffix}`;
       }
       case "profile": {
         currentAlbumId = null;
+        currentSingleId = null;
         currentArtistName = null;
         renderProfilePage();
         await swapTo(from, viewProfile, () => {
@@ -22027,6 +22402,7 @@ ${suffix}`;
       }
       case "rank": {
         currentAlbumId = null;
+        currentSingleId = null;
         currentArtistName = null;
         renderArtistRank();
         await swapTo(from, viewRank, () => {
@@ -22034,8 +22410,18 @@ ${suffix}`;
         });
         break;
       }
+      case "add": {
+        currentAlbumId = null;
+        currentSingleId = null;
+        applyAddMode(prev.kind);
+        await swapTo(from, viewAdd, () => {
+          viewAdd.scrollTop = 0;
+        });
+        break;
+      }
       default: {
         currentAlbumId = null;
+        currentSingleId = null;
         currentArtistName = null;
         renderAlbums();
         await swapTo(from, viewHome, () => {
@@ -22044,40 +22430,121 @@ ${suffix}`;
       }
     }
   }
+  async function openRelease(id) {
+    const rel = albums.find((a) => a.id === id);
+    if (!rel) return;
+    if (rel.kind === "single") await openSingle(id);
+    else await openAlbum(id);
+  }
   async function openAlbum(id) {
     const al = albums.find((a) => a.id === id);
     if (!al) return;
     currentAlbumId = id;
+    currentSingleId = null;
     resetTrackForm();
     renderAlbumPage(al);
     await navigateTo(viewAlbum, { view: "album", albumId: id });
   }
   albumBack.addEventListener("click", () => void goBack());
-  function makeAlbumCard(a, featScore = null) {
+  function makeAlbumCard(a, featScore = null, animate = false, index = 0) {
     const el = document.createElement("article");
-    el.className = "album";
-    const avg = albumScoreOf(a.id);
+    el.className = animate ? "album reveal" : "album";
+    if (animate) el.style.setProperty("--d", `${(0.2 + index * 0.07).toFixed(2)}s`);
+    const single = a.kind === "single";
+    const avg = single ? singleScoreOf(a.id) : albumScoreOf(a.id);
     const avgStr = avg === null ? "\u2014" : fmt(avg);
     const n = trackCountOf(a.id);
+    const parent = single ? parentOf(a) : void 0;
     el.innerHTML = `
     <div class="album__cover">
       <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} \u2014 ${esc(a.title)}" loading="lazy">
       <span class="album__year">${a.year}</span>
+      ${single ? '<span class="album__badge">\u0441\u0438\u043D\u0433\u043B</span>' : ""}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ""}
       ${featScore !== null ? `<span class="album__featbadge">\u0444\u0438\u0442 ${fmt(featScore)}</span>` : ""}
     </div>
     <div class="album__body">
       <h3 class="album__title">${esc(a.title)}</h3>
-      <p class="album__artist">${esc(a.artist)}</p>
+      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</a></p>
+      ${parent ? `<p class="album__parent">\u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443 \xAB${esc(parent.title)}\xBB</p>` : ""}
       <div class="album__rating">
         <div class="album__avg">
           <span class="album__avg-num">${avgStr}</span>
           <span class="album__avg-of">/10</span>
         </div>
-        <div class="album__votes"><span class="album__count">${n} ${tracksPlural(n)}</span></div>
+        <div class="album__votes">
+          <span class="album__count">${n} ${tracksPlural(n)}</span>
+        </div>
       </div>
     </div>`;
-    el.addEventListener("click", () => void openAlbum(a.id));
+    el.addEventListener("click", () => void openRelease(a.id));
+    if (animate) {
+      el.addEventListener("animationend", () => {
+        if (el.classList.contains("reveal")) {
+          el.classList.remove("reveal");
+          el.style.animation = "none";
+        }
+      });
+    }
+    return el;
+  }
+  function makeSingleCard(s, animate = false, index = 0) {
+    const el = document.createElement("article");
+    el.className = animate ? "album album--single reveal" : "album album--single";
+    if (animate) el.style.setProperty("--d", `${(0.2 + index * 0.07).toFixed(2)}s`);
+    const avg = singleScoreOf(s.id);
+    const parent = parentOf(s);
+    const votes = singleVotesOf(s.id);
+    const pending = pendingCountOf(s.id);
+    el.innerHTML = `
+    <div class="album__cover">
+      <img src="${esc(coverSrc(s))}" alt="${esc(s.artist)} \u2014 ${esc(s.title)}" loading="lazy">
+      <span class="album__year">${s.year}</span>
+      <span class="album__badge">\u0441\u0438\u043D\u0433\u043B</span>
+    </div>
+    <div class="album__body">
+      <h3 class="album__title">${esc(s.title)}</h3>
+      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a></p>
+      ${parent ? `<p class="album__parent">\u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443 \xAB${esc(parent.title)}\xBB</p>` : ""}
+      <div class="album__rating">
+        <div class="album__avg">
+          <span class="album__avg-num">${avg === null ? "\u2014" : fmt(avg)}</span>
+          <span class="album__avg-of">/10</span>
+        </div>
+        <div class="album__votes">
+          <span class="album__count">${votes} ${votesPlural(votes)}</span>
+          ${pending ? `<span class="album__votes-count">${pending} \u0431\u0435\u0437 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F</span>` : ""}
+        </div>
+      </div>
+    </div>`;
+    el.addEventListener("click", (ev) => {
+      if (ev.target.closest(".album__artist-link")) return;
+      void openSingle(s.id);
+    });
+    if (animate) {
+      el.addEventListener("animationend", () => {
+        if (el.classList.contains("reveal")) {
+          el.classList.remove("reveal");
+          el.style.animation = "none";
+        }
+      });
+    }
+    return el;
+  }
+  function makeSingleRow(s) {
+    const el = document.createElement("button");
+    el.type = "button";
+    el.className = "scard";
+    const avg = singleScoreOf(s.id);
+    const votes = singleVotesOf(s.id);
+    el.innerHTML = `
+    <span class="scard__cover"><img src="${esc(coverSrc(s))}" alt="" loading="lazy"></span>
+    <span class="scard__body">
+      <span class="scard__title">${esc(s.title)}</span>
+      <span class="scard__meta">${s.year} \xB7 ${votes} ${votesPlural(votes)}</span>
+    </span>
+    <span class="scard__score">${avg === null ? "\u2014" : fmt(avg)}</span>`;
+    el.addEventListener("click", () => void openSingle(s.id));
     return el;
   }
   function renderArtistPage() {
@@ -22089,10 +22556,21 @@ ${suffix}`;
     artistOwnSection.hidden = own.length === 0;
     artistOwn.innerHTML = "";
     for (const a of own) artistOwn.appendChild(makeAlbumCard(a));
+    const ownSingles = artistOwnSingles(name);
+    artistSinglesSection.hidden = ownSingles.length === 0;
+    artistSingles.innerHTML = "";
+    for (const s of ownSingles) artistSingles.appendChild(makeAlbumCard(s));
     const feats = artistFeatureAlbums(name);
-    artistFeatSection.hidden = feats.length === 0;
+    const featSingles = artistFeatureSingles(name);
+    artistFeatSection.hidden = feats.length === 0 && featSingles.length === 0;
     artistFeat.innerHTML = "";
     for (const f of feats) artistFeat.appendChild(makeAlbumCard(f.album, f.score));
+    if (featSingles.length) {
+      const grid = document.createElement("div");
+      grid.className = "sgrid artist__feat-singles";
+      for (const f of featSingles) grid.appendChild(makeSingleRow(f.single));
+      artistFeat.appendChild(grid);
+    }
   }
   function artistRanks() {
     return allArtistNames().map((name) => {
@@ -22142,8 +22620,59 @@ ${suffix}`;
     renderArtistRank();
     await navigateTo(viewRank, { view: "rank" });
   }
-  artistsBtn.addEventListener("click", () => void openArtists());
+  artistsBtn.addEventListener("click", () => {
+    if (homeMode === "single") void openSingleRank();
+    else void openArtists();
+  });
   rankBack.addEventListener("click", () => void goBack());
+  srankBack.addEventListener("click", () => void goBack());
+  function singleRanks() {
+    return singlesOnly().map((s) => ({
+      single: s,
+      score: singleRankedScoreOf(s.id),
+      votes: singleVotesOf(s.id),
+      pending: pendingCountOf(s.id)
+    })).sort((a, b) => {
+      if (a.score === null && b.score === null) return a.single.title.localeCompare(b.single.title, "ru");
+      if (a.score === null) return 1;
+      if (b.score === null) return -1;
+      return b.score - a.score || a.single.title.localeCompare(b.single.title, "ru");
+    });
+  }
+  function renderSingleRank() {
+    singleRankList.innerHTML = "";
+    const list = singleRanks();
+    if (!list.length) {
+      const li = document.createElement("li");
+      li.className = "rank__empty";
+      li.textContent = "\u0441\u0438\u043D\u0433\u043B\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u2014 \u043E\u0442\u043C\u0435\u0442\u044C\u0442\u0435 \u0442\u0440\u0435\u043A \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \u0438\u043B\u0438 \u0434\u043E\u0431\u0430\u0432\u044C\u0442\u0435 \u0441\u0438\u043D\u0433\u043B \u043A\u043D\u043E\u043F\u043A\u043E\u0439 \u043D\u0430 \u0433\u043B\u0430\u0432\u043D\u043E\u0439";
+      singleRankList.appendChild(li);
+      return;
+    }
+    list.forEach((r, i) => {
+      const pos = i + 1;
+      const li = document.createElement("li");
+      li.className = "rank" + (pos <= 3 && r.score !== null ? ` rank--${pos}` : "") + (r.score === null ? " is-unranked" : "");
+      const parent = parentOf(r.single);
+      const meta = [String(r.single.year), r.single.artist];
+      meta.push(parent ? `\u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443 \xAB${parent.title}\xBB` : "\u0432\u043D\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430");
+      if (r.score === null) meta.push(singleRankReason(r.single.id));
+      li.innerHTML = `
+      <span class="rank__pos">${pos}</span>
+      <span class="rank__ava"><img src="${esc(coverSrc(r.single))}" alt="" loading="lazy"></span>
+      <div class="rank__body">
+        <span class="rank__name">${esc(r.single.title)}</span>
+        <span class="rank__meta">${esc(meta.join(" \xB7 "))}</span>
+      </div>
+      <span class="rank__score">${r.score === null ? "\u2014" : fmt(r.score)}</span>`;
+      li.addEventListener("click", () => void openSingle(r.single.id));
+      singleRankList.appendChild(li);
+    });
+  }
+  async function openSingleRank() {
+    renderSingleRank();
+    await navigateTo(viewSrank, { view: "rank" });
+  }
   async function openArtist(name) {
     if (!name) return;
     currentArtistName = name;
@@ -22298,7 +22827,7 @@ ${suffix}`;
         await getSB().from("albums").delete().eq("id", al.id);
       } else {
         const deadIds = new Set(tracks.filter((t) => t.albumId === al.id).map((t) => t.id));
-        albums = albums.filter((a) => a.id !== al.id);
+        albums = albums.filter((a) => a.id !== al.id).map((a) => a.parentId === al.id ? { ...a, parentId: null } : a);
         tracks = tracks.filter((t) => t.albumId !== al.id);
         for (const id of deadIds) delete trackRatings[id];
         saveLocalAlbums();
@@ -22321,9 +22850,9 @@ ${suffix}`;
       toast(messageOf(err));
     }
   }
-  async function crumbleCover() {
+  async function crumbleCover(selector = ".av__cover") {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const cover = document.querySelector(".av__cover");
+    const cover = document.querySelector(selector);
     if (!cover) return;
     const img = cover.querySelector("img");
     const src = img?.getAttribute("src");
@@ -22372,6 +22901,670 @@ ${suffix}`;
     await sleep3(maxT * 1e3 + 80);
     layer.remove();
   }
+  function currentSingle() {
+    return currentSingleId ? singleById(currentSingleId) : void 0;
+  }
+  function renderSingleCover(s) {
+    const src = coverSrc(s);
+    if (svCoverImg.getAttribute("src") !== src) svCoverImg.src = src;
+    svCoverImg.alt = `${s.artist} \u2014 ${s.title}`;
+    svCoverImg.style.opacity = "";
+    svCoverEdit.hidden = !currentUser;
+    const parent = parentOf(s);
+    svCoverEditLabel.textContent = s.cover ? "\u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443" : parent ? "\u0441\u0432\u043E\u044F \u043E\u0431\u043B\u043E\u0436\u043A\u0430" : "\u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443";
+  }
+  function singleOriginText(s) {
+    const t = tracks.find((x) => x.singleId === s.id);
+    if (!t) return "";
+    const al = albums.find((a) => a.id === t.albumId);
+    if (!al) return "";
+    const list = tracks.filter((x) => x.albumId === al.id).sort((a, b) => a.position - b.position);
+    const idx = list.findIndex((x) => x.id === t.id);
+    return `\u043E\u0442\u043C\u0435\u0447\u0435\u043D \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B \u0443 \u0442\u0440\u0435\u043A\u0430 ${idx + 1} \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \xAB${al.title}\xBB`;
+  }
+  function renderSinglePage(s) {
+    svTitle.textContent = s.title;
+    svArtist.innerHTML = `<a class="sv__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a>`;
+    svYear.textContent = String(s.year);
+    renderSingleCover(s);
+    const parent = parentOf(s);
+    svParentLabel.innerHTML = parent ? `\u0441\u0438\u043D\u0433\u043B \u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443 <a class="sv__parent-link" data-album="${esc(parent.id)}">\xAB${esc(parent.title)}\xBB</a>` : "\u0441\u0438\u043D\u0433\u043B \u0432\u043D\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430";
+    svParentEdit.textContent = parent ? "\u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C" : "\u043F\u0440\u0438\u0432\u044F\u0437\u0430\u0442\u044C \u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443";
+    const origin = singleOriginText(s);
+    svOrigin.hidden = !origin;
+    svOrigin.textContent = origin;
+    const score = singleScoreOf(s.id);
+    svAvg.textContent = score === null ? "\u2014" : fmt(score);
+    delete svAvg.dataset.val;
+    updateSingleDisplays();
+    svNote.textContent = singlesUnavailable() ? "\u0440\u0430\u0437\u0434\u0435\u043B \u0441\u0438\u043D\u0433\u043B\u043E\u0432 \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0451\u043D \u043A \u0431\u0430\u0437\u0435: \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0435 migrate.sql \u0432 Supabase" : "\u043F\u0435\u0440\u0435\u0434\u0432\u0438\u043D\u044C\u0442\u0435 \u043F\u043E\u043B\u0437\u0443\u043D\u043E\u043A \u0438\u043B\u0438 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u0447\u0438\u0441\u043B\u043E, \u0437\u0430\u0442\u0435\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0435 \u2014 \u0434\u043E \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0431\u0430\u043B\u043B \u043D\u0435 \u0432\u043B\u0438\u044F\u0435\u0442 \u043D\u0430 \u0440\u0435\u0439\u0442\u0438\u043D\u0433";
+  }
+  function updateSingleDisplays() {
+    const s = currentSingle();
+    if (!s) return;
+    tweenText(svAvg, singleScoreOf(s.id));
+    renderSingleConfirmState();
+    renderSingleImpact();
+    renderSingleMine();
+    syncSingleControls();
+  }
+  function renderSingleConfirmState() {
+    const s = currentSingle();
+    if (!s || singleScoreOf(s.id) === null) {
+      svConfirmState.hidden = true;
+      return;
+    }
+    const final = singleAllConfirmed(s.id);
+    svConfirmState.hidden = false;
+    svConfirmState.classList.toggle("is-final", final);
+    svConfirmState.innerHTML = final ? `${CHECK_SVG}<span>\u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D</span>` : `${PENDING_SVG}<span>\u043D\u0435 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D</span>`;
+  }
+  function renderSingleImpact() {
+    const s = currentSingle();
+    svChips.innerHTML = "";
+    if (!s) {
+      svImpact.hidden = true;
+      return;
+    }
+    const r = singleRatings[s.id];
+    if (!r || !Object.keys(r).length) {
+      svImpact.hidden = true;
+      return;
+    }
+    svImpact.hidden = false;
+    const rows = [...profileCache].map(([pid, info]) => ({
+      id: pid,
+      username: info.username,
+      initials: info.initials,
+      avatarUrl: info.avatarUrl,
+      value: r[pid] ?? null
+    }));
+    rows.sort((a, b) => Number(b.id === currentUser?.id) - Number(a.id === currentUser?.id));
+    for (const row of rows) {
+      const isMe = row.id === currentUser?.id;
+      const chip = document.createElement("div");
+      chip.className = "av__chip" + (isMe ? " is-me" : "");
+      const label = isMe ? "\u044F" : esc(row.username);
+      const state = row.value ? row.value.confirmed ? "\u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u043E" : "\u0431\u0435\u0437 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F" : "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043A\u0438";
+      chip.innerHTML = `
+      ${avatarMarkup(row, "av__chip-who")}
+      <span class="av__chip-val">${row.value ? fmt(row.value.score) : "\u2014"}</span>
+      <span class="av__chip-sub">${label} \xB7 ${state}</span>`;
+      chip.title = `${row.username}: ${row.value ? fmt(row.value.score) : "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043A\u0438"} \xB7 ${state}`;
+      svChips.appendChild(chip);
+    }
+  }
+  var singlePointerActive = false;
+  var singleSaveTimers = /* @__PURE__ */ new Map();
+  var singleWrites = /* @__PURE__ */ new Map();
+  var confirmingSingles = /* @__PURE__ */ new Set();
+  function setSingleSave(state) {
+    const map = { save: "\u0441\u043E\u0445\u0440\u0430\u043D\u044F\u044E\u2026", done: "\u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E", err: "\u043E\u0448\u0438\u0431\u043A\u0430", "": "" };
+    svSave.textContent = map[state];
+    svSave.classList.toggle("is-visible", state !== "");
+    if (state === "done") {
+      window.setTimeout(() => {
+        if (svSave.textContent === "\u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E") svSave.classList.remove("is-visible");
+      }, 1600);
+    }
+  }
+  function peerSingleRatingOf(singleId) {
+    if (!currentUser) return null;
+    const r = singleRatings[singleId];
+    if (!r) return null;
+    for (const [pid, v] of Object.entries(r)) {
+      if (pid === currentUser.id) continue;
+      const info = profileCache.get(pid);
+      return {
+        score: v.score,
+        confirmed: v.confirmed,
+        username: info?.username ?? "\u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A",
+        initials: info?.initials ?? "?",
+        avatarUrl: info?.avatarUrl ?? null
+      };
+    }
+    return null;
+  }
+  function renderSingleMine() {
+    const s = currentSingle();
+    const mine = currentUser && s ? singleRatings[s.id]?.[currentUser.id] : void 0;
+    svMine.textContent = mine ? fmt(mine.score) : "\u2014";
+    svMine.classList.toggle("is-empty", !mine);
+  }
+  function syncSingleControls() {
+    const s = currentSingle();
+    const myId = currentUser?.id;
+    if (!s || !myId) return;
+    const mine = singleRatings[s.id]?.[myId];
+    const editing = document.activeElement === svSlider || document.activeElement === svNum || singlePointerActive;
+    if (!editing) {
+      svSlider.value = String(mine?.score ?? 5);
+      svNum.value = mine ? fmt(mine.score) : "";
+    }
+    const confirmed = mine?.confirmed === true;
+    svSlider.disabled = confirmed;
+    svNum.disabled = confirmed;
+    svConfirmBtn.disabled = !mine || confirmingSingles.has(s.id);
+    svConfirmBtn.innerHTML = confirmed ? PENCIL_SVG : CHECK_SVG;
+    const label = confirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443";
+    svConfirmBtn.title = label;
+    svConfirmBtn.setAttribute("aria-label", label);
+    svSlider.classList.toggle("is-locked", confirmed);
+    svNum.classList.toggle("is-locked", confirmed);
+    renderSingleMine();
+    const peer = peerSingleRatingOf(s.id);
+    svPeer.innerHTML = peer?.confirmed ? `<span class="track__peer" title="\u043E\u0446\u0435\u043D\u043A\u0430 ${esc(peer.username)} \xB7 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430">
+         ${avatarMarkup(peer, "track__peer-who")}
+         <span class="track__peer-val">${fmt(peer.score)}</span>
+       </span>` : "";
+  }
+  function setSingleRating(v) {
+    var _a;
+    const s = currentSingle();
+    if (!s || !currentUser) return;
+    const prev = singleRatings[s.id]?.[currentUser.id];
+    (singleRatings[_a = s.id] ?? (singleRatings[_a] = {}))[currentUser.id] = { score: v, confirmed: prev?.confirmed === true };
+    if (!CLOUD) saveLocalSingleRatings();
+    setSingleSave("save");
+    updateSingleDisplays();
+    scheduleSingleSave(s.id);
+  }
+  function clearSingleRating() {
+    const s = currentSingle();
+    if (!s || !currentUser) return;
+    const r = singleRatings[s.id];
+    if (r) {
+      delete r[currentUser.id];
+      if (!Object.keys(r).length) delete singleRatings[s.id];
+    }
+    if (!CLOUD) saveLocalSingleRatings();
+    setSingleSave("save");
+    updateSingleDisplays();
+    scheduleSingleSave(s.id);
+  }
+  function stageSingleSave(singleId) {
+    const value = currentUser ? singleRatings[singleId]?.[currentUser.id] : null;
+    const pending = { value: value ? { ...value } : null };
+    pendingSingleRatings.set(singleId, pending);
+    return pending;
+  }
+  function scheduleSingleSave(singleId) {
+    stageSingleSave(singleId);
+    window.clearTimeout(singleSaveTimers.get(singleId));
+    singleSaveTimers.set(singleId, window.setTimeout(() => {
+      singleSaveTimers.delete(singleId);
+      void persistSingleRating(singleId).catch((err) => toast(messageOf(err)));
+    }, 500));
+  }
+  function persistSingleRating(singleId) {
+    if (!currentUser) return Promise.resolve();
+    window.clearTimeout(singleSaveTimers.get(singleId));
+    singleSaveTimers.delete(singleId);
+    const existing = singleWrites.get(singleId);
+    if (existing) return existing;
+    const profileId = currentUser.id;
+    const epoch = syncEpoch;
+    const task = (async () => {
+      while (epoch === syncEpoch && currentUser?.id === profileId) {
+        const pending = pendingSingleRatings.get(singleId);
+        if (!pending || pending.savedAfterRead !== void 0) return;
+        pending.failed = false;
+        setSingleSave("save");
+        try {
+          if (CLOUD) {
+            const result = pending.value ? await getSB().from("single_ratings").upsert(
+              { album_id: singleId, profile_id: profileId, ...pending.value },
+              { onConflict: "album_id,profile_id" }
+            ) : await getSB().from("single_ratings").delete().eq("album_id", singleId).eq("profile_id", profileId);
+            if (result.error) throw result.error;
+          } else saveLocalSingleRatings();
+        } catch (err) {
+          if (epoch !== syncEpoch) return;
+          if (pendingSingleRatings.get(singleId) !== pending) continue;
+          pending.failed = true;
+          setSingleSave("err");
+          throw err;
+        }
+        if (epoch !== syncEpoch) return;
+        if (pendingSingleRatings.get(singleId) !== pending) continue;
+        pending.savedAfterRead = dataReadRevision;
+        setSingleSave("done");
+        requestSync(0);
+        return;
+      }
+    })().finally(() => {
+      if (singleWrites.get(singleId) === task) singleWrites.delete(singleId);
+    });
+    singleWrites.set(singleId, task);
+    return task;
+  }
+  async function toggleSingleConfirm() {
+    const s = currentSingle();
+    if (!s || !currentUser || confirmingSingles.has(s.id)) return;
+    const entry = singleRatings[s.id]?.[currentUser.id];
+    if (!entry) return;
+    const epoch = syncEpoch;
+    const previous = entry.confirmed;
+    const next = !previous;
+    entry.confirmed = next;
+    const pending = stageSingleSave(s.id);
+    confirmingSingles.add(s.id);
+    if (!CLOUD) saveLocalSingleRatings();
+    updateSingleDisplays();
+    try {
+      await persistSingleRating(s.id);
+      if (epoch === syncEpoch) {
+        if (!next) toast("\u041E\u0446\u0435\u043D\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u043C\u0435\u043D\u044F\u0442\u044C \u2014 \u0441\u0438\u043D\u0433\u043B \u043F\u043E\u043A\u0430 \u043D\u0435 \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435");
+        else if (singleAllConfirmed(s.id)) toast("\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u2014 \u0441\u0438\u043D\u0433\u043B \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435");
+        else {
+          const myId = currentUser.id;
+          const peers = Object.keys(singleRatings[s.id] ?? {}).filter((pid) => pid !== myId);
+          toast(peers.length === 0 ? "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u2014 \u0436\u0434\u0451\u043C \u043E\u0446\u0435\u043D\u043A\u0443 \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430" : "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u2014 \u0436\u0434\u0451\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430");
+        }
+      }
+    } catch (err) {
+      if (epoch !== syncEpoch) return;
+      if (pendingSingleRatings.get(s.id) === pending) {
+        const mine = singleRatings[s.id]?.[currentUser.id];
+        if (mine) {
+          mine.confirmed = previous;
+          pending.value = { ...mine };
+        }
+        if (!CLOUD) saveLocalSingleRatings();
+      }
+      updateSingleDisplays();
+      toast(messageOf(err));
+    } finally {
+      if (epoch === syncEpoch) {
+        confirmingSingles.delete(s.id);
+        updateSingleDisplays();
+      }
+    }
+  }
+  svSlider.addEventListener("input", () => {
+    const v = round2(parseFloat(svSlider.value));
+    svNum.value = fmt(v);
+    setSingleRating(v);
+  });
+  svSlider.addEventListener("pointerdown", () => {
+    singlePointerActive = true;
+  });
+  window.addEventListener("pointerup", () => {
+    singlePointerActive = false;
+  });
+  svNum.addEventListener("input", () => {
+    const raw = svNum.value.trim();
+    if (raw === "") {
+      svSlider.value = "5";
+      clearSingleRating();
+      svConfirmBtn.disabled = true;
+      return;
+    }
+    const parsed = parseFloat(raw.replace(",", "."));
+    if (isNaN(parsed)) return;
+    const v = round2(Math.min(10, Math.max(0, parsed)));
+    svSlider.value = String(v);
+    setSingleRating(v);
+  });
+  svSlider.addEventListener("change", () => {
+    singlePointerActive = false;
+    syncSingleControls();
+  });
+  svNum.addEventListener("blur", () => {
+    const raw = svNum.value.trim();
+    if (raw !== "") {
+      const parsed = parseFloat(raw.replace(",", "."));
+      if (!isNaN(parsed)) svNum.value = fmt(round2(Math.min(10, Math.max(0, parsed))));
+    }
+    syncSingleControls();
+  });
+  svConfirmBtn.addEventListener("click", () => void toggleSingleConfirm());
+  async function openSingle(id) {
+    const s = singleById(id);
+    if (!s) return;
+    currentSingleId = id;
+    currentAlbumId = null;
+    renderSinglePage(s);
+    await navigateTo(viewSingle, { view: "single", singleId: id });
+  }
+  singleBack.addEventListener("click", () => void goBack());
+  async function handleDeleteSingle() {
+    const s = currentSingle();
+    if (!s) return;
+    const ok = await openConfirm(
+      "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0441\u0438\u043D\u0433\u043B?",
+      `\u0421\u0438\u043D\u0433\u043B <b>\xAB${esc(s.title)}\xBB</b> \u2014 ${esc(s.artist)} \u0431\u0443\u0434\u0435\u0442 \u0443\u0434\u0430\u043B\u0451\u043D <b>\u043D\u0430\u0432\u0441\u0435\u0433\u0434\u0430</b> \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438. \u041C\u0435\u0442\u043A\u0430 \xAB\u0441\u0438\u043D\u0433\u043B\xBB \u0441 \u0442\u0440\u0435\u043A\u0430 \u0441\u043D\u0438\u043C\u0435\u0442\u0441\u044F. \u042D\u0442\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043D\u0435\u043B\u044C\u0437\u044F \u043E\u0442\u043C\u0435\u043D\u0438\u0442\u044C.`,
+      true
+    );
+    if (!ok) return;
+    try {
+      if (CLOUD) {
+        const { error } = await getSB().from("albums").delete().eq("id", s.id);
+        if (error) throw error;
+        await refreshData();
+      } else {
+        albums = albums.filter((a) => a.id !== s.id);
+        delete singleRatings[s.id];
+        pendingSingleRatings.delete(s.id);
+        tracks = tracks.map((t) => t.singleId === s.id ? { ...t, singleId: null } : t);
+        saveLocalAlbums();
+        saveLocalTracks();
+        saveLocalSingleRatings();
+      }
+      currentSingleId = null;
+      viewStack.length = 0;
+      viewStack.push({ view: "home" });
+      await crumbleCover(".sv__cover");
+      setHomeMode("single", false);
+      renderAlbums();
+      await swapTo(viewSingle, viewHome, () => {
+        viewHome.scrollTop = 0;
+      });
+      toast("\u0421\u0438\u043D\u0433\u043B \u0443\u0434\u0430\u043B\u0451\u043D");
+    } catch (err) {
+      toast(messageOf(err));
+    }
+  }
+  singleDeleteBtn.addEventListener("click", () => void handleDeleteSingle());
+  var singleLinkEditingId = null;
+  var singleLinkValue = null;
+  function updateSingleLinkList() {
+    const query = singleLinkInput.value.trim().toLowerCase();
+    const matches = albumsOnly().filter((a) => !query || a.title.toLowerCase().includes(query) || a.artist.toLowerCase().includes(query)).slice(0, 8);
+    singleLinkList.innerHTML = "";
+    for (const a of matches) {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "combo__item";
+      btn.innerHTML = `<span class="combo__name">${esc(a.title)}</span><span class="combo__tag">${esc(a.artist)} \xB7 ${a.year}</span>`;
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        singleLinkInput.value = a.title;
+        singleLinkValue = a.id;
+        singleLinkList.hidden = true;
+      });
+      li.appendChild(btn);
+      singleLinkList.appendChild(li);
+    }
+    singleLinkList.hidden = singleLinkList.children.length === 0;
+  }
+  function openSingleLinkEditor() {
+    const s = currentSingle();
+    if (!s || singleLinkDialog.open) return;
+    singleLinkEditingId = s.id;
+    const parent = parentOf(s);
+    singleLinkInput.value = parent?.title ?? "";
+    singleLinkValue = parent?.id ?? null;
+    singleLinkName.textContent = `${s.artist} \u2014 ${s.title}`;
+    singleLinkError.textContent = "";
+    singleLinkError.classList.remove("is-visible");
+    singleLinkSave.classList.remove("is-loading");
+    singleLinkDialog.showModal();
+    void singleLinkDialog.offsetWidth;
+    singleLinkDialog.classList.add("is-open");
+    updateSingleLinkList();
+  }
+  function closeSingleLinkEditor() {
+    if (!singleLinkDialog.open) return;
+    singleLinkDialog.classList.remove("is-open");
+    singleLinkList.hidden = true;
+    window.setTimeout(() => {
+      if (!singleLinkDialog.classList.contains("is-open")) singleLinkDialog.close();
+    }, 240);
+  }
+  async function saveSingleLink(albumId) {
+    const id = singleLinkEditingId;
+    if (!id) return;
+    const single = singleById(id);
+    if (!single) {
+      closeSingleLinkEditor();
+      return;
+    }
+    if (single.parentId === albumId) {
+      closeSingleLinkEditor();
+      return;
+    }
+    singleLinkSave.classList.add("is-loading");
+    try {
+      if (CLOUD) {
+        const { error } = await getSB().from("albums").update({ parent_album_id: albumId }).eq("id", id);
+        if (error) throw error;
+      }
+      albums = albums.map((a) => a.id === id ? { ...a, parentId: albumId } : a);
+      if (!CLOUD) saveLocalAlbums();
+      closeSingleLinkEditor();
+      const warn = albumId ? await attachSingleTrack(id, albumId) : null;
+      const updated = singleById(id);
+      if (currentSingle()?.id === id && updated) renderSinglePage(updated);
+      if (currentAlbumId) {
+        renderTracks();
+        renderAlbumSingles();
+      }
+      toast(warn ?? (albumId ? "\u0421\u0438\u043D\u0433\u043B \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D \u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443" : "\u0421\u0438\u043D\u0433\u043B \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D \u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443"));
+      requestSync(0);
+    } catch (err) {
+      singleLinkError.textContent = messageOf(err);
+      singleLinkError.classList.add("is-visible");
+    } finally {
+      singleLinkSave.classList.remove("is-loading");
+    }
+  }
+  svParentEdit.addEventListener("click", openSingleLinkEditor);
+  svParentLabel.addEventListener("click", (e) => {
+    const link = e.target.closest(".sv__parent-link");
+    if (!link) return;
+    e.preventDefault();
+    const id = link.dataset.album;
+    if (id) void openAlbum(id);
+  });
+  svArtist.addEventListener("click", (e) => {
+    const a = e.target.closest(".sv__artist-link");
+    if (!a) return;
+    e.preventDefault();
+    const name = a.dataset.artist;
+    if (name) void openArtist(name);
+  });
+  singleLinkInput.addEventListener("input", () => {
+    singleLinkValue = null;
+    updateSingleLinkList();
+  });
+  singleLinkInput.addEventListener("focus", updateSingleLinkList);
+  singleLinkInput.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      singleLinkList.hidden = true;
+    }, 120);
+  });
+  document.addEventListener("click", (e) => {
+    if (!singleLinkBox.contains(e.target)) singleLinkList.hidden = true;
+  });
+  singleLinkCancel.addEventListener("click", closeSingleLinkEditor);
+  singleLinkDialog.addEventListener("cancel", (e) => {
+    e.preventDefault();
+    closeSingleLinkEditor();
+  });
+  singleLinkUnlink.addEventListener("click", () => void saveSingleLink(null));
+  singleLinkForm.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (singleLinkSave.classList.contains("is-loading")) return;
+    const raw = singleLinkInput.value.trim();
+    if (!raw) {
+      void saveSingleLink(null);
+      return;
+    }
+    const picked = singleLinkValue ? albums.find((a) => a.id === singleLinkValue && a.kind === "album") : void 0;
+    const match = picked ?? albumsOnly().find((a) => a.title.toLowerCase() === raw.toLowerCase());
+    if (!match) {
+      singleLinkError.textContent = "\u0422\u0430\u043A\u043E\u0433\u043E \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \u043D\u0435\u0442 \u0432 \u043A\u043E\u043B\u043B\u0435\u043A\u0446\u0438\u0438 \u2014 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0438\u0437 \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043E\u043A \u0438\u043B\u0438 \u043E\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u043F\u043E\u043B\u0435 \u043F\u0443\u0441\u0442\u044B\u043C";
+      singleLinkError.classList.add("is-visible");
+      return;
+    }
+    void saveSingleLink(match.id);
+  });
+  function stripFeat(title) {
+    const m = FEAT_RE.exec(title);
+    return (m ? title.slice(0, m.index) : title).trim();
+  }
+  async function attachSingleTrack(singleId, parentId) {
+    const single = singleById(singleId);
+    const al = albums.find((a) => a.id === parentId && a.kind === "album");
+    if (!single || !al) return null;
+    if (al.tracksLocked) {
+      return "\u0421\u0438\u043D\u0433\u043B \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D, \u043D\u043E \u0442\u0440\u0435\u043A\u0438 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u044B \u2014 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u0442\u0440\u0435\u043A\u043E\u0432 \u043E\u043D \u043D\u0435 \u043F\u043E\u044F\u0432\u0438\u043B\u0441\u044F";
+    }
+    const title = single.title.trim();
+    const sameArtist = al.artist.trim().toLowerCase() === single.artist.trim().toLowerCase();
+    const feat = sameArtist ? null : canonicalArtistName(single.artist);
+    const fullTitle = feat ? `${title} & ${feat}` : title;
+    const existing = tracks.find(
+      (t) => t.albumId === parentId && stripFeat(t.title).toLowerCase() === title.toLowerCase()
+    );
+    try {
+      if (existing) {
+        if (existing.singleId) return null;
+        if (CLOUD) {
+          const { error } = await getSB().from("tracks").update({ single_id: singleId }).eq("id", existing.id);
+          if (error) throw error;
+          await refreshData();
+        } else {
+          tracks = tracks.map((t) => t.id === existing.id ? { ...t, singleId } : t);
+          saveLocalTracks();
+        }
+        return null;
+      }
+      const position = tracks.filter((t) => t.albumId === parentId).length;
+      if (CLOUD) {
+        const { error } = await getSB().from("tracks").insert({
+          album_id: parentId,
+          title: fullTitle,
+          position,
+          locked: false,
+          feat_artist: feat,
+          single_id: singleId
+        });
+        if (error) throw error;
+        await refreshData();
+      } else {
+        tracks.push({
+          id: "t" + Date.now().toString(36),
+          albumId: parentId,
+          title: fullTitle,
+          position,
+          locked: false,
+          featArtist: feat,
+          singleId
+        });
+        saveLocalTracks();
+      }
+      return null;
+    } catch (err) {
+      return "\u0421\u0438\u043D\u0433\u043B \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D, \u043D\u043E \u0442\u0440\u0435\u043A \u0432 \u0430\u043B\u044C\u0431\u043E\u043C\u0435 \u0441\u043E\u0437\u0434\u0430\u0442\u044C \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C: " + messageOf(err);
+    }
+  }
+  function singleOfTrack(t) {
+    return t.singleId ? singleById(t.singleId) : void 0;
+  }
+  async function markTrackAsSingle(t) {
+    const al = albums.find((a) => a.id === t.albumId);
+    if (!al || !currentUser) return;
+    if (!singleById(t.singleId ?? "")) {
+      try {
+        if (CLOUD) {
+          const ins = await getSB().from("albums").insert({
+            artist: al.artist,
+            title: t.title,
+            year: al.year,
+            cover_url: null,
+            tracks_locked: false,
+            kind: "single",
+            parent_album_id: al.id,
+            created_by: currentUser.id
+          }).select("id").single();
+          if (ins.error) {
+            if (ins.error.code === "23505") throw new Error("\u0422\u0430\u043A\u043E\u0439 \u0441\u0438\u043D\u0433\u043B \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C");
+            throw ins.error;
+          }
+          const singleId = ins.data.id;
+          const upd = await getSB().from("tracks").update({ single_id: singleId }).eq("id", t.id);
+          if (upd.error) throw upd.error;
+          await refreshData();
+        } else {
+          const singleId = "s" + Date.now().toString(36);
+          albums.push({
+            id: singleId,
+            artist: al.artist,
+            title: t.title,
+            year: al.year,
+            cover: "",
+            kind: "single",
+            parentId: al.id,
+            tracksLocked: false,
+            cohesion: null,
+            albumType: null
+          });
+          tracks = tracks.map((x) => x.id === t.id ? { ...x, singleId } : x);
+          saveLocalAlbums();
+          saveLocalTracks();
+        }
+        toast("\u0422\u0440\u0435\u043A \u043E\u0442\u043C\u0435\u0447\u0435\u043D \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B");
+        renderTracks();
+        renderAlbumSingles();
+        requestSync(0);
+      } catch (err) {
+        const msg = messageOf(err);
+        toast(/column|relation|schema|does not exist/i.test(msg) ? "\u041D\u0443\u0436\u043D\u0430 \u043C\u0438\u0433\u0440\u0430\u0446\u0438\u044F \u0431\u0430\u0437\u044B: \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0435 migrate.sql \u0432 Supabase" : msg);
+      }
+    }
+    const created = tracks.find((x) => x.id === t.id)?.singleId;
+    if (created) void openSingle(created);
+  }
+  async function unmarkTrackAsSingle(t) {
+    const single = singleOfTrack(t);
+    const ok = await openConfirm(
+      "\u0421\u043D\u044F\u0442\u044C \u043C\u0435\u0442\u043A\u0443 \xAB\u0441\u0438\u043D\u0433\u043B\xBB?",
+      single ? `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C. \u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u0441\u0438\u043D\u0433\u043B\u0430 <b>\xAB${esc(single.title)}\xBB</b> \u0438 \u0435\u0433\u043E \u043E\u0446\u0435\u043D\u043A\u0438 \u043E\u0441\u0442\u0430\u043D\u0443\u0442\u0441\u044F \u2014 \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E, \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0441\u0438\u043D\u0433\u043B\u0430.` : `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C.`
+    );
+    if (!ok) return;
+    try {
+      if (CLOUD) {
+        const { error } = await getSB().from("tracks").update({ single_id: null }).eq("id", t.id);
+        if (error) throw error;
+        await refreshData();
+      } else {
+        tracks = tracks.map((x) => x.id === t.id ? { ...x, singleId: null } : x);
+        saveLocalTracks();
+      }
+      toast("\u041C\u0435\u0442\u043A\u0430 \u0441\u043D\u044F\u0442\u0430");
+      renderTracks();
+      renderAlbumSingles();
+      requestSync(0);
+    } catch (err) {
+      toast(messageOf(err));
+    }
+  }
+  async function promptSingleFromTrack(t) {
+    const single = singleOfTrack(t);
+    if (!single) return;
+    const ok = await openConfirm(
+      "\u041F\u0435\u0440\u0435\u0439\u0442\u0438 \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441\u0438\u043D\u0433\u043B\u0430?",
+      `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043E\u0442\u043C\u0435\u0447\u0435\u043D \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B <b>\xAB${esc(single.title)}\xBB</b>. \u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0435\u0433\u043E \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438?`,
+      false,
+      { ok: "\u0434\u0430", cancel: "\u043D\u0430\u0437\u0430\u0434" }
+    );
+    if (ok) void openSingle(single.id);
+  }
+  function renderAlbumSingles() {
+    const al = currentAlbum();
+    if (!al) {
+      avSinglesSection.hidden = true;
+      return;
+    }
+    const list = albums.filter((a) => a.kind === "single" && a.parentId === al.id);
+    avSinglesSection.hidden = list.length === 0;
+    avSinglesCount.textContent = `${list.length} ${singlesPlural(list.length)}`;
+    avSingles.innerHTML = "";
+    for (const s of list) avSingles.appendChild(makeSingleRow(s));
+  }
   var addPending = false;
   var pendingCover = null;
   var coverUrlTimer;
@@ -22400,9 +23593,9 @@ ${suffix}`;
     const title = titleInput.value.trim();
     if (artist && title) {
       const dup = albums.some(
-        (a) => a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === title.toLowerCase()
+        (a) => a.kind === addKind && a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === title.toLowerCase()
       );
-      if (dup) showTitleError("\u0442\u0430\u043A\u043E\u0439 \u0430\u043B\u044C\u0431\u043E\u043C \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C");
+      if (dup) showTitleError(`\u0442\u0430\u043A\u043E\u0439 ${addKind === "single" ? "\u0441\u0438\u043D\u0433\u043B" : "\u0430\u043B\u044C\u0431\u043E\u043C"} \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C`);
       else {
         titleError.textContent = "";
         titleError.classList.remove("is-visible");
@@ -22612,23 +23805,73 @@ ${suffix}`;
     artistField.classList.remove("is-picked", "pulse");
     clearAddErrors();
   }
-  function openAdd() {
+  var addKind = "album";
+  var addParentId = null;
+  function applyAddMode(kind) {
+    addKind = kind;
+    const single = kind === "single";
+    viewAdd.setAttribute("aria-label", single ? "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0441\u0438\u043D\u0433\u043B" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0430\u043B\u044C\u0431\u043E\u043C");
+    addTitle.textContent = single ? "\u041D\u043E\u0432\u044B\u0439 \u0441\u0438\u043D\u0433\u043B" : "\u041D\u043E\u0432\u044B\u0439 \u0430\u043B\u044C\u0431\u043E\u043C";
+    addSubmitLabel.textContent = single ? "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0441\u0438\u043D\u0433\u043B" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0430\u043B\u044C\u0431\u043E\u043C";
+    titleLabel.textContent = single ? "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0441\u0438\u043D\u0433\u043B\u0430 *" : "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 *";
+    titleInput.placeholder = single ? "\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, Not Like Us" : "\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, Blonde";
+    parentField.hidden = !single;
+    parentNote.textContent = single ? "\u0441\u0438\u043D\u0433\u043B \u0431\u0443\u0434\u0435\u0442 \u0432\u0438\u0434\u0435\u043D \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u044D\u0442\u043E\u0433\u043E \u0430\u043B\u044C\u0431\u043E\u043C\u0430, \u0430 \u0435\u0433\u043E \u043E\u0431\u043B\u043E\u0436\u043A\u0430 \u043F\u043E\u0434\u0441\u0442\u0430\u0432\u0438\u0442\u0441\u044F \u043E\u0442\u0442\u0443\u0434\u0430, \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u0434\u0430\u043D\u0430 \u0441\u0432\u043E\u044F" : "";
+    coverNote.textContent = single ? "\u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u0441\u0441\u044B\u043B\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u044C \u043F\u043E\u0437\u0436\u0435, \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0441\u0438\u043D\u0433\u043B\u0430; \u0431\u0435\u0437 \u0441\u0432\u043E\u0435\u0439 \u043E\u0431\u043B\u043E\u0436\u043A\u0438 \u043F\u043E\u0434\u0441\u0442\u0430\u0432\u0438\u0442\u0441\u044F \u043E\u0431\u043B\u043E\u0436\u043A\u0430 \u0430\u043B\u044C\u0431\u043E\u043C\u0430" : "\u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u0441\u0441\u044B\u043B\u043A\u0430 \u2014 \u043E\u0431\u043B\u043E\u0436\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u0431\u0443\u0434\u0435\u0442 \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u044C \u0438 \u043F\u043E\u0437\u0436\u0435, \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430";
+  }
+  function updateParentList() {
+    const query = parentInput.value.trim().toLowerCase();
+    const matches = albumsOnly().filter((a) => !query || a.title.toLowerCase().includes(query) || a.artist.toLowerCase().includes(query)).slice(0, 6);
+    parentList.innerHTML = "";
+    for (const a of matches) {
+      const li = document.createElement("li");
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "combo__item";
+      btn.innerHTML = `<span class="combo__name">${esc(a.title)}</span><span class="combo__tag">${esc(a.artist)} \xB7 ${a.year}</span>`;
+      btn.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        parentInput.value = a.title;
+        addParentId = a.id;
+        parentList.hidden = true;
+        if (!yearInput.value.trim()) yearInput.value = String(a.year);
+        clearAddErrors();
+      });
+      li.appendChild(btn);
+      parentList.appendChild(li);
+    }
+    parentList.hidden = parentList.children.length === 0;
+  }
+  parentInput.addEventListener("input", () => {
+    addParentId = null;
+    updateParentList();
+    clearAddErrors();
+  });
+  parentInput.addEventListener("focus", updateParentList);
+  parentInput.addEventListener("blur", () => {
+    window.setTimeout(() => {
+      parentList.hidden = true;
+    }, 120);
+  });
+  document.addEventListener("click", (e) => {
+    if (!parentBox.contains(e.target)) parentList.hidden = true;
+  });
+  async function openAdd(kind = "album") {
     resetAddForm();
-    void swapTo(viewHome, viewAdd, () => {
-      viewAdd.scrollTop = 0;
-    });
+    applyAddMode(kind);
+    await navigateTo(viewAdd, { view: "add", kind });
   }
-  function closeAdd() {
-    void swapTo(viewAdd, viewHome, () => {
-      viewHome.scrollTop = 0;
-    });
-  }
-  addBack.addEventListener("click", closeAdd);
+  addBack.addEventListener("click", () => void goBack());
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
     if (albumCoverDialog.open) {
       e.preventDefault();
       closeAlbumCoverEditor();
+      return;
+    }
+    if (singleLinkDialog.open) {
+      e.preventDefault();
+      closeSingleLinkEditor();
       return;
     }
     if (!confirmModal.hidden) {
@@ -22639,10 +23882,12 @@ ${suffix}`;
       closeAllFinSelects();
       return;
     }
-    if (viewAdd.classList.contains("is-visible")) closeAdd();
-    else if (visibleView() && !viewHome.classList.contains("is-visible")) void goBack();
+    if (visibleView() && !viewHome.classList.contains("is-visible")) void goBack();
   });
   async function addAlbum(input) {
+    const kind = input.kind ?? "album";
+    const parentId = kind === "single" ? input.parentId ?? null : null;
+    const what = kind === "single" ? "\u0441\u0438\u043D\u0433\u043B" : "\u0430\u043B\u044C\u0431\u043E\u043C";
     if (CLOUD) {
       const s = getSB();
       let coverUrlFinal = input.coverUrl ?? "";
@@ -22653,28 +23898,39 @@ ${suffix}`;
         year: input.year,
         cover_url: coverUrlFinal || null,
         tracks_locked: false,
+        kind,
+        parent_album_id: parentId,
         created_by: currentUser?.id ?? null
       });
       if (ins.error) {
         if (ins.error.code === "23505") {
-          throw new Error("\u0442\u0430\u043A\u043E\u0439 \u0430\u043B\u044C\u0431\u043E\u043C \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C");
+          throw new Error(`\u0442\u0430\u043A\u043E\u0439 ${what} \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C`);
+        }
+        if (/column|relation|schema|does not exist/i.test(ins.error.message ?? "")) {
+          throw new Error("\u0411\u0430\u0437\u0430 \u043D\u0435 \u043E\u0431\u043D\u043E\u0432\u043B\u0435\u043D\u0430: \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0435 migrate.sql \u0432 Supabase");
         }
         throw ins.error;
       }
       await refreshData();
-    } else {
-      albums.push({
-        id: "a" + Date.now().toString(36),
-        artist: input.artist,
-        title: input.title,
-        year: input.year,
-        cover: input.coverDataUrl ?? input.coverUrl ?? "",
-        tracksLocked: false,
-        cohesion: null,
-        albumType: null
-      });
-      saveLocalAlbums();
+      return albums.find(
+        (a) => a.kind === kind && a.artist.toLowerCase() === input.artist.trim().toLowerCase() && a.title.toLowerCase() === input.title.trim().toLowerCase()
+      )?.id ?? null;
     }
+    const id = (kind === "single" ? "s" : "a") + Date.now().toString(36);
+    albums.push({
+      id,
+      artist: input.artist,
+      title: input.title,
+      year: input.year,
+      cover: input.coverDataUrl ?? input.coverUrl ?? "",
+      kind,
+      parentId,
+      tracksLocked: false,
+      cohesion: null,
+      albumType: null
+    });
+    saveLocalAlbums();
+    return id;
   }
   addForm.addEventListener("submit", (e) => {
     e.preventDefault();
@@ -22685,9 +23941,11 @@ ${suffix}`;
     const artistRaw = artistInput.value.trim();
     const titleRaw = titleInput.value.trim();
     const yearRaw = yearInput.value.trim();
+    const single = addKind === "single";
+    const what = single ? "\u0441\u0438\u043D\u0433\u043B" : "\u0430\u043B\u044C\u0431\u043E\u043C";
     let err = null;
     if (!artistRaw) err = "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u0430\u0440\u0442\u0438\u0441\u0442\u0430";
-    else if (!titleRaw) err = "\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430";
+    else if (!titleRaw) err = `\u0423\u043A\u0430\u0436\u0438\u0442\u0435 \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 ${single ? "\u0441\u0438\u043D\u0433\u043B\u0430" : "\u0430\u043B\u044C\u0431\u043E\u043C\u0430"}`;
     else if (!/^\d{4}$/.test(yearRaw)) err = "\u0413\u043E\u0434 \u2014 \u0447\u0435\u0442\u044B\u0440\u0435 \u0446\u0438\u0444\u0440\u044B, \u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440 2024";
     else {
       const y = Number(yearRaw);
@@ -22698,12 +23956,26 @@ ${suffix}`;
       shakeEl(addPanel);
       return;
     }
+    let parentId = null;
+    if (single) {
+      const parentRaw = parentInput.value.trim();
+      if (parentRaw) {
+        const picked = addParentId ? albums.find((a) => a.id === addParentId && a.kind === "album") : void 0;
+        const match = picked ?? albumsOnly().find((a) => a.title.toLowerCase() === parentRaw.toLowerCase());
+        if (!match) {
+          showAddError("\u0422\u0430\u043A\u043E\u0433\u043E \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \u043D\u0435\u0442 \u0432 \u043A\u043E\u043B\u043B\u0435\u043A\u0446\u0438\u0438 \u2014 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0438\u0437 \u043F\u043E\u0434\u0441\u043A\u0430\u0437\u043E\u043A \u0438\u043B\u0438 \u043E\u0447\u0438\u0441\u0442\u0438\u0442\u0435 \u043F\u043E\u043B\u0435");
+          shakeEl(addPanel);
+          return;
+        }
+        parentId = match.id;
+      }
+    }
     const artist = normalizeArtist(artistRaw);
     const dup = albums.some(
-      (a) => a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === titleRaw.toLowerCase()
+      (a) => a.kind === addKind && a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === titleRaw.toLowerCase()
     );
     if (dup) {
-      showTitleError("\u0442\u0430\u043A\u043E\u0439 \u0430\u043B\u044C\u0431\u043E\u043C \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C");
+      showTitleError(`\u0442\u0430\u043A\u043E\u0439 ${what} \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C`);
       shakeEl(addPanel);
       return;
     }
@@ -22711,21 +23983,26 @@ ${suffix}`;
     addSubmit.classList.add("is-loading");
     clearAddErrors();
     try {
-      await addAlbum({
+      const createdId = await addAlbum({
         artist,
         title: titleRaw,
         year: Number(yearRaw),
         coverDataUrl: pendingCover && pendingCover.startsWith("data:") ? pendingCover : null,
-        coverUrl: pendingCover && !pendingCover.startsWith("data:") ? pendingCover : null
+        coverUrl: pendingCover && !pendingCover.startsWith("data:") ? pendingCover : null,
+        kind: addKind,
+        parentId
       });
+      const added = createdId && parentId ? await attachSingleTrack(createdId, parentId) : null;
       addPending = false;
       addSubmit.classList.remove("is-loading");
       resetAddForm();
+      setHomeMode(addKind, false);
+      if (topEntry().view === "add") viewStack.pop();
       renderAlbums();
+      toast(added ?? (single ? "\u0421\u0438\u043D\u0433\u043B \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D" : "\u0410\u043B\u044C\u0431\u043E\u043C \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D"));
       await swapTo(viewAdd, viewHome, () => {
         viewHome.scrollTop = 0;
       });
-      toast("\u0410\u043B\u044C\u0431\u043E\u043C \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D");
     } catch (e) {
       addPending = false;
       addSubmit.classList.remove("is-loading");
@@ -22783,6 +24060,7 @@ ${suffix}`;
     renderAlbums();
   }
   async function init() {
+    homeMode = loadHomeMode();
     initTilt();
     showDemoHint();
     card.classList.add("enter");

@@ -35,13 +35,17 @@ function getSB(): SupabaseClient {
 
 /* ---------- Типы ---------- */
 interface ProfileInfo { id: string; email: string; username: string; initials: string; avatarUrl: string | null; }
+/** Тип релиза: полноценный альбом или сингл (один трек, оценка ставится релизу целиком). */
+type ReleaseKind = 'album' | 'single';
 interface UiAlbum {
   id: string; artist: string; title: string; year: number; cover: string;
+  kind: ReleaseKind;            // 'album' | 'single'
+  parentId: string | null;      // для сингла: альбом, к которому он относится
   tracksLocked: boolean;
-  cohesion: number | null;      // целостность/концептуальность: 1..5, финально
-  albumType: string | null;     // 'album' | 'ep' | 'compilation', финально
+  cohesion: number | null;      // целостность/концептуальность: 1..5, финально (только альбомы)
+  albumType: string | null;     // 'album' | 'ep' | 'compilation', финально (только альбомы)
 }
-interface UiTrack { id: string; albumId: string; title: string; position: number; locked: boolean; featArtist: string | null; }
+interface UiTrack { id: string; albumId: string; title: string; position: number; locked: boolean; featArtist: string | null; singleId: string | null; }
 interface TrackRating { score: number; confirmed: boolean; }
 type RatingMap = Record<string, Record<string, TrackRating>>;
 interface PendingRating { value: TrackRating | null; savedAfterRead?: number; failed?: boolean; }
@@ -49,35 +53,76 @@ interface AddInput {
   artist: string; title: string; year: number;
   coverDataUrl: string | null;
   coverUrl: string | null;
+  kind?: ReleaseKind;        // по умолчанию — альбом
+  parentId?: string | null;  // для сингла: альбом, к которому он относится
 }
 
 /* ---------- Демо-сид (локальный режим) ---------- */
 const SEED_ALBUMS: UiAlbum[] = [
-  { id: 'music', title: 'MUSIC', artist: 'Playboi Carti', year: 2025, cover: 'covers/music.jpg', tracksLocked: false, cohesion: null, albumType: 'album' },
-  { id: 'afterlyfe', title: 'AftërLyfe', artist: 'Yeat', year: 2023, cover: 'covers/afterlyfe.jpg', tracksLocked: false, cohesion: null, albumType: 'album' },
-  { id: 'chromakopia', title: 'CHROMAKOPIA', artist: 'Tyler, The Creator', year: 2024, cover: 'covers/chromakopia.jpg', tracksLocked: false, cohesion: null, albumType: 'album' },
-  { id: 'gnx', title: 'GNX', artist: 'Kendrick Lamar', year: 2024, cover: 'covers/gnx.jpg', tracksLocked: false, cohesion: null, albumType: 'album' },
-  { id: 'hurry-up-tomorrow', title: 'Hurry Up Tomorrow', artist: 'The Weeknd', year: 2025, cover: 'covers/hurry-up-tomorrow.jpg', tracksLocked: false, cohesion: null, albumType: 'album' },
-  { id: 'blonde', title: 'Blonde', artist: 'Frank Ocean', year: 2016, cover: 'covers/blonde.jpg', tracksLocked: false, cohesion: null, albumType: 'album' },
+  { id: 'music', title: 'MUSIC', artist: 'Playboi Carti', year: 2025, cover: 'covers/music.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
+  { id: 'afterlyfe', title: 'AftërLyfe', artist: 'Yeat', year: 2023, cover: 'covers/afterlyfe.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
+  { id: 'chromakopia', title: 'CHROMAKOPIA', artist: 'Tyler, The Creator', year: 2024, cover: 'covers/chromakopia.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
+  { id: 'gnx', title: 'GNX', artist: 'Kendrick Lamar', year: 2024, cover: 'covers/gnx.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
+  { id: 'hurry-up-tomorrow', title: 'Hurry Up Tomorrow', artist: 'The Weeknd', year: 2025, cover: 'covers/hurry-up-tomorrow.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
+  { id: 'blonde', title: 'Blonde', artist: 'Frank Ocean', year: 2016, cover: 'covers/blonde.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
 ];
+
+/* синглы: один самостоятельный (со своей обложкой) и три, привязанных к альбомам */
+const SEED_SINGLES: UiAlbum[] = [
+  { id: 's-nikes', title: 'Nikes', artist: 'Frank Ocean', year: 2016, cover: '', kind: 'single', parentId: 'blonde', tracksLocked: false, cohesion: null, albumType: null },
+  { id: 's-timeless', title: 'Timeless', artist: 'The Weeknd', year: 2024, cover: '', kind: 'single', parentId: 'hurry-up-tomorrow', tracksLocked: false, cohesion: null, albumType: null },
+  { id: 's-mojo-jojo', title: 'MOJO JOJO', artist: 'Playboi Carti', year: 2025, cover: '', kind: 'single', parentId: 'music', tracksLocked: false, cohesion: null, albumType: null },
+  { id: 's-not-like-us', title: 'Not Like Us', artist: 'Kendrick Lamar', year: 2024, cover: 'covers/not-like-us.jpg', kind: 'single', parentId: null, tracksLocked: false, cohesion: null, albumType: null },
+];
+
+/* демо-оценки синглов: подтверждённые участвуют в рейтинге, неподтверждённые — нет */
+const SEED_SINGLE_RATINGS: RatingMap = {
+  's-nikes': {
+    'killmiplag@demo.local': { score: 9.4, confirmed: true },
+    'elevator@demo.local': { score: 8.6, confirmed: true },
+  },
+  's-not-like-us': {
+    'killmiplag@demo.local': { score: 9.6, confirmed: true },
+    'elevator@demo.local': { score: 9.8, confirmed: true },
+  },
+  's-timeless': {
+    'killmiplag@demo.local': { score: 7.2, confirmed: true },
+    'elevator@demo.local': { score: 8.0, confirmed: false },
+  },
+};
 
 /* ---------- Состояние ---------- */
 let currentUser: ProfileInfo | null = null;
-let albums: UiAlbum[] = [];
+let albums: UiAlbum[] = [];       // и альбомы, и синглы (различаются полем kind)
 let tracks: UiTrack[] = [];
 let trackRatings: RatingMap = {}; // trackId -> profileId -> {score, confirmed}
+let singleRatings: RatingMap = {}; // singleId -> profileId -> {score, confirmed}
+/* Синглы требуют обновлённой схемы базы (albums.kind, single_ratings).
+   Если таблицы ещё нет, раздел синглов аккуратно сообщает об этом. */
+let singlesReady = true;
 let currentAlbumId: string | null = null;
+let currentSingleId: string | null = null;
 let currentArtistName: string | null = null;
+let homeMode: ReleaseKind = 'album'; // что показывает главная: альбомы или синглы
 /* стек навигации: история переходов, верхний элемент — текущий экран */
-type ViewEntry = { view: 'home' | 'album' | 'artist' | 'profile' | 'rank'; albumId?: string };
+type ViewEntry =
+  | { view: 'home' }
+  | { view: 'album'; albumId: string }
+  | { view: 'single'; singleId: string }
+  | { view: 'artist' }
+  | { view: 'profile' }
+  | { view: 'rank' }
+  | { view: 'add'; kind: ReleaseKind };
 const viewStack: ViewEntry[] = [{ view: 'home' }];
 const profileCache = new Map<string, { username: string; initials: string; avatarUrl: string | null }>(); // profileId -> подпись + аватар
 
 /* ---------- Локальное хранилище (демо) ---------- */
-const LS_KEY = 'albums_local_v1';
+const LS_KEY = 'albums_local_v1';         // и альбомы, и синглы
 const LS_TRACKS = 'tracks_local_v1';
 const LS_RATINGS = 'track_ratings_local_v1';
+const LS_SINGLE_RATINGS = 'single_ratings_local_v1';
 const LS_META = 'profile_meta_local_v1'; // { email: { username, avatarUrl } } — правки ника/аватара в демо
+const LS_HOME_MODE = 'home_mode_local_v1'; // какой раздел главной открыт: albums | singles
 
 type LocalMeta = Record<string, { username: string; avatarUrl: string | null }>;
 function loadLocalMeta(): LocalMeta {
@@ -91,20 +136,31 @@ function saveLocalMeta(m: LocalMeta): void {
   try { localStorage.setItem(LS_META, JSON.stringify(m)); } catch { /* ignore */ }
 }
 
+/** Приводит запись из хранилища или базы к актуальному виду (старые данные — без kind). */
+function normalizeAlbum(a: Partial<UiAlbum> & { id: string; artist: string; title: string; year: number }): UiAlbum {
+  return {
+    id: a.id,
+    artist: a.artist,
+    title: a.title,
+    year: a.year,
+    cover: a.cover ?? '',
+    kind: a.kind === 'single' ? 'single' : 'album',
+    parentId: a.parentId ?? null,
+    tracksLocked: Boolean(a.tracksLocked),
+    cohesion: a.cohesion ?? null,
+    albumType: a.albumType ?? null,
+  };
+}
+
 function loadLocalAlbums(): UiAlbum[] {
   try {
     const raw = localStorage.getItem(LS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as UiAlbum[];
-      if (Array.isArray(parsed)) return parsed.map((a) => ({
-        ...a,
-        tracksLocked: Boolean(a.tracksLocked),
-        cohesion: a.cohesion ?? null,
-        albumType: a.albumType ?? null,
-      }));
+      if (Array.isArray(parsed)) return parsed.map((a) => normalizeAlbum(a));
     }
   } catch { /* ignore */ }
-  return SEED_ALBUMS.map((a) => ({ ...a }));
+  return [...SEED_ALBUMS, ...SEED_SINGLES].map((a) => ({ ...a }));
 }
 
 function loadLocalTracks(): UiTrack[] {
@@ -113,31 +169,61 @@ function loadLocalTracks(): UiTrack[] {
     if (raw) {
       const parsed = JSON.parse(raw) as UiTrack[];
       if (Array.isArray(parsed)) {
-        return parsed.map((t) => ({ ...t, locked: Boolean(t.locked), featArtist: t.featArtist ?? null }));
+        return parsed.map((t) => ({
+          ...t,
+          locked: Boolean(t.locked),
+          featArtist: t.featArtist ?? null,
+          singleId: t.singleId ?? null,
+        }));
       }
     }
   } catch { /* ignore */ }
   return [];
 }
 
-function loadLocalRatings(): Record<string, Record<string, TrackRating>> {
+function parseRatingRows(parsed: Record<string, Record<string, number | TrackRating>>): RatingMap {
+  const out: RatingMap = {};
+  for (const [rid, map] of Object.entries(parsed)) {
+    out[rid] = {};
+    for (const [pid, v] of Object.entries(map)) {
+      out[rid][pid] = typeof v === 'number'
+        ? { score: v, confirmed: false }
+        : { score: v.score, confirmed: Boolean(v.confirmed) };
+    }
+  }
+  return out;
+}
+
+function loadLocalRatings(): RatingMap {
   try {
     const raw = localStorage.getItem(LS_RATINGS);
     if (raw) {
       const parsed = JSON.parse(raw) as Record<string, Record<string, number | TrackRating>>;
-      const out: Record<string, Record<string, TrackRating>> = {};
-      for (const [tid, map] of Object.entries(parsed)) {
-        out[tid] = {};
-        for (const [pid, v] of Object.entries(map)) {
-          out[tid][pid] = typeof v === 'number'
-            ? { score: v, confirmed: false }
-            : { score: v.score, confirmed: Boolean(v.confirmed) };
-        }
-      }
-      return out;
+      return parseRatingRows(parsed);
     }
   } catch { /* ignore */ }
   return {};
+}
+
+function loadLocalSingleRatings(): RatingMap {
+  try {
+    const raw = localStorage.getItem(LS_SINGLE_RATINGS);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Record<string, Record<string, number | TrackRating>>;
+      return parseRatingRows(parsed);
+    }
+  } catch { /* ignore */ }
+  return parseRatingRows(SEED_SINGLE_RATINGS as unknown as Record<string, Record<string, number | TrackRating>>);
+}
+
+function loadHomeMode(): ReleaseKind {
+  try {
+    return localStorage.getItem(LS_HOME_MODE) === 'single' ? 'single' : 'album';
+  } catch { return 'album'; }
+}
+
+function saveHomeMode(): void {
+  try { localStorage.setItem(LS_HOME_MODE, homeMode); } catch { /* ignore */ }
 }
 
 function saveLocalAlbums(): void {
@@ -149,24 +235,29 @@ function saveLocalTracks(): void {
 function saveLocalRatings(): void {
   try { localStorage.setItem(LS_RATINGS, JSON.stringify(trackRatings)); } catch { /* ignore */ }
 }
+function saveLocalSingleRatings(): void {
+  try { localStorage.setItem(LS_SINGLE_RATINGS, JSON.stringify(singleRatings)); } catch { /* ignore */ }
+}
 
 /* ---------- Данные ---------- */
 let dataReadRevision = 0;
-const pendingRatings = new Map<string, PendingRating>();
+const pendingRatings = new Map<string, PendingRating>();        // треки
+const pendingSingleRatings = new Map<string, PendingRating>();  // синглы
 
-function mergeRatings(incoming: RatingMap, readRevision: number): RatingMap {
+/** Накладывает несохранённые локальные правки на прочитанные данные. */
+function mergePending(incoming: RatingMap, pendingMap: Map<string, PendingRating>, readRevision: number): RatingMap {
   const myId = currentUser?.id;
   if (!myId) return incoming;
-  for (const [trackId, pending] of pendingRatings) {
+  for (const [releaseId, pending] of pendingMap) {
     // Ответ запроса, начатого до завершения записи, ещё может содержать старый балл.
     if (pending.savedAfterRead !== undefined && readRevision > pending.savedAfterRead) {
-      pendingRatings.delete(trackId);
+      pendingMap.delete(releaseId);
       continue;
     }
-    if (pending.value) (incoming[trackId] ??= {})[myId] = { ...pending.value };
-    else if (incoming[trackId]) {
-      delete incoming[trackId][myId];
-      if (!Object.keys(incoming[trackId]).length) delete incoming[trackId];
+    if (pending.value) (incoming[releaseId] ??= {})[myId] = { ...pending.value };
+    else if (incoming[releaseId]) {
+      delete incoming[releaseId][myId];
+      if (!Object.keys(incoming[releaseId]).length) delete incoming[releaseId];
     }
   }
   return incoming;
@@ -177,17 +268,21 @@ async function refreshData(signal?: AbortSignal): Promise<void> {
   const userId = currentUser?.id;
   if (CLOUD) {
     const s = getSB();
-    const [pa, aa, ta, ra] = await Promise.all([
+    const [pa, aa, ta, ra, sa] = await Promise.all([
       s.from('profiles').select('id, username, initials, avatar_url'),
       s.from('albums').select('*').order('created_at', { ascending: true }),
       s.from('tracks').select('*'),
       s.from('ratings').select('*'),
+      s.from('single_ratings').select('*'),
     ].map((query) => signal ? query.abortSignal(signal) : query));
     if (revision !== dataReadRevision || userId !== currentUser?.id) return;
     if (pa.error) throw pa.error;
     if (aa.error) throw aa.error;
     if (ta.error) throw ta.error;
     if (ra.error) throw ra.error;
+    // Таблицы single_ratings может ещё не быть (не выполнен migrate.sql):
+    // тогда раздел синглов аккуратно сообщает об этом, а альбомы работают как раньше.
+    singlesReady = !sa.error;
 
     profileCache.clear();
     for (const p of (pa.data ?? []) as Array<{ id: string; username: string; initials: string; avatar_url: string | null }>) {
@@ -198,17 +293,28 @@ async function refreshData(signal?: AbortSignal): Promise<void> {
       if (me) currentUser.username = me.username, currentUser.avatarUrl = me.avatarUrl;
     }
 
-    albums = ((aa.data ?? []) as Array<{ id: string; artist: string; title: string; year: number; cover_url: string | null; tracks_locked: boolean | null; cohesion: number | null; album_type: string | null }>)
-      .map((x) => ({ id: x.id, artist: x.artist, title: x.title, year: x.year, cover: x.cover_url ?? '', tracksLocked: Boolean(x.tracks_locked), cohesion: x.cohesion ?? null, albumType: x.album_type ?? null }));
+    albums = ((aa.data ?? []) as Array<{ id: string; artist: string; title: string; year: number; cover_url: string | null; tracks_locked: boolean | null; cohesion: number | null; album_type: string | null; kind: string | null; parent_album_id: string | null }>)
+      .map((x) => normalizeAlbum({
+        id: x.id, artist: x.artist, title: x.title, year: x.year, cover: x.cover_url ?? '',
+        kind: x.kind === 'single' ? 'single' : 'album',
+        parentId: x.parent_album_id ?? null,
+        tracksLocked: Boolean(x.tracks_locked), cohesion: x.cohesion ?? null, albumType: x.album_type ?? null,
+      }));
 
-    tracks = ((ta.data ?? []) as Array<{ id: string; album_id: string; title: string; position: number; locked: boolean | null; feat_artist: string | null }>)
-      .map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null }));
+    tracks = ((ta.data ?? []) as Array<{ id: string; album_id: string; title: string; position: number; locked: boolean | null; feat_artist: string | null; single_id?: string | null }>)
+      .map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null, singleId: t.single_id ?? null }));
 
     const incoming: RatingMap = {};
     for (const r of (ra.data ?? []) as Array<{ track_id: string; profile_id: string; score: number; confirmed: boolean | null }>) {
       (incoming[r.track_id] ??= {})[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
     }
-    trackRatings = mergeRatings(incoming, revision);
+    trackRatings = mergePending(incoming, pendingRatings, revision);
+
+    const incomingSingles: RatingMap = {};
+    for (const r of (sa.data ?? []) as Array<{ album_id: string; profile_id: string; score: number; confirmed: boolean | null }>) {
+      (incomingSingles[r.album_id] ??= {})[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
+    }
+    singleRatings = singlesReady ? mergePending(incomingSingles, pendingSingleRatings, revision) : {};
   } else {
     profileCache.clear();
     const meta = loadLocalMeta();
@@ -226,7 +332,9 @@ async function refreshData(signal?: AbortSignal): Promise<void> {
     }
     albums = loadLocalAlbums();
     tracks = loadLocalTracks();
-    trackRatings = mergeRatings(loadLocalRatings(), revision);
+    trackRatings = mergePending(loadLocalRatings(), pendingRatings, revision);
+    singleRatings = mergePending(loadLocalSingleRatings(), pendingSingleRatings, revision);
+    singlesReady = true;
   }
 }
 
@@ -271,6 +379,7 @@ function subscribeRealtime(): void {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'albums' }, () => requestSync())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tracks' }, () => requestSync())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ratings' }, () => requestSync())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'single_ratings' }, () => requestSync())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => requestSync())
       .subscribe((status) => {
         if (epoch !== syncEpoch) return;
@@ -295,10 +404,15 @@ function stopRealtime(): void {
   tracksRenderDeferred = finalizeRenderDeferred = false;
   for (const timer of saveTimers.values()) window.clearTimeout(timer);
   saveTimers.clear();
+  singleSaveTimers.clear();
   pendingRatings.clear();
+  pendingSingleRatings.clear();
   ratingWrites.clear();
+  singleWrites.clear();
   confirmingRatings.clear();
+  confirmingSingles.clear();
   ratingPointerTrackId = null;
+  singlePointerActive = false;
   if (realtimeChannel) {
     const channel = realtimeChannel;
     realtimeChannel = null;
@@ -311,7 +425,7 @@ async function synchronizeData(): Promise<void> {
   const epoch = syncEpoch;
   syncInFlight = true;
   syncQueued = false;
-  const before = JSON.stringify([albums, tracks, trackRatings, [...profileCache]]);
+  const before = JSON.stringify([albums, tracks, trackRatings, singleRatings, [...profileCache]]);
   const beforeAlbums = JSON.stringify(albums);
   const beforeTracks = JSON.stringify(tracks);
   const controller = new AbortController();
@@ -322,7 +436,7 @@ async function synchronizeData(): Promise<void> {
     if (epoch !== syncEpoch) return;
     if (beforeAlbums !== JSON.stringify(albums)) finalizeRenderDeferred = true;
     if (beforeTracks !== JSON.stringify(tracks) || beforeAlbums !== JSON.stringify(albums)) tracksRenderDeferred = true;
-    const changed = before !== JSON.stringify([albums, tracks, trackRatings, [...profileCache]]);
+    const changed = before !== JSON.stringify([albums, tracks, trackRatings, singleRatings, [...profileCache]]);
     syncRenderPending ||= changed;
     flushSynchronizedRender();
   } catch {
@@ -357,6 +471,32 @@ function renderSynchronizedData(changed: boolean): void {
     if (viewHome.classList.contains('is-visible')) renderAlbums(false);
     if (viewArtist.classList.contains('is-visible')) renderArtistPage();
     if (viewRank.classList.contains('is-visible')) renderArtistRank();
+    if (viewSrank.classList.contains('is-visible')) renderSingleRank();
+    if (viewAlbum.classList.contains('is-visible')) renderAlbumSingles();
+    // ссылка на страницу сингла могла исчезнуть (сингл удалён из другой вкладки)
+    if (viewSingle.classList.contains('is-visible') && !currentSingle()) {
+      viewStack.length = 0;
+      viewStack.push({ view: 'home' });
+      void swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+      renderAlbums();
+      toast('Этот сингл удалён');
+    }
+  }
+  if (viewSingle.classList.contains('is-visible')) {
+    const s = currentSingle();
+    if (s) {
+      if (svTitle.textContent !== s.title) svTitle.textContent = s.title;
+      if (svYear.textContent !== String(s.year)) svYear.textContent = String(s.year);
+      if (svCoverImg.getAttribute('src') !== coverSrc(s)) renderSingleCover(s);
+      const parent = parentOf(s);
+      svParentLabel.innerHTML = parent
+        ? `сингл к альбому <a class="sv__parent-link" data-album="${esc(parent.id)}">«${esc(parent.title)}»</a>`
+        : 'сингл вне альбома';
+      const origin = singleOriginText(s);
+      svOrigin.hidden = !origin;
+      svOrigin.textContent = origin;
+      updateSingleDisplays();
+    }
   }
   if (viewAlbum.classList.contains('is-visible')) {
     const al = currentAlbum();
@@ -384,6 +524,9 @@ function resumeSynchronization(): void {
   for (const [trackId, pending] of pendingRatings) {
     if (pending.failed) void persistTrackRating(trackId).catch(() => {});
   }
+  for (const [singleId, pending] of pendingSingleRatings) {
+    if (pending.failed) void persistSingleRating(singleId).catch(() => {});
+  }
   requestSync(0);
 }
 
@@ -397,7 +540,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('focus', resumeSynchronization);
 window.addEventListener('online', resumeSynchronization);
 window.addEventListener('storage', (event) => {
-  if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_META].includes(event.key))) requestSync(0);
+  if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_SINGLE_RATINGS, LS_META].includes(event.key))) requestSync(0);
 });
 
 /* ---------- Авторизация ---------- */
@@ -515,13 +658,25 @@ function typeLabelOf(v: string | null): string {
   return TYPE_OPTIONS.find((o) => o.value === v)?.label ?? '';
 }
 
+const meanOf = (vals: number[]): number | null =>
+  vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+
 function trackScoreOf(trackId: string): number | null {
   const r = trackRatings[trackId];
   if (!r) return null;
-  const vals = Object.values(r).map((x) => x.score);
-  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  return meanOf(Object.values(r).map((x) => x.score));
 }
 
+/* --- релизы: альбомы и синглы живут в одном массиве --- */
+const releasesOf = (kind: ReleaseKind): UiAlbum[] => albums.filter((a) => a.kind === kind);
+const albumsOnly = (): UiAlbum[] => releasesOf('album');
+const singlesOnly = (): UiAlbum[] => releasesOf('single');
+const singleById = (id: string): UiAlbum | undefined =>
+  albums.find((a) => a.id === id && a.kind === 'single');
+const parentOf = (a: UiAlbum): UiAlbum | undefined =>
+  a.parentId ? albums.find((x) => x.id === a.parentId && x.kind === 'album') : undefined;
+
+/* --- средние баллы --- */
 function albumScoreOf(albumId: string): number | null {
   const vals: number[] = [];
   for (const t of tracks) {
@@ -529,7 +684,53 @@ function albumScoreOf(albumId: string): number | null {
     const r = trackRatings[t.id];
     if (r) for (const v of Object.values(r)) vals.push(v.score);
   }
-  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  return meanOf(vals);
+}
+
+function singleScoreOf(singleId: string): number | null {
+  const r = singleRatings[singleId];
+  if (!r) return null;
+  return meanOf(Object.values(r).map((x) => x.score));
+}
+
+/* --- «подтверждённые» средние: только они попадают в рейтинги --- */
+function albumConfirmedScoreOf(albumId: string): number | null {
+  const vals: number[] = [];
+  for (const t of tracks) {
+    if (t.albumId !== albumId) continue;
+    const r = trackRatings[t.id];
+    if (r) for (const v of Object.values(r)) if (v.confirmed) vals.push(v.score);
+  }
+  return meanOf(vals);
+}
+
+function singleConfirmedScoreOf(singleId: string): number | null {
+  const r = singleRatings[singleId];
+  if (!r) return null;
+  return meanOf(Object.values(r).filter((v) => v.confirmed).map((v) => v.score));
+}
+
+/** Балл сингла для рейтинга: пока оценки подтверждены не всеми участниками,
+    средний балл релиза считается неподтверждённым и в рейтинг не попадает. */
+function singleRankedScoreOf(singleId: string): number | null {
+  return singleAllConfirmed(singleId) ? singleScoreOf(singleId) : null;
+}
+
+/** Подсказка в рейтинге для сингла, который в него пока не попал. */
+function singleRankReason(singleId: string): string {
+  return singleVotesOf(singleId) === 0 ? 'оценок пока нет' : 'ждём подтверждения всех оценок';
+}
+
+/* сколько оценок ждут подтверждения (для подсказок и «пустых» состояний) */
+function pendingCountOf(singleId: string): number {
+  const r = singleRatings[singleId];
+  if (!r) return 0;
+  return Object.values(r).filter((v) => !v.confirmed).length;
+}
+
+function singleVotesOf(singleId: string): number {
+  const r = singleRatings[singleId];
+  return r ? Object.keys(r).length : 0;
 }
 
 /* подтверждённая оценка «товарища» на треке */
@@ -543,6 +744,18 @@ function peerRatingOf(trackId: string): { score: number; confirmed: boolean; use
     return { score: v.score, confirmed: v.confirmed, username: info?.username ?? 'участник', initials: info?.initials ?? '?', avatarUrl: info?.avatarUrl ?? null };
   }
   return null;
+}
+
+/* обе оценки сингла подтверждены — релиз целиком «зафиксирован» */
+function singleAllConfirmed(singleId: string): boolean {
+  if (profileCache.size < 2) return false;
+  const r = singleRatings[singleId];
+  if (!r) return false;
+  for (const pid of profileCache.keys()) {
+    const e = r[pid];
+    if (!e || !e.confirmed) return false;
+  }
+  return true;
 }
 
 /* итог подтверждён, когда оба участника подтвердили оценку каждого трека */
@@ -589,8 +802,31 @@ function featPlural(n: number): string {
   return 'фитов';
 }
 
+/* «сингл / сингла / синглов» */
+function singlesPlural(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'сингл';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'сингла';
+  return 'синглов';
+}
+
+/* «оценка / оценки / оценок» */
+function votesPlural(n: number): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return 'оценка';
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return 'оценки';
+  return 'оценок';
+}
+
+/* «к альбому»: обложка сингла берётся у связанного альбома, пока своя не задана */
 function coverSrc(a: UiAlbum): string {
   if (a.cover) return a.cover;
+  if (a.kind === 'single' && a.parentId) {
+    const p = albums.find((x) => x.id === a.parentId);
+    if (p && p.cover) return p.cover;
+  }
   const initial = (a.title.trim().charAt(0) || '?').toUpperCase();
   const svg =
     "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>" +
@@ -612,7 +848,7 @@ function featNameOf(title: string): string | null {
   return after || null;
 }
 
-/* все артисты: основные из альбомов + фиты из треков (без дублей, каноничный регистр) */
+/* все артисты: основные из альбомов и синглов + фиты из треков и названий синглов */
 function allArtistNames(): string[] {
   const map = new Map<string, string>();
   for (const a of albums) {
@@ -621,6 +857,10 @@ function allArtistNames(): string[] {
   }
   for (const t of tracks) {
     const n = (t.featArtist ?? '').trim();
+    if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), n);
+  }
+  for (const s of singlesOnly()) {
+    const n = (featNameOf(s.title) ?? '').replace(/[),.\s]+$/, '').trim();
     if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), n);
   }
   return [...map.values()].sort((a, b) => a.localeCompare(b, 'ru'));
@@ -635,7 +875,25 @@ function canonicalArtistName(raw: string): string {
 /* альбомы, где артист — основной исполнитель */
 function artistOwnAlbums(name: string): UiAlbum[] {
   const k = name.toLowerCase();
-  return albums.filter((a) => a.artist.toLowerCase() === k);
+  return albums.filter((a) => a.kind === 'album' && a.artist.toLowerCase() === k);
+}
+
+/* синглы, где артист — основной исполнитель */
+function artistOwnSingles(name: string): UiAlbum[] {
+  const k = name.toLowerCase();
+  return albums.filter((a) => a.kind === 'single' && a.artist.toLowerCase() === k);
+}
+
+/* фит артиста в названии сингла («Song ft. X») — балл идёт в профиль артиста */
+function artistFeatureSingles(name: string): Array<{ single: UiAlbum; score: number | null }> {
+  const k = name.toLowerCase();
+  const out: Array<{ single: UiAlbum; score: number | null }> = [];
+  for (const s of singlesOnly()) {
+    if (s.artist.toLowerCase() === k) continue;
+    const feat = (featNameOf(s.title) ?? '').replace(/[),.\s]+$/, '').trim().toLowerCase();
+    if (feat && feat === k) out.push({ single: s, score: singleConfirmedScoreOf(s.id) });
+  }
+  return out;
 }
 
 /* альбомы, где артист участвует на фите (но не основной исполнитель) */
@@ -657,17 +915,40 @@ function artistFeatureAlbums(name: string): Array<{ album: UiAlbum; score: numbe
   return out;
 }
 
-/* средний балл артиста: личные альбомы + фиты */
+/* Средний балл артиста: личные альбомы + фиты + синглы.
+   В рейтинги попадают только ПОДТВЕРЖДЁННЫЕ оценки, поэтому,
+   пока ползунок не подтверждён, балл артиста не сдвигается. */
 function artistScoreOf(name: string): number | null {
   const vals: number[] = [];
   for (const a of artistOwnAlbums(name)) {
-    const s = albumScoreOf(a.id);
+    const s = albumConfirmedScoreOf(a.id);
     if (s !== null) vals.push(s);
   }
   for (const f of artistFeatureAlbums(name)) {
+    const s = confirmedFeatureAlbumScoreOf(f.album, name);
+    if (s !== null) vals.push(s);
+  }
+  for (const s of artistOwnSingles(name)) {
+    const v = singleConfirmedScoreOf(s.id);
+    if (v !== null) vals.push(v);
+  }
+  for (const f of artistFeatureSingles(name)) {
     if (f.score !== null) vals.push(f.score);
   }
   return vals.length ? round2(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+}
+
+/* подтверждённый средний балл треков артиста внутри чужого альбома (фит) */
+function confirmedFeatureAlbumScoreOf(album: UiAlbum, artistName: string): number | null {
+  const k = artistName.toLowerCase();
+  const vals: number[] = [];
+  for (const t of tracks) {
+    if (t.albumId !== album.id) continue;
+    if ((t.featArtist ?? '').toLowerCase() !== k) continue;
+    const r = trackRatings[t.id];
+    if (r) for (const v of Object.values(r)) if (v.confirmed) vals.push(v.score);
+  }
+  return meanOf(vals);
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
@@ -809,6 +1090,8 @@ const artistScore = q<HTMLSpanElement>('#artist-score');
 const artistOwn = q<HTMLDivElement>('#artist-own');
 const artistFeat = q<HTMLDivElement>('#artist-feat');
 const artistOwnSection = q<HTMLElement>('#artist-own-section');
+const artistSingles = q<HTMLDivElement>('#artist-singles');
+const artistSinglesSection = q<HTMLElement>('#artist-singles-section');
 const artistFeatSection = q<HTMLElement>('#artist-feat-section');
 
 /* рейтинг артистов */
@@ -826,6 +1109,61 @@ const profName = q<HTMLInputElement>('#prof-name');
 const profError = q<HTMLParagraphElement>('#prof-error');
 const profSave = q<HTMLButtonElement>('#prof-save');
 
+/* главная: переключатель «альбомы | синглы» */
+const homeSwitch = q<HTMLElement>('#home-switch');
+const segAlbums = q<HTMLButtonElement>('#seg-albums');
+const segSingles = q<HTMLButtonElement>('#seg-singles');
+const segThumb = q<HTMLSpanElement>('#seg-thumb');
+const homeHdrTitle = q<HTMLHeadingElement>('#home-hdr-title');
+const rankBtnLabel = q<HTMLSpanElement>('#rank-btn-label');
+
+/* страница сингла */
+const viewSingle = q<HTMLElement>('#view-single');
+const singleBack = q<HTMLButtonElement>('#single-back');
+const svCoverImg = q<HTMLImageElement>('#sv-cover-img');
+const svCoverEdit = q<HTMLButtonElement>('#sv-cover-edit');
+const svCoverEditLabel = q<HTMLSpanElement>('#sv-cover-edit-label');
+const svYear = q<HTMLSpanElement>('#sv-year');
+const svTitle = q<HTMLHeadingElement>('#sv-title');
+const svArtist = q<HTMLParagraphElement>('#sv-artist');
+const svParentLabel = q<HTMLSpanElement>('#sv-parent-label');
+const svParentEdit = q<HTMLButtonElement>('#sv-parent-edit');
+const svOrigin = q<HTMLParagraphElement>('#sv-origin');
+const svAvg = q<HTMLSpanElement>('#sv-avg');
+const svConfirmState = q<HTMLSpanElement>('#sv-confirm-state');
+const svImpact = q<HTMLDivElement>('#sv-impact');
+const svChips = q<HTMLDivElement>('#sv-chips');
+const svMine = q<HTMLSpanElement>('#sv-mine');
+const svPeer = q<HTMLSpanElement>('#sv-peer');
+const svSlider = q<HTMLInputElement>('#sv-slider');
+const svNum = q<HTMLInputElement>('#sv-num');
+const svConfirmBtn = q<HTMLButtonElement>('#sv-confirm-btn');
+const svSave = q<HTMLSpanElement>('#sv-save');
+const svNote = q<HTMLParagraphElement>('#sv-note');
+const singleDeleteBtn = q<HTMLButtonElement>('#single-delete-btn');
+
+/* рейтинг синглов */
+const viewSrank = q<HTMLElement>('#view-srank');
+const srankBack = q<HTMLButtonElement>('#srank-back');
+const singleRankList = q<HTMLOListElement>('#single-rank-list');
+
+/* синглы на странице альбома */
+const avSinglesSection = q<HTMLElement>('#av-singles-section');
+const avSingles = q<HTMLDivElement>('#av-singles');
+const avSinglesCount = q<HTMLSpanElement>('#av-singles-count');
+
+/* диалог привязки сингла к альбому */
+const singleLinkDialog = q<HTMLDialogElement>('#single-link-dialog');
+const singleLinkForm = q<HTMLFormElement>('#single-link-form');
+const singleLinkName = q<HTMLParagraphElement>('#single-link-name');
+const singleLinkBox = q<HTMLDivElement>('#single-link-box');
+const singleLinkInput = q<HTMLInputElement>('#single-link-input');
+const singleLinkList = q<HTMLUListElement>('#single-link-list');
+const singleLinkUnlink = q<HTMLButtonElement>('#single-link-unlink');
+const singleLinkCancel = q<HTMLButtonElement>('#single-link-cancel');
+const singleLinkSave = q<HTMLButtonElement>('#single-link-save');
+const singleLinkError = q<HTMLParagraphElement>('#single-link-error');
+
 /* модальное подтверждение */
 const confirmModal = q<HTMLDivElement>('#confirm-modal');
 const confirmTitle = q<HTMLHeadingElement>('#confirm-title');
@@ -837,6 +1175,14 @@ const confirmCancel = q<HTMLButtonElement>('#confirm-cancel');
 const addPanel = q<HTMLDivElement>('#add-panel');
 const addBack = q<HTMLButtonElement>('#add-back');
 const addForm = q<HTMLFormElement>('#add-form');
+const addTitle = q<HTMLHeadingElement>('#add-title');
+const titleLabel = q<HTMLSpanElement>('#title-label');
+const coverNote = q<HTMLParagraphElement>('#cover-note');
+const parentField = q<HTMLDivElement>('#parent-field');
+const parentBox = q<HTMLDivElement>('#parent-box');
+const parentInput = q<HTMLInputElement>('#parent-input');
+const parentList = q<HTMLUListElement>('#parent-list');
+const parentNote = q<HTMLParagraphElement>('#parent-note');
 const artistBox = q<HTMLDivElement>('#artist-box');
 const artistField = q<HTMLDivElement>('#artist-field');
 const artistInput = q<HTMLInputElement>('#artist-input');
@@ -851,6 +1197,7 @@ const coverRemove = q<HTMLButtonElement>('#cover-remove');
 const coverUrl = q<HTMLInputElement>('#cover-url');
 const coverUrlError = q<HTMLParagraphElement>('#cover-url-error');
 const addSubmit = q<HTMLButtonElement>('#add-submit');
+const addSubmitLabel = q<HTMLSpanElement>('#add-submit-label');
 const addError = q<HTMLParagraphElement>('#add-error');
 
 /* ---------- Переходы между экранами ---------- */
@@ -944,7 +1291,10 @@ async function enterHome(): Promise<void> {
   success.classList.add('is-visible');
   await sleep(1350);
   success.classList.remove('is-visible');
-  await swapTo(viewLogin, viewHome, () => { viewHome.scrollTop = 0; });
+  await swapTo(viewLogin, viewHome, () => {
+    viewHome.scrollTop = 0;
+    moveSegThumb();
+  });
   passwordInput.value = '';
   password2Input.value = '';
   renderAlbums();
@@ -957,7 +1307,9 @@ logoutBtn.addEventListener('click', () => {
     if (CLOUD) await getSB().auth.signOut();
     currentUser = null;
     currentAlbumId = null;
+    currentSingleId = null;
     currentArtistName = null;
+    pendingSingleRatings.clear(); // черновики оценок не переносятся на другого участника
     viewStack.length = 0;
     viewStack.push({ view: 'home' });
     await swapTo(viewHome, viewLogin);
@@ -971,58 +1323,81 @@ logoutBtn.addEventListener('click', () => {
   })();
 });
 
-/* ---------- Карточки альбомов ---------- */
+/* ---------- Переключатель «альбомы | синглы» на главной ---------- */
+function moveSegThumb(): void {
+  const btn = homeMode === 'album' ? segAlbums : segSingles;
+  if (!btn.offsetWidth) return; // главная ещё не показана — пересчитаем при отрисовке
+  segThumb.style.width = `${btn.offsetWidth}px`;
+  segThumb.style.left = `${btn.offsetLeft}px`;
+  homeSwitch.dataset.mode = homeMode;
+}
+
+function applyHomeMode(): void {
+  const albumMode = homeMode === 'album';
+  segAlbums.classList.toggle('is-active', albumMode);
+  segSingles.classList.toggle('is-active', !albumMode);
+  segAlbums.setAttribute('aria-selected', String(albumMode));
+  segSingles.setAttribute('aria-selected', String(!albumMode));
+  segAlbums.tabIndex = albumMode ? 0 : -1;
+  segSingles.tabIndex = albumMode ? -1 : 0;
+  homeHdrTitle.textContent = albumMode ? 'Альбомы' : 'Синглы';
+  rankBtnLabel.textContent = albumMode ? 'рейтинг артистов' : 'рейтинг синглов';
+  moveSegThumb();
+}
+
+/** true — раздел синглов сейчас недоступен (в облаке не выполнен migrate.sql). */
+function singlesUnavailable(): boolean {
+  return CLOUD && !singlesReady;
+}
+
+function setHomeMode(mode: ReleaseKind, rerender = true): void {
+  if (homeMode !== mode) {
+    homeMode = mode;
+    saveHomeMode();
+  }
+  applyHomeMode();
+  if (rerender) renderAlbums();
+}
+
+segAlbums.addEventListener('click', () => setHomeMode('album'));
+segSingles.addEventListener('click', () => setHomeMode('single'));
+homeSwitch.addEventListener('keydown', (e) => {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  const next: ReleaseKind = homeMode === 'album' ? 'single' : 'album';
+  setHomeMode(next);
+  (next === 'album' ? segAlbums : segSingles).focus();
+});
+window.addEventListener('resize', moveSegThumb);
+
+/* ---------- Карточки релизов на главной ---------- */
 function renderAlbums(animate = true): void {
   const grid = q<HTMLDivElement>('#albums');
   grid.innerHTML = '';
+  const singleMode = homeMode === 'single';
+  const list = singleMode ? singlesOnly() : albumsOnly();
 
-  albums.forEach((a, i) => {
-    const el = document.createElement('article');
-    el.className = animate ? 'album reveal' : 'album';
-    el.style.setProperty('--d', `${(0.2 + i * 0.07).toFixed(2)}s`);
+  if (singleMode && singlesUnavailable()) {
+    const hint = document.createElement('p');
+    hint.className = 'home__notice';
+    hint.textContent = 'Раздел синглов пока не подключён к базе: выполните migrate.sql в Supabase, и синглы станут доступны.';
+    grid.appendChild(hint);
+    homeMeta.textContent = 'синглы недоступны';
+    applyHomeMode();
+    return;
+  }
 
-    const avg = albumScoreOf(a.id);
-    const avgStr = avg === null ? '—' : fmt(avg);
-    const n = trackCountOf(a.id);
-
-    el.innerHTML = `
-      <div class="album__cover">
-        <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} — ${esc(a.title)}" loading="lazy">
-        <span class="album__year">${a.year}</span>
-        ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ''}
-      </div>
-      <div class="album__body">
-        <h3 class="album__title">${esc(a.title)}</h3>
-        <p class="album__artist"><a class="album__artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</a></p>
-        <div class="album__rating">
-          <div class="album__avg">
-            <span class="album__avg-num">${avgStr}</span>
-            <span class="album__avg-of">/10</span>
-          </div>
-          <div class="album__votes"><span class="album__count">${n} ${tracksPlural(n)}</span></div>
-        </div>
-      </div>`;
-
-    el.addEventListener('click', (ev) => {
-      if ((ev.target as HTMLElement).closest('.album__artist-link')) return; // клик по артисту
-      void openAlbum(a.id);
-    });
-    el.addEventListener('animationend', () => {
-      if (el.classList.contains('reveal')) {
-        el.classList.remove('reveal');
-        el.style.animation = 'none';
-      }
-    });
-
+  list.forEach((a, i) => {
+    const el = singleMode ? makeSingleCard(a, animate, i) : makeAlbumCard(a, null, animate, i);
     grid.appendChild(el);
   });
 
   const add = document.createElement('button');
   add.type = 'button';
   add.className = animate ? 'album album--add reveal' : 'album album--add';
-  add.style.setProperty('--d', `${(0.2 + albums.length * 0.07).toFixed(2)}s`);
-  add.innerHTML = '<span class="album__plus">+</span><span class="album__addtext">добавить альбом</span>';
-  add.addEventListener('click', () => openAdd());
+  add.style.setProperty('--d', `${(0.2 + list.length * 0.07).toFixed(2)}s`);
+  add.innerHTML = `<span class="album__plus">+</span><span class="album__addtext">добавить ${singleMode ? 'сингл' : 'альбом'}</span>`;
+  add.addEventListener('click', () => openAdd(singleMode ? 'single' : 'album'));
   add.addEventListener('animationend', () => {
     if (add.classList.contains('reveal')) {
       add.classList.remove('reveal');
@@ -1031,13 +1406,20 @@ function renderAlbums(animate = true): void {
   });
   grid.appendChild(add);
 
-  const rated = albums.filter((a) => albumScoreOf(a.id) !== null);
-  const overall = rated.length
-    ? rated.reduce((s, a) => s + (albumScoreOf(a.id) as number), 0) / rated.length
-    : null;
-  homeMeta.textContent = `${albums.length} ${plural(albums.length)}${
-    overall !== null ? ' · средняя оценка ' + fmt(overall) : ''
-  }`;
+  if (singleMode) {
+    const values = singlesOnly().map((s) => singleScoreOf(s.id)).filter((v): v is number => v !== null);
+    const overall = meanOf(values);
+    homeMeta.textContent = `${list.length} ${singlesPlural(list.length)}${
+      overall !== null ? ' · средняя оценка ' + fmt(overall) : ''
+    }${values.length < list.length ? ' · часть оценок ещё не подтверждена' : ''}`;
+  } else {
+    const values = albumsOnly().map((a) => albumScoreOf(a.id)).filter((v): v is number => v !== null);
+    const overall = meanOf(values);
+    homeMeta.textContent = `${list.length} ${plural(list.length)}${
+      overall !== null ? ' · средняя оценка ' + fmt(overall) : ''
+    }`;
+  }
+  applyHomeMode();
 }
 
 /* ==========================================================================
@@ -1065,6 +1447,7 @@ function renderAlbumPage(al: UiAlbum): void {
   avAvg.textContent = score === null ? '—' : fmt(score);
   delete avAvg.dataset.val;
   renderTracks();
+  renderAlbumSingles();
   renderImpact();
   renderConfirmState();
   renderFinalize();
@@ -1110,11 +1493,13 @@ function resetAlbumCoverDraft(): number {
 }
 
 function openAlbumCoverEditor(): void {
-  const al = currentAlbum();
+  const al = currentAlbum() ?? currentSingle();
   if (!al || !currentUser || albumCoverDialog.open) return;
   editingCoverAlbumId = al.id;
   albumCoverForm.reset();
-  albumCoverTitle.textContent = al.cover ? 'Изменить обложку' : 'Добавить обложку';
+  albumCoverTitle.textContent = al.kind === 'single'
+    ? (al.cover ? 'Изменить обложку сингла' : 'Обложка сингла')
+    : (al.cover ? 'Изменить обложку' : 'Добавить обложку');
   albumCoverName.textContent = `${al.artist} — ${al.title}`;
   resetAlbumCoverDraft();
   albumCoverDialog.showModal();
@@ -1183,6 +1568,7 @@ async function previewAlbumCover(source: File | string, request: number): Promis
 }
 
 avCoverEdit.addEventListener('click', openAlbumCoverEditor);
+svCoverEdit.addEventListener('click', openAlbumCoverEditor);
 albumCoverPick.addEventListener('click', () => albumCoverFile.click());
 albumCoverCancel.addEventListener('click', closeAlbumCoverEditor);
 albumCoverDialog.addEventListener('cancel', (e) => {
@@ -1241,6 +1627,11 @@ async function saveAlbumCover(albumId: string, source: string): Promise<void> {
   albums = next;
   const al = currentAlbum();
   if (al?.id === albumId) renderAlbumCover(al);
+  const s = currentSingle();
+  if (s?.id === albumId) {
+    renderSingleCover(s);
+    if (currentAlbumId) renderAlbumSingles(); // обложка сингла могла браться у альбома
+  }
 }
 
 albumCoverForm.addEventListener('submit', (e) => {
@@ -1481,12 +1872,18 @@ async function saveAlbumType(v: string): Promise<void> {
 /* --- модальное подтверждение --- */
 let confirmResolve: ((ok: boolean) => void) | null = null;
 
-function openConfirm(title: string, text: string, danger = false): Promise<boolean> {
+interface ConfirmLabels { ok?: string; cancel?: string; }
+
+let confirmSeq = 0;
+
+function openConfirm(title: string, text: string, danger = false, labels: ConfirmLabels = {}): Promise<boolean> {
   return new Promise((resolve) => {
+    confirmSeq += 1;
     confirmTitle.textContent = title;
     confirmText.innerHTML = text;
     confirmOk.classList.toggle('is-danger', danger);
-    confirmOk.textContent = danger ? 'удалить' : 'подтвердить';
+    confirmOk.textContent = labels.ok ?? (danger ? 'удалить' : 'подтвердить');
+    confirmCancel.textContent = labels.cancel ?? 'отмена';
     confirmModal.hidden = false;
     requestAnimationFrame(() => confirmModal.classList.add('is-open'));
     confirmResolve = resolve;
@@ -1496,8 +1893,17 @@ function openConfirm(title: string, text: string, danger = false): Promise<boole
 function closeConfirm(ok: boolean): void {
   confirmModal.classList.remove('is-open');
   const res = confirmResolve;
+  const seq = confirmSeq;
   confirmResolve = null;
-  window.setTimeout(() => { confirmModal.hidden = true; }, 320);
+  window.setTimeout(() => {
+    confirmModal.hidden = true;
+    // Подписи кнопок сбрасываем только после того, как окно скрылось:
+    // иначе «да / назад» на глазах превращаются в «подтвердить / отмена».
+    if (seq !== confirmSeq) return;
+    confirmOk.textContent = 'подтвердить';
+    confirmCancel.textContent = 'отмена';
+    confirmOk.classList.remove('is-danger');
+  }, 320);
   res?.(ok);
 }
 
@@ -1674,6 +2080,8 @@ const UNLOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 const PENCIL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4L8 20l-5 1 1-5L17 3z"/></svg>';
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>';
 const PENDING_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>';
+const SINGLE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3M5.4 5.4l2.1 2.1M16.5 16.5l2.1 2.1M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1"/></svg>';
+const UNMARK_SINGLE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3"/><path d="M4 20L20 4"/></svg>';
 
 /* название трека с ссылкой-неоном на фитующего артиста */
 function trackTitleHTML(t: UiTrack): string {
@@ -1744,18 +2152,22 @@ function renderTracks(enterId?: string): void {
     const mineStr = typeof mineScore === 'number' ? fmt(mineScore) : '';
     const canRename = !locked && !t.locked; // фиксация названия (или количества) запрещает переименование
     const canOrder = !locked;               // только фиксация количества запрещает порядок/удаление
+    const single = singleOfTrack(t);
 
     const li = document.createElement('li');
     li.className = 'track';
     if (t.locked) li.classList.add('is-locked');
     if (locked) li.classList.add('is-frozen');
     if (mineConfirmed) li.classList.add('is-rated-locked');
+    if (single) li.classList.add('track--single');
     li.dataset.id = t.id;
+    if (single) li.dataset.singleId = single.id;
 
     const actions = [
       canRename ? `<button class="track__btn" data-act="rename" type="button" aria-label="Переименовать">${PENCIL_SVG}</button>` : '',
       canOrder ? `<button class="track__btn" data-act="up" type="button" aria-label="Выше"${i === 0 ? ' disabled' : ''}>${UP_SVG}</button>` : '',
       canOrder ? `<button class="track__btn" data-act="down" type="button" aria-label="Ниже"${i === list.length - 1 ? ' disabled' : ''}>${DOWN_SVG}</button>` : '',
+      `<button class="track__btn${single ? ' is-on' : ''}" data-act="${single ? 'unsingle' : 'single'}" type="button" title="${single ? 'Снять метку «сингл»' : 'Отметить как сингл'}" aria-label="${single ? 'Снять метку «сингл»' : 'Отметить как сингл'}">${single ? UNMARK_SINGLE_SVG : SINGLE_SVG}</button>`,
       isAdmin() ? `<button class="track__btn" data-act="lock" type="button" aria-label="${t.locked ? 'Снять фиксацию названия' : 'Зафиксировать название'}" title="${t.locked ? 'Снять фиксацию названия' : 'Зафиксировать название'}">${t.locked ? UNLOCK_SVG : LOCK_SVG}</button>` : '',
       canOrder ? `<button class="track__btn track__btn--del" data-act="del" type="button" aria-label="Удалить">${DEL_SVG}</button>` : '',
     ].join('');
@@ -1768,6 +2180,7 @@ function renderTracks(enterId?: string): void {
         <span class="track__handle"${canOrder ? ' draggable="true"' : ''} aria-hidden="true">${GRIP_SVG}</span>
         <span class="track__num">${i + 1}</span>
         <span class="track__title">${trackTitleHTML(t)}</span>
+        ${single ? `<button class="track__single" type="button" title="Открыть страницу сингла «${esc(single.title)}»">сингл</button>` : ''}
         ${peerBadge}
         ${t.locked ? `<span class="track__lock" title="название зафиксировано">${LOCK_SVG}</span>` : ''}
         <span class="track__avg" data-tid="${t.id}" title="средняя по треку">${tavgStr}</span>
@@ -1955,7 +2368,7 @@ async function handleAddTrack(): Promise<void> {
       newId = (data?.[0] as { id: string }).id;
     } else {
       newId = 't' + Date.now().toString(36);
-      tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist });
+      tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist, singleId: null });
       saveLocalTracks();
     }
     if (CLOUD) await refreshData();
@@ -2109,6 +2522,18 @@ async function persistTrackOrder(): Promise<void> {
   }
 }
 
+/* Нажатие на трек, помеченный синглом: строка спрашивает, перейти ли на страницу,
+   бейдж «сингл» открывает её сразу. Поля оценки, кнопки и ссылки не перехватываются. */
+trackList.addEventListener('click', (e) => {
+  const target = e.target as HTMLElement;
+  // Плашка «сингл» открывает страницу сразу (свой обработчик ниже) — модалку не показываем.
+  if (target.closest('.track__slider, .track__numinput, .track__rename-input, .track__confirm-btn, .track__btn, .track__feat, .track__handle, .track__single')) return;
+  const marked = target.closest<HTMLLIElement>('.track--single');
+  if (!marked?.dataset.id) return;
+  const row = tracks.find((t) => t.id === marked.dataset.id);
+  if (row && singleOfTrack(row)) void promptSingleFromTrack(row);
+});
+
 /* клики по кнопкам треков */
 trackList.addEventListener('click', (e) => {
   const featLink = (e.target as HTMLElement).closest<HTMLAnchorElement>('.track__feat');
@@ -2116,6 +2541,14 @@ trackList.addEventListener('click', (e) => {
     e.preventDefault();
     const name = featLink.dataset.artist;
     if (name) void openArtist(name);
+    return;
+  }
+  const singleBadge = (e.target as HTMLElement).closest<HTMLButtonElement>('.track__single');
+  if (singleBadge) {
+    const li = singleBadge.closest<HTMLLIElement>('.track');
+    const row = li?.dataset.id ? tracks.find((t) => t.id === li.dataset.id) : undefined;
+    const single = row ? singleOfTrack(row) : undefined;
+    if (single) void openSingle(single.id);
     return;
   }
   const confirmBtn = (e.target as HTMLElement).closest<HTMLButtonElement>('.track__confirm-btn');
@@ -2133,11 +2566,14 @@ trackList.addEventListener('click', (e) => {
   const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
   const idx = list.findIndex((t) => t.id === id);
   const act = btn.dataset.act;
+  const track = tracks.find((t) => t.id === id);
   if (act === 'up') void moveTrack(idx, idx - 1);
   else if (act === 'down') void moveTrack(idx, idx + 1);
   else if (act === 'del') void deleteTrack(id);
   else if (act === 'lock') void toggleTrackLock(id);
   else if (act === 'rename') startRename(li);
+  else if (act === 'single' && track) void markTrackAsSingle(track);
+  else if (act === 'unsingle' && track) void unmarkTrackAsSingle(track);
 });
 
 /* drag & drop треков (FLIP-анимации).
@@ -2216,7 +2652,7 @@ function getDragAfterElement(container: HTMLElement, y: number): HTMLLIElement |
 
 /* --- навигация (единый стек) --- */
 function visibleView(): HTMLElement | null {
-  for (const v of [viewHome, viewAlbum, viewArtist, viewProfile, viewRank]) {
+  for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewAdd]) {
     if (v.classList.contains('is-visible')) return v;
   }
   return null;
@@ -2240,19 +2676,30 @@ async function goBack(): Promise<void> {
   switch (prev.view) {
     case 'album': {
       currentAlbumId = prev.albumId ?? null;
+      currentSingleId = null;
       const al = albums.find((a) => a.id === prev.albumId);
       if (al) renderAlbumPage(al);
       await swapTo(from, viewAlbum, () => { viewAlbum.scrollTop = 0; });
       break;
     }
+    case 'single': {
+      currentSingleId = prev.singleId ?? null;
+      currentAlbumId = null;
+      const s = albums.find((a) => a.id === prev.singleId);
+      if (s) renderSinglePage(s);
+      await swapTo(from, viewSingle, () => { viewSingle.scrollTop = 0; });
+      break;
+    }
     case 'artist': {
       currentAlbumId = null;
+      currentSingleId = null;
       if (currentArtistName) renderArtistPage();
       await swapTo(from, viewArtist, () => { viewArtist.scrollTop = 0; });
       break;
     }
     case 'profile': {
       currentAlbumId = null;
+      currentSingleId = null;
       currentArtistName = null;
       renderProfilePage();
       await swapTo(from, viewProfile, () => { viewProfile.scrollTop = 0; });
@@ -2260,13 +2707,22 @@ async function goBack(): Promise<void> {
     }
     case 'rank': {
       currentAlbumId = null;
+      currentSingleId = null;
       currentArtistName = null;
       renderArtistRank();
       await swapTo(from, viewRank, () => { viewRank.scrollTop = 0; });
       break;
     }
+    case 'add': {
+      currentAlbumId = null;
+      currentSingleId = null;
+      applyAddMode(prev.kind);
+      await swapTo(from, viewAdd, () => { viewAdd.scrollTop = 0; });
+      break;
+    }
     default: {
       currentAlbumId = null;
+      currentSingleId = null;
       currentArtistName = null;
       renderAlbums();
       await swapTo(from, viewHome, () => { viewHome.scrollTop = 0; });
@@ -2274,11 +2730,20 @@ async function goBack(): Promise<void> {
   }
 }
 
+/* --- открытие страницы релиза (альбом или сингл) --- */
+async function openRelease(id: string): Promise<void> {
+  const rel = albums.find((a) => a.id === id);
+  if (!rel) return;
+  if (rel.kind === 'single') await openSingle(id);
+  else await openAlbum(id);
+}
+
 /* --- открытие/закрытие страницы альбома --- */
 async function openAlbum(id: string): Promise<void> {
   const al = albums.find((a) => a.id === id);
   if (!al) return;
   currentAlbumId = id;
+  currentSingleId = null;
   resetTrackForm();
   renderAlbumPage(al);
   await navigateTo(viewAlbum, { view: 'album', albumId: id });
@@ -2287,31 +2752,109 @@ async function openAlbum(id: string): Promise<void> {
 albumBack.addEventListener('click', () => void goBack());
 
 /* --- профиль артиста --- */
-function makeAlbumCard(a: UiAlbum, featScore: number | null = null): HTMLElement {
+function makeAlbumCard(a: UiAlbum, featScore: number | null = null, animate = false, index = 0): HTMLElement {
   const el = document.createElement('article');
-  el.className = 'album';
-  const avg = albumScoreOf(a.id);
+  el.className = animate ? 'album reveal' : 'album';
+  if (animate) el.style.setProperty('--d', `${(0.2 + index * 0.07).toFixed(2)}s`);
+  const single = a.kind === 'single';
+  const avg = single ? singleScoreOf(a.id) : albumScoreOf(a.id);
   const avgStr = avg === null ? '—' : fmt(avg);
   const n = trackCountOf(a.id);
+  const parent = single ? parentOf(a) : undefined;
   el.innerHTML = `
     <div class="album__cover">
       <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} — ${esc(a.title)}" loading="lazy">
       <span class="album__year">${a.year}</span>
+      ${single ? '<span class="album__badge">сингл</span>' : ''}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ''}
       ${featScore !== null ? `<span class="album__featbadge">фит ${fmt(featScore)}</span>` : ''}
     </div>
     <div class="album__body">
       <h3 class="album__title">${esc(a.title)}</h3>
-      <p class="album__artist">${esc(a.artist)}</p>
+      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</a></p>
+      ${parent ? `<p class="album__parent">к альбому «${esc(parent.title)}»</p>` : ''}
       <div class="album__rating">
         <div class="album__avg">
           <span class="album__avg-num">${avgStr}</span>
           <span class="album__avg-of">/10</span>
         </div>
-        <div class="album__votes"><span class="album__count">${n} ${tracksPlural(n)}</span></div>
+        <div class="album__votes">
+          <span class="album__count">${n} ${tracksPlural(n)}</span>
+        </div>
       </div>
     </div>`;
-  el.addEventListener('click', () => void openAlbum(a.id));
+  el.addEventListener('click', () => void openRelease(a.id));
+  if (animate) {
+    el.addEventListener('animationend', () => {
+      if (el.classList.contains('reveal')) {
+        el.classList.remove('reveal');
+        el.style.animation = 'none';
+      }
+    });
+  }
+  return el;
+}
+
+/* карточка сингла: без треков, с баллом релиза и ссылкой на артиста */
+function makeSingleCard(s: UiAlbum, animate = false, index = 0): HTMLElement {
+  const el = document.createElement('article');
+  el.className = animate ? 'album album--single reveal' : 'album album--single';
+  if (animate) el.style.setProperty('--d', `${(0.2 + index * 0.07).toFixed(2)}s`);
+  const avg = singleScoreOf(s.id);
+  const parent = parentOf(s);
+  const votes = singleVotesOf(s.id);
+  const pending = pendingCountOf(s.id);
+  el.innerHTML = `
+    <div class="album__cover">
+      <img src="${esc(coverSrc(s))}" alt="${esc(s.artist)} — ${esc(s.title)}" loading="lazy">
+      <span class="album__year">${s.year}</span>
+      <span class="album__badge">сингл</span>
+    </div>
+    <div class="album__body">
+      <h3 class="album__title">${esc(s.title)}</h3>
+      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a></p>
+      ${parent ? `<p class="album__parent">к альбому «${esc(parent.title)}»</p>` : ''}
+      <div class="album__rating">
+        <div class="album__avg">
+          <span class="album__avg-num">${avg === null ? '—' : fmt(avg)}</span>
+          <span class="album__avg-of">/10</span>
+        </div>
+        <div class="album__votes">
+          <span class="album__count">${votes} ${votesPlural(votes)}</span>
+          ${pending ? `<span class="album__votes-count">${pending} без подтверждения</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+  el.addEventListener('click', (ev) => {
+    if ((ev.target as HTMLElement).closest('.album__artist-link')) return; // клик по артисту
+    void openSingle(s.id);
+  });
+  if (animate) {
+    el.addEventListener('animationend', () => {
+      if (el.classList.contains('reveal')) {
+        el.classList.remove('reveal');
+        el.style.animation = 'none';
+      }
+    });
+  }
+  return el;
+}
+
+/* компактная строка-карточка сингла (страница альбома) */
+function makeSingleRow(s: UiAlbum): HTMLElement {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'scard';
+  const avg = singleScoreOf(s.id);
+  const votes = singleVotesOf(s.id);
+  el.innerHTML = `
+    <span class="scard__cover"><img src="${esc(coverSrc(s))}" alt="" loading="lazy"></span>
+    <span class="scard__body">
+      <span class="scard__title">${esc(s.title)}</span>
+      <span class="scard__meta">${s.year} · ${votes} ${votesPlural(votes)}</span>
+    </span>
+    <span class="scard__score">${avg === null ? '—' : fmt(avg)}</span>`;
+  el.addEventListener('click', () => void openSingle(s.id));
   return el;
 }
 
@@ -2326,10 +2869,22 @@ function renderArtistPage(): void {
   artistOwn.innerHTML = '';
   for (const a of own) artistOwn.appendChild(makeAlbumCard(a));
 
+  const ownSingles = artistOwnSingles(name);
+  artistSinglesSection.hidden = ownSingles.length === 0;
+  artistSingles.innerHTML = '';
+  for (const s of ownSingles) artistSingles.appendChild(makeAlbumCard(s));
+
   const feats = artistFeatureAlbums(name);
-  artistFeatSection.hidden = feats.length === 0;
+  const featSingles = artistFeatureSingles(name);
+  artistFeatSection.hidden = feats.length === 0 && featSingles.length === 0;
   artistFeat.innerHTML = '';
   for (const f of feats) artistFeat.appendChild(makeAlbumCard(f.album, f.score));
+  if (featSingles.length) {
+    const grid = document.createElement('div');
+    grid.className = 'sgrid artist__feat-singles';
+    for (const f of featSingles) grid.appendChild(makeSingleRow(f.single));
+    artistFeat.appendChild(grid);
+  }
 }
 
 /* --- рейтинг артистов --- */
@@ -2386,8 +2941,69 @@ async function openArtists(): Promise<void> {
   await navigateTo(viewRank, { view: 'rank' });
 }
 
-artistsBtn.addEventListener('click', () => void openArtists());
+/* Кнопка «рейтинг» ведёт в рейтинг того раздела, который открыт на главной:
+   альбомы → артисты, синглы → топ синглов. */
+artistsBtn.addEventListener('click', () => {
+  if (homeMode === 'single') void openSingleRank();
+  else void openArtists();
+});
 rankBack.addEventListener('click', () => void goBack());
+srankBack.addEventListener('click', () => void goBack());
+
+/* --- рейтинг синглов: только подтверждённые оценки --- */
+interface SingleRank { single: UiAlbum; score: number | null; votes: number; pending: number; }
+
+function singleRanks(): SingleRank[] {
+  return singlesOnly()
+    .map((s) => ({
+      single: s,
+      score: singleRankedScoreOf(s.id),
+      votes: singleVotesOf(s.id),
+      pending: pendingCountOf(s.id),
+    }))
+    .sort((a, b) => {
+      if (a.score === null && b.score === null) return a.single.title.localeCompare(b.single.title, 'ru');
+      if (a.score === null) return 1;
+      if (b.score === null) return -1;
+      return b.score - a.score || a.single.title.localeCompare(b.single.title, 'ru');
+    });
+}
+
+function renderSingleRank(): void {
+  singleRankList.innerHTML = '';
+  const list = singleRanks();
+  if (!list.length) {
+    const li = document.createElement('li');
+    li.className = 'rank__empty';
+    li.textContent = 'синглов пока нет — отметьте трек на странице альбома или добавьте сингл кнопкой на главной';
+    singleRankList.appendChild(li);
+    return;
+  }
+  list.forEach((r, i) => {
+    const pos = i + 1;
+    const li = document.createElement('li');
+    li.className = 'rank' + (pos <= 3 && r.score !== null ? ` rank--${pos}` : '') + (r.score === null ? ' is-unranked' : '');
+    const parent = parentOf(r.single);
+    const meta: string[] = [String(r.single.year), r.single.artist];
+    meta.push(parent ? `к альбому «${parent.title}»` : 'вне альбома');
+    if (r.score === null) meta.push(singleRankReason(r.single.id));
+    li.innerHTML = `
+      <span class="rank__pos">${pos}</span>
+      <span class="rank__ava"><img src="${esc(coverSrc(r.single))}" alt="" loading="lazy"></span>
+      <div class="rank__body">
+        <span class="rank__name">${esc(r.single.title)}</span>
+        <span class="rank__meta">${esc(meta.join(' · '))}</span>
+      </div>
+      <span class="rank__score">${r.score === null ? '—' : fmt(r.score)}</span>`;
+    li.addEventListener('click', () => void openSingle(r.single.id));
+    singleRankList.appendChild(li);
+  });
+}
+
+async function openSingleRank(): Promise<void> {
+  renderSingleRank();
+  await navigateTo(viewSrank, { view: 'rank' });
+}
 
 async function openArtist(name: string): Promise<void> {
   if (!name) return;
@@ -2552,7 +3168,10 @@ async function handleDeleteAlbum(): Promise<void> {
       await getSB().from('albums').delete().eq('id', al.id);
     } else {
       const deadIds = new Set(tracks.filter((t) => t.albumId === al.id).map((t) => t.id));
-      albums = albums.filter((a) => a.id !== al.id);
+      // Синглы альбома не удаляются: они теряют привязку (в облаке это делает FK on delete set null).
+      albums = albums
+        .filter((a) => a.id !== al.id)
+        .map((a) => (a.parentId === al.id ? { ...a, parentId: null } : a));
       tracks = tracks.filter((t) => t.albumId !== al.id);
       for (const id of deadIds) delete trackRatings[id];
       saveLocalAlbums();
@@ -2576,9 +3195,9 @@ async function handleDeleteAlbum(): Promise<void> {
 
 /* осыпание обложки: карточка распадается на кусочки, которые
    разлетаются вниз с вращением и тают — перед уходом со страницы */
-async function crumbleCover(): Promise<void> {
+async function crumbleCover(selector = '.av__cover'): Promise<void> {
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  const cover = document.querySelector<HTMLElement>('.av__cover');
+  const cover = document.querySelector<HTMLElement>(selector);
   if (!cover) return;
   const img = cover.querySelector<HTMLImageElement>('img');
   const src = img?.getAttribute('src');
@@ -2636,6 +3255,708 @@ async function crumbleCover(): Promise<void> {
 }
 
 /* ==========================================================================
+   СИНГЛЫ: страница сингла, метки на треках, привязка к альбому
+   ========================================================================== */
+
+function currentSingle(): UiAlbum | undefined {
+  return currentSingleId ? singleById(currentSingleId) : undefined;
+}
+
+function renderSingleCover(s: UiAlbum): void {
+  const src = coverSrc(s);
+  if (svCoverImg.getAttribute('src') !== src) svCoverImg.src = src;
+  svCoverImg.alt = `${s.artist} — ${s.title}`;
+  svCoverImg.style.opacity = ''; // сброс после анимации осыпания
+  svCoverEdit.hidden = !currentUser;
+  const parent = parentOf(s);
+  svCoverEditLabel.textContent = s.cover
+    ? 'изменить обложку'
+    : parent ? 'своя обложка' : 'добавить обложку';
+}
+
+/* «отмечен как сингл у трека N альбома …» — если метка стоит на треке */
+function singleOriginText(s: UiAlbum): string {
+  const t = tracks.find((x) => x.singleId === s.id);
+  if (!t) return '';
+  const al = albums.find((a) => a.id === t.albumId);
+  if (!al) return '';
+  const list = tracks.filter((x) => x.albumId === al.id).sort((a, b) => a.position - b.position);
+  const idx = list.findIndex((x) => x.id === t.id);
+  return `отмечен как сингл у трека ${idx + 1} альбома «${al.title}»`;
+}
+
+function renderSinglePage(s: UiAlbum): void {
+  svTitle.textContent = s.title;
+  svArtist.innerHTML = `<a class="sv__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a>`;
+  svYear.textContent = String(s.year);
+  renderSingleCover(s);
+
+  const parent = parentOf(s);
+  svParentLabel.innerHTML = parent
+    ? `сингл к альбому <a class="sv__parent-link" data-album="${esc(parent.id)}">«${esc(parent.title)}»</a>`
+    : 'сингл вне альбома';
+  svParentEdit.textContent = parent ? 'изменить' : 'привязать к альбому';
+
+  const origin = singleOriginText(s);
+  svOrigin.hidden = !origin;
+  svOrigin.textContent = origin;
+
+  const score = singleScoreOf(s.id);
+  svAvg.textContent = score === null ? '—' : fmt(score);
+  delete svAvg.dataset.val;
+
+  updateSingleDisplays();
+  svNote.textContent = singlesUnavailable()
+    ? 'раздел синглов не подключён к базе: выполните migrate.sql в Supabase'
+    : 'передвиньте ползунок или введите число, затем подтвердите — до подтверждения балл не влияет на рейтинг';
+}
+
+function updateSingleDisplays(): void {
+  const s = currentSingle();
+  if (!s) return;
+  tweenText(svAvg, singleScoreOf(s.id));
+  renderSingleConfirmState();
+  renderSingleImpact();
+  renderSingleMine();
+  syncSingleControls();
+}
+
+function renderSingleConfirmState(): void {
+  const s = currentSingle();
+  if (!s || singleScoreOf(s.id) === null) {
+    svConfirmState.hidden = true;
+    return;
+  }
+  const final = singleAllConfirmed(s.id);
+  svConfirmState.hidden = false;
+  svConfirmState.classList.toggle('is-final', final);
+  svConfirmState.innerHTML = final
+    ? `${CHECK_SVG}<span>подтверждён</span>`
+    : `${PENDING_SVG}<span>не подтверждён</span>`;
+}
+
+/* вклад участников: у сингла одна оценка на человека */
+function renderSingleImpact(): void {
+  const s = currentSingle();
+  svChips.innerHTML = '';
+  if (!s) { svImpact.hidden = true; return; }
+  const r = singleRatings[s.id];
+  if (!r || !Object.keys(r).length) { svImpact.hidden = true; return; }
+  svImpact.hidden = false;
+
+  const rows = [...profileCache].map(([pid, info]) => ({
+    id: pid, username: info.username, initials: info.initials, avatarUrl: info.avatarUrl,
+    value: r[pid] ?? null,
+  }));
+  rows.sort((a, b) => Number(b.id === currentUser?.id) - Number(a.id === currentUser?.id));
+
+  for (const row of rows) {
+    const isMe = row.id === currentUser?.id;
+    const chip = document.createElement('div');
+    chip.className = 'av__chip' + (isMe ? ' is-me' : '');
+    const label = isMe ? 'я' : esc(row.username);
+    const state = row.value ? (row.value.confirmed ? 'подтверждено' : 'без подтверждения') : 'нет оценки';
+    chip.innerHTML = `
+      ${avatarMarkup(row, 'av__chip-who')}
+      <span class="av__chip-val">${row.value ? fmt(row.value.score) : '—'}</span>
+      <span class="av__chip-sub">${label} · ${state}</span>`;
+    chip.title = `${row.username}: ${row.value ? fmt(row.value.score) : 'нет оценки'} · ${state}`;
+    svChips.appendChild(chip);
+  }
+}
+
+/* --- моя оценка сингла --- */
+let singlePointerActive = false;
+const singleSaveTimers = new Map<string, number>();
+const singleWrites = new Map<string, Promise<void>>();
+const confirmingSingles = new Set<string>();
+
+function setSingleSave(state: 'save' | 'done' | 'err' | ''): void {
+  const map: Record<string, string> = { save: 'сохраняю…', done: 'сохранено', err: 'ошибка', '': '' };
+  svSave.textContent = map[state];
+  svSave.classList.toggle('is-visible', state !== '');
+  if (state === 'done') {
+    window.setTimeout(() => {
+      if (svSave.textContent === 'сохранено') svSave.classList.remove('is-visible');
+    }, 1600);
+  }
+}
+
+function peerSingleRatingOf(singleId: string): { score: number; confirmed: boolean; username: string; initials: string; avatarUrl: string | null } | null {
+  if (!currentUser) return null;
+  const r = singleRatings[singleId];
+  if (!r) return null;
+  for (const [pid, v] of Object.entries(r)) {
+    if (pid === currentUser.id) continue;
+    const info = profileCache.get(pid);
+    return {
+      score: v.score, confirmed: v.confirmed,
+      username: info?.username ?? 'участник', initials: info?.initials ?? '?', avatarUrl: info?.avatarUrl ?? null,
+    };
+  }
+  return null;
+}
+
+function renderSingleMine(): void {
+  const s = currentSingle();
+  const mine = currentUser && s ? singleRatings[s.id]?.[currentUser.id] : undefined;
+  svMine.textContent = mine ? fmt(mine.score) : '—';
+  svMine.classList.toggle('is-empty', !mine);
+}
+
+function syncSingleControls(): void {
+  const s = currentSingle();
+  const myId = currentUser?.id;
+  if (!s || !myId) return;
+  const mine = singleRatings[s.id]?.[myId];
+  const editing = document.activeElement === svSlider || document.activeElement === svNum || singlePointerActive;
+  if (!editing) {
+    svSlider.value = String(mine?.score ?? 5);
+    svNum.value = mine ? fmt(mine.score) : '';
+  }
+  const confirmed = mine?.confirmed === true;
+  svSlider.disabled = confirmed;
+  svNum.disabled = confirmed;
+  svConfirmBtn.disabled = !mine || confirmingSingles.has(s.id);
+  svConfirmBtn.innerHTML = confirmed ? PENCIL_SVG : CHECK_SVG;
+  const label = confirmed ? 'Изменить оценку' : 'Подтвердить оценку';
+  svConfirmBtn.title = label;
+  svConfirmBtn.setAttribute('aria-label', label);
+  svSlider.classList.toggle('is-locked', confirmed);
+  svNum.classList.toggle('is-locked', confirmed);
+  renderSingleMine();
+
+  const peer = peerSingleRatingOf(s.id);
+  svPeer.innerHTML = peer?.confirmed
+    ? `<span class="track__peer" title="оценка ${esc(peer.username)} · подтверждена">
+         ${avatarMarkup(peer, 'track__peer-who')}
+         <span class="track__peer-val">${fmt(peer.score)}</span>
+       </span>`
+    : '';
+}
+
+function setSingleRating(v: number): void {
+  const s = currentSingle();
+  if (!s || !currentUser) return;
+  const prev = singleRatings[s.id]?.[currentUser.id];
+  (singleRatings[s.id] ??= {})[currentUser.id] = { score: v, confirmed: prev?.confirmed === true };
+  if (!CLOUD) saveLocalSingleRatings();
+  setSingleSave('save');
+  updateSingleDisplays();
+  scheduleSingleSave(s.id);
+}
+
+function clearSingleRating(): void {
+  const s = currentSingle();
+  if (!s || !currentUser) return;
+  const r = singleRatings[s.id];
+  if (r) {
+    delete r[currentUser.id];
+    if (!Object.keys(r).length) delete singleRatings[s.id];
+  }
+  if (!CLOUD) saveLocalSingleRatings();
+  setSingleSave('save');
+  updateSingleDisplays();
+  scheduleSingleSave(s.id);
+}
+
+function stageSingleSave(singleId: string): PendingRating {
+  const value = currentUser ? singleRatings[singleId]?.[currentUser.id] : null;
+  const pending: PendingRating = { value: value ? { ...value } : null };
+  pendingSingleRatings.set(singleId, pending);
+  return pending;
+}
+
+function scheduleSingleSave(singleId: string): void {
+  stageSingleSave(singleId);
+  window.clearTimeout(singleSaveTimers.get(singleId));
+  singleSaveTimers.set(singleId, window.setTimeout(() => {
+    singleSaveTimers.delete(singleId);
+    void persistSingleRating(singleId).catch((err) => toast(messageOf(err)));
+  }, 500));
+}
+
+function persistSingleRating(singleId: string): Promise<void> {
+  if (!currentUser) return Promise.resolve();
+  window.clearTimeout(singleSaveTimers.get(singleId));
+  singleSaveTimers.delete(singleId);
+  const existing = singleWrites.get(singleId);
+  if (existing) return existing;
+  const profileId = currentUser.id;
+  const epoch = syncEpoch;
+  const task = (async () => {
+    // Одна запись на сингл одновременно: поздний ответ не перезапишет новый балл.
+    while (epoch === syncEpoch && currentUser?.id === profileId) {
+      const pending = pendingSingleRatings.get(singleId);
+      if (!pending || pending.savedAfterRead !== undefined) return;
+      pending.failed = false;
+      setSingleSave('save');
+      try {
+        if (CLOUD) {
+          const result = pending.value
+            ? await getSB().from('single_ratings').upsert(
+              { album_id: singleId, profile_id: profileId, ...pending.value },
+              { onConflict: 'album_id,profile_id' },
+            )
+            : await getSB().from('single_ratings').delete().eq('album_id', singleId).eq('profile_id', profileId);
+          if (result.error) throw result.error;
+        } else saveLocalSingleRatings();
+      } catch (err) {
+        if (epoch !== syncEpoch) return;
+        if (pendingSingleRatings.get(singleId) !== pending) continue;
+        pending.failed = true;
+        setSingleSave('err');
+        throw err;
+      }
+      if (epoch !== syncEpoch) return;
+      if (pendingSingleRatings.get(singleId) !== pending) continue;
+      pending.savedAfterRead = dataReadRevision;
+      setSingleSave('done');
+      requestSync(0);
+      return;
+    }
+  })().finally(() => {
+    if (singleWrites.get(singleId) === task) singleWrites.delete(singleId);
+  });
+  singleWrites.set(singleId, task);
+  return task;
+}
+
+/* Подтверждение идёт через ту же очередь записи, что и изменение балла. */
+async function toggleSingleConfirm(): Promise<void> {
+  const s = currentSingle();
+  if (!s || !currentUser || confirmingSingles.has(s.id)) return;
+  const entry = singleRatings[s.id]?.[currentUser.id];
+  if (!entry) return;
+  const epoch = syncEpoch;
+  const previous = entry.confirmed;
+  const next = !previous;
+  entry.confirmed = next;
+  const pending = stageSingleSave(s.id);
+  confirmingSingles.add(s.id);
+  if (!CLOUD) saveLocalSingleRatings();
+  updateSingleDisplays();
+  try {
+    await persistSingleRating(s.id);
+    if (epoch === syncEpoch) {
+      if (!next) toast('Оценку можно менять — сингл пока не в рейтинге');
+      else if (singleAllConfirmed(s.id)) toast('Оценка подтверждена — сингл в рейтинге');
+      else {
+        // Второй участник ещё не оценил (или не подтвердил) — релиз пока вне рейтинга.
+        const myId = currentUser.id;
+        const peers = Object.keys(singleRatings[s.id] ?? {}).filter((pid) => pid !== myId);
+        toast(peers.length === 0
+          ? 'Оценка подтверждена — ждём оценку второго участника'
+          : 'Оценка подтверждена — ждём подтверждения второго участника');
+      }
+    }
+  } catch (err) {
+    if (epoch !== syncEpoch) return;
+    if (pendingSingleRatings.get(s.id) === pending) {
+      const mine = singleRatings[s.id]?.[currentUser.id];
+      if (mine) {
+        mine.confirmed = previous;
+        pending.value = { ...mine };
+      }
+      if (!CLOUD) saveLocalSingleRatings();
+    }
+    updateSingleDisplays();
+    toast(messageOf(err));
+  } finally {
+    if (epoch === syncEpoch) {
+      confirmingSingles.delete(s.id);
+      updateSingleDisplays();
+    }
+  }
+}
+
+svSlider.addEventListener('input', () => {
+  const v = round2(parseFloat(svSlider.value));
+  svNum.value = fmt(v);
+  setSingleRating(v);
+});
+svSlider.addEventListener('pointerdown', () => { singlePointerActive = true; });
+window.addEventListener('pointerup', () => { singlePointerActive = false; });
+svNum.addEventListener('input', () => {
+  const raw = svNum.value.trim();
+  if (raw === '') {
+    svSlider.value = '5';
+    clearSingleRating();
+    svConfirmBtn.disabled = true;
+    return;
+  }
+  const parsed = parseFloat(raw.replace(',', '.'));
+  if (isNaN(parsed)) return;
+  const v = round2(Math.min(10, Math.max(0, parsed)));
+  svSlider.value = String(v);
+  setSingleRating(v);
+});
+svSlider.addEventListener('change', () => {
+  singlePointerActive = false;
+  syncSingleControls();
+});
+svNum.addEventListener('blur', () => {
+  const raw = svNum.value.trim();
+  if (raw !== '') {
+    const parsed = parseFloat(raw.replace(',', '.'));
+    if (!isNaN(parsed)) svNum.value = fmt(round2(Math.min(10, Math.max(0, parsed))));
+  }
+  syncSingleControls();
+});
+svConfirmBtn.addEventListener('click', () => void toggleSingleConfirm());
+
+/* --- открытие и удаление сингла --- */
+async function openSingle(id: string): Promise<void> {
+  const s = singleById(id);
+  if (!s) return;
+  currentSingleId = id;
+  currentAlbumId = null;
+  renderSinglePage(s);
+  await navigateTo(viewSingle, { view: 'single', singleId: id });
+}
+
+singleBack.addEventListener('click', () => void goBack());
+
+async function handleDeleteSingle(): Promise<void> {
+  const s = currentSingle();
+  if (!s) return;
+  const ok = await openConfirm(
+    'Удалить сингл?',
+    `Сингл <b>«${esc(s.title)}»</b> — ${esc(s.artist)} будет удалён <b>навсегда</b> вместе с оценками. Метка «сингл» с трека снимется. Это действие нельзя отменить.`,
+    true,
+  );
+  if (!ok) return;
+  try {
+    if (CLOUD) {
+      const { error } = await getSB().from('albums').delete().eq('id', s.id);
+      if (error) throw error;
+      await refreshData();
+    } else {
+      albums = albums.filter((a) => a.id !== s.id);
+      delete singleRatings[s.id];
+      pendingSingleRatings.delete(s.id);
+      tracks = tracks.map((t) => (t.singleId === s.id ? { ...t, singleId: null } : t));
+      saveLocalAlbums();
+      saveLocalTracks();
+      saveLocalSingleRatings();
+    }
+    currentSingleId = null;
+    viewStack.length = 0;
+    viewStack.push({ view: 'home' });
+    await crumbleCover('.sv__cover');
+    setHomeMode('single', false);
+    renderAlbums();
+    await swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+    toast('Сингл удалён');
+  } catch (err) {
+    toast(messageOf(err));
+  }
+}
+
+singleDeleteBtn.addEventListener('click', () => void handleDeleteSingle());
+
+/* --- привязка сингла к альбому --- */
+let singleLinkEditingId: string | null = null;
+let singleLinkValue: string | null = null;
+
+function updateSingleLinkList(): void {
+  const query = singleLinkInput.value.trim().toLowerCase();
+  const matches = albumsOnly()
+    .filter((a) => !query || a.title.toLowerCase().includes(query) || a.artist.toLowerCase().includes(query))
+    .slice(0, 8);
+  singleLinkList.innerHTML = '';
+  for (const a of matches) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'combo__item';
+    btn.innerHTML = `<span class="combo__name">${esc(a.title)}</span><span class="combo__tag">${esc(a.artist)} · ${a.year}</span>`;
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      singleLinkInput.value = a.title;
+      singleLinkValue = a.id;
+      singleLinkList.hidden = true;
+    });
+    li.appendChild(btn);
+    singleLinkList.appendChild(li);
+  }
+  singleLinkList.hidden = singleLinkList.children.length === 0;
+}
+
+function openSingleLinkEditor(): void {
+  const s = currentSingle();
+  if (!s || singleLinkDialog.open) return;
+  singleLinkEditingId = s.id;
+  const parent = parentOf(s);
+  singleLinkInput.value = parent?.title ?? '';
+  singleLinkValue = parent?.id ?? null;
+  singleLinkName.textContent = `${s.artist} — ${s.title}`;
+  singleLinkError.textContent = '';
+  singleLinkError.classList.remove('is-visible');
+  singleLinkSave.classList.remove('is-loading');
+  singleLinkDialog.showModal();
+  void singleLinkDialog.offsetWidth;
+  singleLinkDialog.classList.add('is-open');
+  updateSingleLinkList();
+}
+
+function closeSingleLinkEditor(): void {
+  if (!singleLinkDialog.open) return;
+  singleLinkDialog.classList.remove('is-open');
+  singleLinkList.hidden = true;
+  window.setTimeout(() => {
+    if (!singleLinkDialog.classList.contains('is-open')) singleLinkDialog.close();
+  }, 240);
+}
+
+async function saveSingleLink(albumId: string | null): Promise<void> {
+  const id = singleLinkEditingId;
+  if (!id) return;
+  const single = singleById(id);
+  if (!single) { closeSingleLinkEditor(); return; }
+  if (single.parentId === albumId) { closeSingleLinkEditor(); return; }
+  singleLinkSave.classList.add('is-loading');
+  try {
+    if (CLOUD) {
+      const { error } = await getSB().from('albums').update({ parent_album_id: albumId }).eq('id', id);
+      if (error) throw error;
+    }
+    albums = albums.map((a) => (a.id === id ? { ...a, parentId: albumId } : a));
+    if (!CLOUD) saveLocalAlbums();
+    closeSingleLinkEditor();
+    // Сингл — это тоже трек: при привязке он появляется в списке треков альбома.
+    const warn = albumId ? await attachSingleTrack(id, albumId) : null;
+    const updated = singleById(id);
+    if (currentSingle()?.id === id && updated) renderSinglePage(updated);
+    if (currentAlbumId) { renderTracks(); renderAlbumSingles(); }
+    toast(warn ?? (albumId ? 'Сингл привязан к альбому' : 'Сингл больше не привязан к альбому'));
+    requestSync(0);
+  } catch (err) {
+    singleLinkError.textContent = messageOf(err);
+    singleLinkError.classList.add('is-visible');
+  } finally {
+    singleLinkSave.classList.remove('is-loading');
+  }
+}
+
+svParentEdit.addEventListener('click', openSingleLinkEditor);
+svParentLabel.addEventListener('click', (e) => {
+  const link = (e.target as HTMLElement).closest<HTMLElement>('.sv__parent-link');
+  if (!link) return;
+  e.preventDefault();
+  const id = link.dataset.album;
+  if (id) void openAlbum(id);
+});
+svArtist.addEventListener('click', (e) => {
+  const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('.sv__artist-link');
+  if (!a) return;
+  e.preventDefault();
+  const name = a.dataset.artist;
+  if (name) void openArtist(name);
+});
+singleLinkInput.addEventListener('input', () => {
+  singleLinkValue = null;
+  updateSingleLinkList();
+});
+singleLinkInput.addEventListener('focus', updateSingleLinkList);
+singleLinkInput.addEventListener('blur', () => {
+  window.setTimeout(() => { singleLinkList.hidden = true; }, 120);
+});
+document.addEventListener('click', (e) => {
+  if (!singleLinkBox.contains(e.target as Node)) singleLinkList.hidden = true;
+});
+singleLinkCancel.addEventListener('click', closeSingleLinkEditor);
+singleLinkDialog.addEventListener('cancel', (e) => {
+  e.preventDefault();
+  closeSingleLinkEditor();
+});
+singleLinkUnlink.addEventListener('click', () => void saveSingleLink(null));
+singleLinkForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (singleLinkSave.classList.contains('is-loading')) return;
+  const raw = singleLinkInput.value.trim();
+  if (!raw) { void saveSingleLink(null); return; }
+  const picked = singleLinkValue ? albums.find((a) => a.id === singleLinkValue && a.kind === 'album') : undefined;
+  const match = picked ?? albumsOnly().find((a) => a.title.toLowerCase() === raw.toLowerCase());
+  if (!match) {
+    singleLinkError.textContent = 'Такого альбома нет в коллекции — выберите из подсказок или оставьте поле пустым';
+    singleLinkError.classList.add('is-visible');
+    return;
+  }
+  void saveSingleLink(match.id);
+});
+
+/* --- сингл как трек альбома --- */
+
+/** «Not Like Us & Kendrick Lamar» → «Not Like Us» (сравнение названий треков). */
+function stripFeat(title: string): string {
+  const m = FEAT_RE.exec(title);
+  return (m ? title.slice(0, m.index) : title).trim();
+}
+
+/**
+ * Сингл — это тоже трек: при привязке к альбому он попадает в конец списка треков.
+ * Если трек с таким названием уже есть, он просто помечается синглом (без дубля).
+ * Коллаборация: артист сингла отличается от артиста альбома → «Название & Артист»
+ * со ссылкой на профиль (та же механика фитов, что и у обычных треков).
+ * Возвращает текст предупреждения, если трек добавить не удалось.
+ */
+async function attachSingleTrack(singleId: string, parentId: string): Promise<string | null> {
+  const single = singleById(singleId);
+  const al = albums.find((a) => a.id === parentId && a.kind === 'album');
+  if (!single || !al) return null;
+  if (al.tracksLocked) {
+    return 'Сингл привязан, но треки альбома зафиксированы — в списке треков он не появился';
+  }
+  const title = single.title.trim();
+  const sameArtist = al.artist.trim().toLowerCase() === single.artist.trim().toLowerCase();
+  const feat = sameArtist ? null : canonicalArtistName(single.artist);
+  const fullTitle = feat ? `${title} & ${feat}` : title;
+
+  const existing = tracks.find(
+    (t) => t.albumId === parentId && stripFeat(t.title).toLowerCase() === title.toLowerCase(),
+  );
+  try {
+    if (existing) {
+      if (existing.singleId) return null; // трек уже отмечен (этим же или другим синглом)
+      if (CLOUD) {
+        const { error } = await getSB().from('tracks').update({ single_id: singleId }).eq('id', existing.id);
+        if (error) throw error;
+        await refreshData();
+      } else {
+        tracks = tracks.map((t) => (t.id === existing.id ? { ...t, singleId } : t));
+        saveLocalTracks();
+      }
+      return null;
+    }
+
+    const position = tracks.filter((t) => t.albumId === parentId).length;
+    if (CLOUD) {
+      const { error } = await getSB().from('tracks').insert({
+        album_id: parentId, title: fullTitle, position, locked: false,
+        feat_artist: feat, single_id: singleId,
+      });
+      if (error) throw error;
+      await refreshData();
+    } else {
+      tracks.push({
+        id: 't' + Date.now().toString(36), albumId: parentId, title: fullTitle,
+        position, locked: false, featArtist: feat, singleId,
+      });
+      saveLocalTracks();
+    }
+    return null;
+  } catch (err) {
+    return 'Сингл привязан, но трек в альбоме создать не удалось: ' + messageOf(err);
+  }
+}
+
+/* --- метка «трек — сингл» --- */
+function singleOfTrack(t: UiTrack): UiAlbum | undefined {
+  return t.singleId ? singleById(t.singleId) : undefined;
+}
+
+async function markTrackAsSingle(t: UiTrack): Promise<void> {
+  const al = albums.find((a) => a.id === t.albumId);
+  if (!al || !currentUser) return;
+  if (!singleById(t.singleId ?? '')) {
+    try {
+      if (CLOUD) {
+        const ins = await getSB().from('albums').insert({
+          artist: al.artist,
+          title: t.title,
+          year: al.year,
+          cover_url: null,
+          tracks_locked: false,
+          kind: 'single',
+          parent_album_id: al.id,
+          created_by: currentUser.id,
+        }).select('id').single();
+        if (ins.error) {
+          if (ins.error.code === '23505') throw new Error('Такой сингл у этого артиста уже есть');
+          throw ins.error;
+        }
+        const singleId = (ins.data as { id: string }).id;
+        const upd = await getSB().from('tracks').update({ single_id: singleId }).eq('id', t.id);
+        if (upd.error) throw upd.error;
+        await refreshData();
+      } else {
+        const singleId = 's' + Date.now().toString(36);
+        albums.push({
+          id: singleId, artist: al.artist, title: t.title, year: al.year, cover: '',
+          kind: 'single', parentId: al.id, tracksLocked: false, cohesion: null, albumType: null,
+        });
+        tracks = tracks.map((x) => (x.id === t.id ? { ...x, singleId } : x));
+        saveLocalAlbums();
+        saveLocalTracks();
+      }
+      toast('Трек отмечен как сингл');
+      renderTracks();
+      renderAlbumSingles();
+      requestSync(0);
+    } catch (err) {
+      const msg = messageOf(err);
+      toast(/column|relation|schema|does not exist/i.test(msg)
+        ? 'Нужна миграция базы: выполните migrate.sql в Supabase'
+        : msg);
+    }
+  }
+  const created = tracks.find((x) => x.id === t.id)?.singleId;
+  if (created) void openSingle(created);
+}
+
+async function unmarkTrackAsSingle(t: UiTrack): Promise<void> {
+  const single = singleOfTrack(t);
+  const ok = await openConfirm(
+    'Снять метку «сингл»?',
+    single
+      ? `Трек <b>«${esc(t.title)}»</b> перестанет быть синглом. Карточка сингла <b>«${esc(single.title)}»</b> и его оценки останутся — удалить его можно отдельно, на странице сингла.`
+      : `Трек <b>«${esc(t.title)}»</b> перестанет быть синглом.`,
+  );
+  if (!ok) return;
+  try {
+    if (CLOUD) {
+      const { error } = await getSB().from('tracks').update({ single_id: null }).eq('id', t.id);
+      if (error) throw error;
+      await refreshData();
+    } else {
+      tracks = tracks.map((x) => (x.id === t.id ? { ...x, singleId: null } : x));
+      saveLocalTracks();
+    }
+    toast('Метка снята');
+    renderTracks();
+    renderAlbumSingles();
+    requestSync(0);
+  } catch (err) {
+    toast(messageOf(err));
+  }
+}
+
+/* клик по помеченному треку спрашивает, перейти ли на страницу сингла */
+async function promptSingleFromTrack(t: UiTrack): Promise<void> {
+  const single = singleOfTrack(t);
+  if (!single) return;
+  const ok = await openConfirm(
+    'Перейти на страницу сингла?',
+    `Трек <b>«${esc(t.title)}»</b> отмечен как сингл <b>«${esc(single.title)}»</b>. Открыть его страницу с оценками?`,
+    false,
+    { ok: 'да', cancel: 'назад' },
+  );
+  if (ok) void openSingle(single.id);
+}
+
+/* синглы, привязанные к этому альбому */
+function renderAlbumSingles(): void {
+  const al = currentAlbum();
+  if (!al) { avSinglesSection.hidden = true; return; }
+  const list = albums.filter((a) => a.kind === 'single' && a.parentId === al.id);
+  avSinglesSection.hidden = list.length === 0;
+  avSinglesCount.textContent = `${list.length} ${singlesPlural(list.length)}`;
+  avSingles.innerHTML = '';
+  for (const s of list) avSingles.appendChild(makeSingleRow(s));
+}
+
+/* ==========================================================================
    ДОБАВЛЕНИЕ АЛЬБОМА
    ========================================================================== */
 
@@ -2670,9 +3991,11 @@ function refreshDupHint(): void {
   const title = titleInput.value.trim();
   if (artist && title) {
     const dup = albums.some(
-      (a) => a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === title.toLowerCase(),
+      (a) => a.kind === addKind
+        && a.artist.toLowerCase() === artist.toLowerCase()
+        && a.title.toLowerCase() === title.toLowerCase(),
     );
-    if (dup) showTitleError('такой альбом у этого артиста уже есть');
+    if (dup) showTitleError(`такой ${addKind === 'single' ? 'сингл' : 'альбом'} у этого артиста уже есть`);
     else {
       titleError.textContent = '';
       titleError.classList.remove('is-visible');
@@ -2903,16 +4226,74 @@ function resetAddForm(): void {
   clearAddErrors();
 }
 
-function openAdd(): void {
+/* Экран добавления один, но работает в двух режимах: альбом или сингл.
+   В режиме сингла появляется необязательная привязка к альбому. */
+let addKind: ReleaseKind = 'album';
+let addParentId: string | null = null;
+
+function applyAddMode(kind: ReleaseKind): void {
+  addKind = kind;
+  const single = kind === 'single';
+  viewAdd.setAttribute('aria-label', single ? 'Добавить сингл' : 'Добавить альбом');
+  addTitle.textContent = single ? 'Новый сингл' : 'Новый альбом';
+  addSubmitLabel.textContent = single ? 'Добавить сингл' : 'Добавить альбом';
+  titleLabel.textContent = single ? 'Название сингла *' : 'Название альбома *';
+  titleInput.placeholder = single ? 'например, Not Like Us' : 'например, Blonde';
+  parentField.hidden = !single;
+  parentNote.textContent = single
+    ? 'сингл будет виден на странице этого альбома, а его обложка подставится оттуда, пока не задана своя'
+    : '';
+  coverNote.textContent = single
+    ? 'файл или ссылку можно заменить позже, на странице сингла; без своей обложки подставится обложка альбома'
+    : 'файл или ссылка — обложку можно будет заменить и позже, на странице альбома';
+}
+
+function updateParentList(): void {
+  const query = parentInput.value.trim().toLowerCase();
+  const matches = albumsOnly()
+    .filter((a) => !query || a.title.toLowerCase().includes(query) || a.artist.toLowerCase().includes(query))
+    .slice(0, 6);
+  parentList.innerHTML = '';
+  for (const a of matches) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'combo__item';
+    btn.innerHTML = `<span class="combo__name">${esc(a.title)}</span><span class="combo__tag">${esc(a.artist)} · ${a.year}</span>`;
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      parentInput.value = a.title;
+      addParentId = a.id;
+      parentList.hidden = true;
+      if (!yearInput.value.trim()) yearInput.value = String(a.year);
+      clearAddErrors();
+    });
+    li.appendChild(btn);
+    parentList.appendChild(li);
+  }
+  parentList.hidden = parentList.children.length === 0;
+}
+
+parentInput.addEventListener('input', () => {
+  addParentId = null;
+  updateParentList();
+  clearAddErrors();
+});
+parentInput.addEventListener('focus', updateParentList);
+parentInput.addEventListener('blur', () => {
+  window.setTimeout(() => { parentList.hidden = true; }, 120);
+});
+document.addEventListener('click', (e) => {
+  if (!parentBox.contains(e.target as Node)) parentList.hidden = true;
+});
+
+async function openAdd(kind: ReleaseKind = 'album'): Promise<void> {
   resetAddForm();
-  void swapTo(viewHome, viewAdd, () => { viewAdd.scrollTop = 0; });
+  applyAddMode(kind);
+  await navigateTo(viewAdd, { view: 'add', kind });
 }
 
-function closeAdd(): void {
-  void swapTo(viewAdd, viewHome, () => { viewHome.scrollTop = 0; });
-}
-
-addBack.addEventListener('click', closeAdd);
+addBack.addEventListener('click', () => void goBack());
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
@@ -2921,13 +4302,20 @@ document.addEventListener('keydown', (e) => {
     closeAlbumCoverEditor();
     return;
   }
+  if (singleLinkDialog.open) {
+    e.preventDefault();
+    closeSingleLinkEditor();
+    return;
+  }
   if (!confirmModal.hidden) { closeConfirm(false); return; }
   if (document.querySelector('.fin-select.is-open')) { closeAllFinSelects(); return; }
-  if (viewAdd.classList.contains('is-visible')) closeAdd();
-  else if (visibleView() && !viewHome.classList.contains('is-visible')) void goBack();
+  if (visibleView() && !viewHome.classList.contains('is-visible')) void goBack();
 });
 
-async function addAlbum(input: AddInput): Promise<void> {
+async function addAlbum(input: AddInput): Promise<string | null> {
+  const kind = input.kind ?? 'album';
+  const parentId = kind === 'single' ? (input.parentId ?? null) : null;
+  const what = kind === 'single' ? 'сингл' : 'альбом';
   if (CLOUD) {
     const s = getSB();
     let coverUrlFinal = input.coverUrl ?? '';
@@ -2938,28 +4326,41 @@ async function addAlbum(input: AddInput): Promise<void> {
       year: input.year,
       cover_url: coverUrlFinal || null,
       tracks_locked: false,
+      kind,
+      parent_album_id: parentId,
       created_by: currentUser?.id ?? null,
     });
     if (ins.error) {
       if ((ins.error as { code?: string }).code === '23505') {
-        throw new Error('такой альбом у этого артиста уже есть');
+        throw new Error(`такой ${what} у этого артиста уже есть`);
+      }
+      if (/column|relation|schema|does not exist/i.test(ins.error.message ?? '')) {
+        throw new Error('База не обновлена: выполните migrate.sql в Supabase');
       }
       throw ins.error;
     }
     await refreshData();
-  } else {
-    albums.push({
-      id: 'a' + Date.now().toString(36),
-      artist: input.artist,
-      title: input.title,
-      year: input.year,
-      cover: input.coverDataUrl ?? input.coverUrl ?? '',
-      tracksLocked: false,
-      cohesion: null,
-      albumType: null,
-    });
-    saveLocalAlbums();
+    return albums.find(
+      (a) => a.kind === kind
+        && a.artist.toLowerCase() === input.artist.trim().toLowerCase()
+        && a.title.toLowerCase() === input.title.trim().toLowerCase(),
+    )?.id ?? null;
   }
+  const id = (kind === 'single' ? 's' : 'a') + Date.now().toString(36);
+  albums.push({
+    id,
+    artist: input.artist,
+    title: input.title,
+    year: input.year,
+    cover: input.coverDataUrl ?? input.coverUrl ?? '',
+    kind,
+    parentId,
+    tracksLocked: false,
+    cohesion: null,
+    albumType: null,
+  });
+  saveLocalAlbums();
+  return id;
 }
 
 addForm.addEventListener('submit', (e) => {
@@ -2972,10 +4373,12 @@ async function handleAdd(): Promise<void> {
   const artistRaw = artistInput.value.trim();
   const titleRaw = titleInput.value.trim();
   const yearRaw = yearInput.value.trim();
+  const single = addKind === 'single';
+  const what = single ? 'сингл' : 'альбом';
 
   let err: string | null = null;
   if (!artistRaw) err = 'Укажите артиста';
-  else if (!titleRaw) err = 'Укажите название альбома';
+  else if (!titleRaw) err = `Укажите название ${single ? 'сингла' : 'альбома'}`;
   else if (!/^\d{4}$/.test(yearRaw)) err = 'Год — четыре цифры, например 2024';
   else {
     const y = Number(yearRaw);
@@ -2987,12 +4390,30 @@ async function handleAdd(): Promise<void> {
     return;
   }
 
+  /* привязка сингла к альбому: по подсказке или по точному названию */
+  let parentId: string | null = null;
+  if (single) {
+    const parentRaw = parentInput.value.trim();
+    if (parentRaw) {
+      const picked = addParentId ? albums.find((a) => a.id === addParentId && a.kind === 'album') : undefined;
+      const match = picked ?? albumsOnly().find((a) => a.title.toLowerCase() === parentRaw.toLowerCase());
+      if (!match) {
+        showAddError('Такого альбома нет в коллекции — выберите из подсказок или очистите поле');
+        shakeEl(addPanel);
+        return;
+      }
+      parentId = match.id;
+    }
+  }
+
   const artist = normalizeArtist(artistRaw);
   const dup = albums.some(
-    (a) => a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === titleRaw.toLowerCase(),
+    (a) => a.kind === addKind
+      && a.artist.toLowerCase() === artist.toLowerCase()
+      && a.title.toLowerCase() === titleRaw.toLowerCase(),
   );
   if (dup) {
-    showTitleError('такой альбом у этого артиста уже есть');
+    showTitleError(`такой ${what} у этого артиста уже есть`);
     shakeEl(addPanel);
     return;
   }
@@ -3001,19 +4422,25 @@ async function handleAdd(): Promise<void> {
   addSubmit.classList.add('is-loading');
   clearAddErrors();
   try {
-    await addAlbum({
+    const createdId = await addAlbum({
       artist,
       title: titleRaw,
       year: Number(yearRaw),
       coverDataUrl: pendingCover && pendingCover.startsWith('data:') ? pendingCover : null,
       coverUrl: pendingCover && !pendingCover.startsWith('data:') ? pendingCover : null,
+      kind: addKind,
+      parentId,
     });
+    // Сингл с привязкой сразу становится треком альбома (в конец списка).
+    const added = createdId && parentId ? await attachSingleTrack(createdId, parentId) : null;
     addPending = false;
     addSubmit.classList.remove('is-loading');
     resetAddForm();
+    setHomeMode(addKind, false);
+    if (topEntry().view === 'add') viewStack.pop();
     renderAlbums();
+    toast(added ?? (single ? 'Сингл добавлен' : 'Альбом добавлен'));
     await swapTo(viewAdd, viewHome, () => { viewHome.scrollTop = 0; });
-    toast('Альбом добавлен');
   } catch (e) {
     addPending = false;
     addSubmit.classList.remove('is-loading');
@@ -3082,6 +4509,7 @@ function showHomeDirect(): void {
 }
 
 async function init(): Promise<void> {
+  homeMode = loadHomeMode();
   initTilt();
   showDemoHint();
 

@@ -103,6 +103,7 @@ function backend() {
         if (table === 'profiles') return json(url.searchParams.has('id') ? USERS.filter((u) => `eq.${u.id}` === url.searchParams.get('id')) : USERS);
         if (table === 'albums') return json(state.albums);
         if (table === 'tracks') return json(state.tracks);
+        if (table === 'single_ratings') return json([]); // синглов в этих сценариях нет
         if (table === 'ratings') {
           state.ratingReads += 1;
           state.activeReads += 1;

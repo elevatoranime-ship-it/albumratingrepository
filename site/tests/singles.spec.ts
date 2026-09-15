@@ -286,6 +286,8 @@ test('фит из названия сингла показывается в бл
 
   // привязка совместки к чужому альбому: трек создаётся от чистого названия,
   // без двойного «& Гость & Артист»
+  await page.locator('#single-back').click();
+  await collab.locator('.album__title').click();
   await page.locator('#sv-parent-edit').click();
   await expect(page.locator('#single-link-name')).toHaveText('Основной & Гость — Мегахит');
   await page.locator('#single-link-input').fill('Общий');

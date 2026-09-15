@@ -1,0 +1,52 @@
+import { expect, test } from '@playwright/test';
+
+test('демо: несколько альбомов, локальное сохранение и удаление только одной привязки', async ({ page }) => {
+  const errors: string[] = [];
+  const cloudRequests: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  page.on('request', (request) => {
+    if (request.url().includes('.supabase.co')) cloudRequests.push(request.url());
+  });
+  await page.route('**/*', (route) => new URL(route.request().url()).origin === 'http://127.0.0.1:8080' ? route.continue() : route.abort());
+  await page.goto('/?demo=1');
+  await page.locator('#email-input').fill('killmiplag@demo.local');
+  await page.locator('#password').fill('demo');
+  await page.locator('#submit-btn').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  await page.locator('#seg-singles').click();
+  const mojo = page.locator('#albums .album').filter({ has: page.getByRole('heading', { name: 'MOJO JOJO', exact: true }) });
+  await expect(mojo.locator('.parent-more')).toHaveCount(0);
+  await mojo.locator('.album__title').click();
+  await page.locator('#sv-parent-label .parent-more').click();
+  await expect(page.locator('#sv-parent-label .parent-list a')).toHaveText(['«MUSIC — демо-издание»']);
+  await page.locator('#sv-parent-label .sv__parent-link').first().click();
+  await expect(page.locator('#av-title')).toHaveText('MUSIC');
+  await expect(page.locator('#av-singles')).toContainText('MOJO JOJO');
+  await page.locator('#album-delete-btn').click();
+  await page.locator('#confirm-ok').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  await page.locator('#seg-singles').click();
+  await mojo.locator('.album__title').click();
+  await expect(page.locator('#sv-parent-label')).toHaveText('сингл к альбому «MUSIC — демо-издание»');
+  await expect(page.locator('#sv-parent-label .parent-more')).toHaveCount(0);
+  await page.locator('#sv-parent-edit').click();
+  await page.locator('#single-link-input').fill('MUSIC — демо-издание, Blonde');
+  await page.locator('#single-link-save').click();
+  await expect(page.locator('#single-link-dialog')).not.toBeVisible();
+  await page.reload();
+  await page.locator('#email-input').fill('killmiplag@demo.local');
+  await page.locator('#password').fill('demo');
+  await page.locator('#submit-btn').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  await page.locator('#seg-singles').click();
+  await mojo.locator('.album__title').click();
+  await page.locator('#sv-parent-label .parent-more').click();
+  await expect(page.locator('#sv-parent-label .parent-list a')).toHaveText(['«Blonde»']);
+  await expect(page.locator('#sv-parent-label')).toHaveText('сингл к альбомам «MUSIC — демо-издание» и «Blonde» скрыть');
+  expect(await page.evaluate(() => {
+    const tracks = JSON.parse(localStorage.getItem('tracks_local_v1')!);
+    return tracks.filter((t: { singleId: string }) => t.singleId === 's-mojo-jojo').map((t: { id: string }) => t.id);
+  })).toHaveLength(2);
+  expect(cloudRequests).toEqual([]);
+  expect(errors).toEqual([]);
+});

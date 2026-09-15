@@ -1,6 +1,7 @@
 """Статический сервер с запретом кэширования (для живого превью)."""
 import http.server
 import socketserver
+import sys
 
 PORT = 8080
 
@@ -10,6 +11,14 @@ class ReusableTCPServer(socketserver.TCPServer):
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def do_GET(self):
+        if "--demo" in sys.argv and self.path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/?demo=1")
+            self.end_headers()
+            return
+        super().do_GET()
+
     def end_headers(self):
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
         self.send_header("Pragma", "no-cache")

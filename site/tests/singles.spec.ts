@@ -174,8 +174,9 @@ test('главная: переключатель разделов, карточ�
   await expect(page.locator('#rank-btn-label')).toHaveText('рейтинг синглов');
   await expect(page.locator('#albums .album--add')).toContainText('добавить сингл');
   await expect(cardByTitle(page, 'Первый сингл')).toContainText('к альбому «Общий альбом»');
-  // у первого сингла средняя 8 (своя подтверждённая) и подпись про неподтверждённую оценку
-  await expect(cardByTitle(page, 'Первый сингл').locator('.album__avg-num')).toHaveText('8');
+  // карточка показывает среднее по всем оценкам релиза, как у альбомов: (8 + 6) / 2 = 7,
+  // и подпись про неподтверждённую оценку второго участника
+  await expect(cardByTitle(page, 'Первый сингл').locator('.album__avg-num')).toHaveText('7');
   await expect(cardByTitle(page, 'Первый сингл')).toContainText('без подтверждения');
   // у сингла вне альбома на карточке нет строки «вне альбома»
   await expect(cardByTitle(page, 'Отдельный сингл').locator('.album__parent')).toHaveCount(0);
@@ -205,10 +206,52 @@ test('страница сингла: чужая неподтверждённая
   await expect(page.locator('#sv-slider')).toBeEnabled();
   await expect(page.locator('#sv-confirm-state')).toContainText('не подтверждён');
   await expect(page.locator('.toast')).toHaveText('Оценку можно менять — сингл пока не в рейтинге');
+  const tFill = Date.now();
   await page.locator('#sv-num').fill('9');
   await expect(page.locator('#sv-avg')).toHaveText('7.5');    // (9 + 6) / 2 — черновик виден на странице
+  const tAfterAvg = Date.now();
+  // ВРЕМЕННАЯ диагностика: события, точка клика, состояние кнопки
+  await page.evaluate(() => {
+    type Row = Record<string, unknown>;
+    const log: Row[] = [];
+    (window as unknown as { __diag: Row[] }).__diag = log;
+    const describe = (el: Element | null | undefined) => (el ? `${el.tagName.toLowerCase()}#${el.id}.${el.className}` : 'null');
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      document.addEventListener(type, (event) => {
+        const me = event as MouseEvent;
+        const btn = document.querySelector('#sv-confirm-btn');
+        const rect = btn?.getBoundingClientRect();
+        log.push({
+          t: type,
+          target: describe(me.target as Element | null),
+          point: [Math.round(me.clientX), Math.round(me.clientY)],
+          hit: describe(document.elementFromPoint(me.clientX, me.clientY)),
+          btnRect: rect ? [Math.round(rect.x), Math.round(rect.y), Math.round(rect.width), Math.round(rect.height)] : null,
+          active: describe(document.activeElement),
+        });
+      }, true);
+    }
+    const btn0 = document.querySelector('#sv-confirm-btn');
+    if (btn0) {
+      log.push({ t: 'before', count: document.querySelectorAll('#sv-confirm-btn').length, disabled: (btn0 as HTMLButtonElement).disabled, label: btn0.getAttribute('aria-label') });
+      new MutationObserver((records) => {
+        for (const r of records) log.push({ t: 'mutation', attr: r.attributeName, now: (r.target as Element).getAttribute(r.attributeName ?? '') });
+      }).observe(btn0, { attributes: true });
+      // следим за смещением кнопки все 1.5 с после клика
+      const ticks: string[] = [];
+      const tick = () => {
+        const b = document.querySelector('#sv-confirm-btn');
+        const rr = b?.getBoundingClientRect();
+        ticks.push(rr ? `${Math.round(rr.x)},${Math.round(rr.y)}` : 'нет');
+      };
+      tick();
+      const timer = setInterval(tick, 100);
+      setTimeout(() => { clearInterval(timer); log.push({ t: 'rects', ticks }); }, 1500);
+    }
+  });
   await page.locator('#sv-confirm-btn').click();
-  await page.waitForTimeout(1500); // ВРЕМЕННО: диагностика
+  const tClick = Date.now();
+  await page.waitForTimeout(1500);
   const diag = await page.evaluate(() => ({
     label: document.querySelector('#sv-confirm-btn')?.getAttribute('aria-label') ?? null,
     btnDisabled: (document.querySelector('#sv-confirm-btn') as HTMLButtonElement | null)?.disabled ?? null,
@@ -217,8 +260,11 @@ test('страница сингла: чужая неподтверждённая
     num: (document.querySelector('#sv-num') as HTMLInputElement | null)?.value ?? null,
     sliderDisabled: (document.querySelector('#sv-slider') as HTMLInputElement | null)?.disabled ?? null,
     toast: document.querySelector('.toast')?.textContent ?? null,
+    active: document.activeElement ? `${document.activeElement.tagName.toLowerCase()}#${document.activeElement.id}` : null,
+    log: (window as unknown as { __diag?: unknown[] }).__diag ?? [],
   }));
   console.log('::warning title=diag-single::' + JSON.stringify({
+    timing: { avgAfterFill: tAfterAvg - tFill, clickAfterAvg: tClick - tAfterAvg },
     diag,
     rows: cloud.state.singleRatings,
     writes: cloud.state.writes.filter((w) => w.path.includes('single_ratings')),
@@ -263,7 +309,7 @@ test('рейтинг синглов: только релизы, подтверж
   await expect(page.locator('#sv-confirm-state')).toContainText('подтверждён');
   await page.locator('#single-back').click();
   await page.locator('#artists-btn').click();
-  await expect(page.locator('#single-rank-list .rank').first().locator('.rank__score')).toHaveText('7.5');
+  await expect(page.locator('#single-rank-list .rank').first().locator('.rank__score')).toHaveText('7');   // (8 + 6) / 2
   await expect(page.locator('#single-rank-list .rank').first()).toContainText('Первый сингл');
 });
 

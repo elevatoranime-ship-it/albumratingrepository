@@ -255,12 +255,14 @@ test('home, artist profile and rankings update while they are open', async ({ pa
   await page.locator('#albums .album__artist-link').first().click();
   await expect(page.locator('#view-artist')).toHaveClass(/is-visible/);
   cloud.peer(10);
-  await expect(page.locator('#artist-score')).toHaveText('7');
+  // В рейтингах (в том числе у артиста) учитываются только подтверждённые оценки:
+  // моя оценка 4 не подтверждена, поэтому балл артиста — это оценка второго участника.
+  await expect(page.locator('#artist-score')).toHaveText('10');
   await page.locator('#artist-back').click();
   await page.locator('#artists-btn').click();
   await expect(page.locator('#view-rank')).toHaveClass(/is-visible/);
   cloud.peer(6);
-  await expect(page.locator('#artist-rank-list .rank__score')).toHaveText('5');
+  await expect(page.locator('#artist-rank-list .rank__score')).toHaveText('6');
 });
 
 test('transient read errors do not clear data; coming online refreshes immediately', async ({ page }) => {

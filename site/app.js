@@ -20026,6 +20026,9 @@ ${suffix}`;
     { id: "s-mojo-jojo", title: "MOJO JOJO", artist: "Playboi Carti", year: 2025, cover: "", kind: "single", parentId: "music", tracksLocked: false, cohesion: null, albumType: null },
     { id: "s-not-like-us", title: "Not Like Us", artist: "Kendrick Lamar", year: 2024, cover: "covers/not-like-us.jpg", kind: "single", parentId: null, tracksLocked: false, cohesion: null, albumType: null }
   ];
+  var SEED_TRACKS = [
+    { id: "nike-track", albumId: "blonde", title: "Nikes", position: 0, locked: false, featArtist: null, singleId: "s-nikes" }
+  ];
   var SEED_SINGLE_RATINGS = {
     "s-nikes": {
       "killmiplag@demo.local": { score: 9.4, confirmed: true },
@@ -20113,7 +20116,7 @@ ${suffix}`;
       }
     } catch {
     }
-    return [];
+    return SEED_TRACKS.map((t) => ({ ...t }));
   }
   function parseRatingRows(parsed) {
     const out = {};
@@ -20253,6 +20256,7 @@ ${suffix}`;
         (incomingSingles[_b = r.album_id] ?? (incomingSingles[_b] = {}))[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
       }
       singleRatings = singlesReady ? mergePending(incomingSingles, pendingSingleRatings, revision) : {};
+      shareRatingsWithSingles();
     } else {
       profileCache.clear();
       const meta = loadLocalMeta();
@@ -20272,6 +20276,9 @@ ${suffix}`;
       tracks = loadLocalTracks();
       trackRatings = mergePending(loadLocalRatings(), pendingRatings, revision);
       singleRatings = mergePending(loadLocalSingleRatings(), pendingSingleRatings, revision);
+      shareRatingsWithSingles();
+      saveLocalRatings();
+      saveLocalSingleRatings();
       singlesReady = true;
     }
   }
@@ -20335,8 +20342,6 @@ ${suffix}`;
     pendingSingleRatings.clear();
     ratingWrites.clear();
     singleWrites.clear();
-    confirmingRatings.clear();
-    confirmingSingles.clear();
     ratingPointerTrackId = null;
     singlePointerActive = false;
     if (realtimeChannel) {
@@ -21648,7 +21653,6 @@ ${suffix}`;
   var ratingPointerTrackId = null;
   var saveTimers = /* @__PURE__ */ new Map();
   var ratingWrites = /* @__PURE__ */ new Map();
-  var confirmingRatings = /* @__PURE__ */ new Set();
   function setTrackSave(trackId, s) {
     const li = trackList.querySelector(`[data-id="${trackId}"]`);
     const el = li?.querySelector(".track__save");
@@ -21689,13 +21693,17 @@ ${suffix}`;
     pendingRatings.set(trackId, pending);
     return pending;
   }
-  function scheduleTrackSave(trackId) {
-    stageRatingSave(trackId);
+  function armTrackSave(trackId) {
     window.clearTimeout(saveTimers.get(trackId));
     saveTimers.set(trackId, window.setTimeout(() => {
       saveTimers.delete(trackId);
       void persistTrackRating(trackId).catch((err) => toast(messageOf(err)));
     }, 500));
+  }
+  function scheduleTrackSave(trackId) {
+    stageRatingSave(trackId);
+    mirrorTrackToSingle(trackId);
+    armTrackSave(trackId);
   }
   function persistTrackRating(trackId) {
     if (!currentUser) return Promise.resolve();
@@ -21740,7 +21748,7 @@ ${suffix}`;
     return task;
   }
   async function toggleRatingConfirm(trackId) {
-    if (!currentUser || confirmingRatings.has(trackId)) return;
+    if (!currentUser) return;
     const entry = trackRatings[trackId]?.[currentUser.id];
     if (!entry) return;
     const epoch = syncEpoch;
@@ -21748,13 +21756,13 @@ ${suffix}`;
     const next = !previous;
     entry.confirmed = next;
     const pending = stageRatingSave(trackId);
-    confirmingRatings.add(trackId);
+    mirrorTrackToSingle(trackId, true);
     if (!CLOUD) saveLocalRatings();
     syncTrackRatingControls();
     renderConfirmState();
+    if (epoch === syncEpoch) toast(next ? "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430" : "\u041E\u0446\u0435\u043D\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u043C\u0435\u043D\u044F\u0442\u044C");
     try {
       await persistTrackRating(trackId);
-      if (epoch === syncEpoch) toast(next ? "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430" : "\u041E\u0446\u0435\u043D\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u043C\u0435\u043D\u044F\u0442\u044C");
     } catch (err) {
       if (epoch !== syncEpoch) return;
       if (pendingRatings.get(trackId) === pending) {
@@ -21765,13 +21773,9 @@ ${suffix}`;
         }
         if (!CLOUD) saveLocalRatings();
       }
+      mirrorTrackToSingle(trackId, true);
       renderConfirmState();
       toast(messageOf(err));
-    } finally {
-      if (epoch === syncEpoch) {
-        confirmingRatings.delete(trackId);
-        syncTrackRatingControls();
-      }
     }
   }
   function setConfirmIcon(btn, confirmed) {
@@ -21839,7 +21843,7 @@ ${suffix}`;
       }
       applyRatingLockState(li, mine?.confirmed === true);
       const confirm = li.querySelector(".track__confirm-btn");
-      if (confirm) confirm.disabled = !mine || confirmingRatings.has(id);
+      if (confirm) confirm.disabled = !mine;
       const html = peerRatingHTML(id);
       if (li.dataset.peerHtml !== html) {
         li.querySelector(".track__peer")?.remove();
@@ -21924,8 +21928,7 @@ ${suffix}`;
       const num = li.querySelector(".track__numinput");
       if (num) num.value = fmt(v);
       setTrackRating(li.dataset.id, v);
-      const cbtn = li.querySelector(".track__confirm-btn");
-      if (cbtn) cbtn.disabled = confirmingRatings.has(li.dataset.id);
+      syncTrackRatingControls();
     } else if (target.classList.contains("track__numinput")) {
       const li = target.closest(".track");
       if (!li || !li.dataset.id) return;
@@ -21934,8 +21937,8 @@ ${suffix}`;
         const slider2 = li.querySelector(".track__slider");
         if (slider2) slider2.value = "5";
         clearTrackRating(li.dataset.id);
-        const cbtn2 = li.querySelector(".track__confirm-btn");
-        if (cbtn2) cbtn2.disabled = true;
+        const cbtn = li.querySelector(".track__confirm-btn");
+        if (cbtn) cbtn.disabled = true;
         return;
       }
       let v = parseFloat(raw);
@@ -21944,8 +21947,7 @@ ${suffix}`;
       const slider = li.querySelector(".track__slider");
       if (slider) slider.value = String(v);
       setTrackRating(li.dataset.id, v);
-      const cbtn = li.querySelector(".track__confirm-btn");
-      if (cbtn) cbtn.disabled = confirmingRatings.has(li.dataset.id);
+      syncTrackRatingControls();
     }
   });
   trackList.addEventListener("pointerdown", (e) => {
@@ -23006,7 +23008,6 @@ ${suffix}`;
   var singlePointerActive = false;
   var singleSaveTimers = /* @__PURE__ */ new Map();
   var singleWrites = /* @__PURE__ */ new Map();
-  var confirmingSingles = /* @__PURE__ */ new Set();
   function setSingleSave(state) {
     const map = { save: "\u0441\u043E\u0445\u0440\u0430\u043D\u044F\u044E\u2026", done: "\u0441\u043E\u0445\u0440\u0430\u043D\u0435\u043D\u043E", err: "\u043E\u0448\u0438\u0431\u043A\u0430", "": "" };
     svSave.textContent = map[state];
@@ -23053,7 +23054,7 @@ ${suffix}`;
     const confirmed = mine?.confirmed === true;
     svSlider.disabled = confirmed;
     svNum.disabled = confirmed;
-    svConfirmBtn.disabled = !mine || confirmingSingles.has(s.id);
+    svConfirmBtn.disabled = !mine;
     setConfirmIcon(svConfirmBtn, confirmed);
     const label = confirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443";
     svConfirmBtn.title = label;
@@ -23097,13 +23098,83 @@ ${suffix}`;
     pendingSingleRatings.set(singleId, pending);
     return pending;
   }
-  function scheduleSingleSave(singleId) {
-    stageSingleSave(singleId);
+  function armSingleSave(singleId) {
     window.clearTimeout(singleSaveTimers.get(singleId));
     singleSaveTimers.set(singleId, window.setTimeout(() => {
       singleSaveTimers.delete(singleId);
       void persistSingleRating(singleId).catch((err) => toast(messageOf(err)));
     }, 500));
+  }
+  function scheduleSingleSave(singleId) {
+    stageSingleSave(singleId);
+    mirrorSingleToTracks(singleId);
+    armSingleSave(singleId);
+  }
+  function singleIdOfTrack(trackId) {
+    return tracks.find((t) => t.id === trackId)?.singleId ?? null;
+  }
+  function tracksOfSingle(singleId) {
+    return tracks.filter((t) => t.singleId === singleId);
+  }
+  function setSharedRating(store, id, profileId, value) {
+    const map = store[id] ?? (store[id] = {});
+    if (value) map[profileId] = { score: value.score, confirmed: value.confirmed };
+    else {
+      delete map[profileId];
+      if (!Object.keys(map).length) delete store[id];
+    }
+  }
+  function shareRatingsWithSingles() {
+    var _a;
+    const myId = currentUser?.id;
+    for (const t of tracks) {
+      const singleId = t.singleId;
+      if (!singleId) continue;
+      const singleMap = singleRatings[singleId] ?? {};
+      const trackMap = trackRatings[t.id] ?? {};
+      for (const profileId of /* @__PURE__ */ new Set([...Object.keys(singleMap), ...Object.keys(trackMap)])) {
+        const shared = singleMap[profileId] ?? trackMap[profileId];
+        if (!shared) continue;
+        (singleRatings[singleId] ?? (singleRatings[singleId] = {}))[profileId] = { ...shared };
+        (trackRatings[_a = t.id] ?? (trackRatings[_a] = {}))[profileId] = { ...shared };
+      }
+      if (!myId) continue;
+      for (const pending of [pendingRatings.get(t.id), pendingSingleRatings.get(singleId)]) {
+        if (!pending || pending.savedAfterRead !== void 0) continue;
+        setSharedRating(singleRatings, singleId, myId, pending.value ?? void 0);
+        setSharedRating(trackRatings, t.id, myId, pending.value ?? void 0);
+      }
+    }
+  }
+  function mirrorTrackToSingle(trackId, immediate = false) {
+    const singleId = singleIdOfTrack(trackId);
+    if (singleId === null || !currentUser) return;
+    setSharedRating(singleRatings, singleId, currentUser.id, trackRatings[trackId]?.[currentUser.id]);
+    if (CLOUD) {
+      stageSingleSave(singleId);
+      if (immediate) void persistSingleRating(singleId).catch((err) => toast(messageOf(err)));
+      else armSingleSave(singleId);
+    } else saveLocalSingleRatings();
+    if (currentSingleId === singleId) updateSingleDisplays();
+  }
+  function mirrorSingleToTracks(singleId, immediate = false) {
+    if (!currentUser) return;
+    const linked = tracksOfSingle(singleId);
+    if (!linked.length) return;
+    const mine = singleRatings[singleId]?.[currentUser.id];
+    for (const t of linked) {
+      setSharedRating(trackRatings, t.id, currentUser.id, mine);
+      if (CLOUD) {
+        stageRatingSave(t.id);
+        if (immediate) void persistTrackRating(t.id).catch((err) => toast(messageOf(err)));
+        else armTrackSave(t.id);
+      }
+    }
+    if (!CLOUD) saveLocalRatings();
+    if (currentAlbumId) {
+      syncTrackRatingControls();
+      updateRatingDisplays();
+    }
   }
   function persistSingleRating(singleId) {
     if (!currentUser) return Promise.resolve();
@@ -23149,7 +23220,7 @@ ${suffix}`;
   }
   async function toggleSingleConfirm() {
     const s = currentSingle();
-    if (!s || !currentUser || confirmingSingles.has(s.id)) return;
+    if (!s || !currentUser) return;
     const entry = singleRatings[s.id]?.[currentUser.id];
     if (!entry) return;
     const epoch = syncEpoch;
@@ -23157,20 +23228,20 @@ ${suffix}`;
     const next = !previous;
     entry.confirmed = next;
     const pending = stageSingleSave(s.id);
-    confirmingSingles.add(s.id);
+    mirrorSingleToTracks(s.id, true);
     if (!CLOUD) saveLocalSingleRatings();
     updateSingleDisplays();
+    if (epoch === syncEpoch) {
+      if (!next) toast("\u041E\u0446\u0435\u043D\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u043C\u0435\u043D\u044F\u0442\u044C \u2014 \u0441\u0438\u043D\u0433\u043B \u043F\u043E\u043A\u0430 \u043D\u0435 \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435");
+      else if (singleAllConfirmed(s.id)) toast("\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u2014 \u0441\u0438\u043D\u0433\u043B \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435");
+      else {
+        const myId = currentUser.id;
+        const peers = Object.keys(singleRatings[s.id] ?? {}).filter((pid) => pid !== myId);
+        toast(peers.length === 0 ? "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u2014 \u0436\u0434\u0451\u043C \u043E\u0446\u0435\u043D\u043A\u0443 \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430" : "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u2014 \u0436\u0434\u0451\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430");
+      }
+    }
     try {
       await persistSingleRating(s.id);
-      if (epoch === syncEpoch) {
-        if (!next) toast("\u041E\u0446\u0435\u043D\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u043C\u0435\u043D\u044F\u0442\u044C \u2014 \u0441\u0438\u043D\u0433\u043B \u043F\u043E\u043A\u0430 \u043D\u0435 \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435");
-        else if (singleAllConfirmed(s.id)) toast("\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u2014 \u0441\u0438\u043D\u0433\u043B \u0432 \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0435");
-        else {
-          const myId = currentUser.id;
-          const peers = Object.keys(singleRatings[s.id] ?? {}).filter((pid) => pid !== myId);
-          toast(peers.length === 0 ? "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u2014 \u0436\u0434\u0451\u043C \u043E\u0446\u0435\u043D\u043A\u0443 \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430" : "\u041E\u0446\u0435\u043D\u043A\u0430 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0430 \u2014 \u0436\u0434\u0451\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u0442\u043E\u0440\u043E\u0433\u043E \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0430");
-        }
-      }
     } catch (err) {
       if (epoch !== syncEpoch) return;
       if (pendingSingleRatings.get(s.id) === pending) {
@@ -23181,13 +23252,9 @@ ${suffix}`;
         }
         if (!CLOUD) saveLocalSingleRatings();
       }
+      mirrorSingleToTracks(s.id, true);
       updateSingleDisplays();
       toast(messageOf(err));
-    } finally {
-      if (epoch === syncEpoch) {
-        confirmingSingles.delete(s.id);
-        updateSingleDisplays();
-      }
     }
   }
   svSlider.addEventListener("input", () => {
@@ -23514,6 +23581,7 @@ ${suffix}`;
           tracks = tracks.map((x) => x.id === t.id ? { ...x, singleId } : x);
           saveLocalAlbums();
           saveLocalTracks();
+          shareRatingsWithSingles();
         }
         toast("\u0422\u0440\u0435\u043A \u043E\u0442\u043C\u0435\u0447\u0435\u043D \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B");
         renderTracks();

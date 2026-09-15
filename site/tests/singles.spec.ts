@@ -86,6 +86,12 @@ function backend() {
 
       if (request.method() === 'POST') {
         state.writes.push({ method: 'POST', path: url.pathname + url.search, body });
+        if (table === 'ratings') {
+          const row = body as { track_id: string; profile_id: string; score: number; confirmed: boolean };
+          state.ratings = state.ratings.filter((r) => !(r.track_id === row.track_id && r.profile_id === row.profile_id));
+          state.ratings.push(row);
+          return json(null, 201);
+        }
         if (table === 'single_ratings') {
           const row = body as SingleRow;
           state.singleRatings = state.singleRatings.filter((r) => !(r.album_id === row.album_id && r.profile_id === row.profile_id));
@@ -127,6 +133,10 @@ function backend() {
 
       if (request.method() === 'DELETE') {
         state.writes.push({ method: 'DELETE', path: url.pathname + url.search, body: null });
+        if (table === 'ratings') {
+          state.ratings = state.ratings.filter((r) => !(r.track_id === one(url.searchParams.get('track_id')) && r.profile_id === one(url.searchParams.get('profile_id'))));
+          return json(null, 204);
+        }
         if (table === 'single_ratings') {
           const albumId = one(url.searchParams.get('album_id'));
           const profileId = one(url.searchParams.get('profile_id'));
@@ -231,6 +241,67 @@ test('страница сингла: чужая неподтверждённая
   const upserts = cloud.state.writes.filter((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/single_ratings'));
   expect(upserts.length).toBeGreaterThan(0);
   expect(upserts[upserts.length - 1].body).toMatchObject({ album_id: SINGLE.id, profile_id: ME.id, score: 9, confirmed: true });
+});
+
+test('трек-сингл и релиз делят оценку: подтверждение на альбоме видно на сингле', async ({ page }) => {
+  const cloud = backend();
+  await cloud.install(page);
+  await login(page);
+  await cardByTitle(page, 'Общий альбом').click();
+  await expect(page.locator('#view-album')).toHaveClass(/is-visible/);
+
+  // оценка, поставленная синглу, уже видна на его треке в альбоме и зафиксирована
+  const row = page.locator('#track-list .track[data-id="track-one"]');
+  await expect(row.locator('.track__numinput')).toHaveValue('8');
+  await expect(row.locator('.track__numinput')).toBeDisabled();
+
+  // меняем балл и подтверждаем прямо на альбоме
+  await row.locator('.track__confirm-btn').click();
+  await expect(row.locator('.track__numinput')).toBeEnabled();
+  await row.locator('.track__numinput').fill('9.5');
+  await row.locator('.track__confirm-btn').click();
+  await expect(row.locator('.track__numinput')).toBeDisabled();
+
+  // то же самое уехало в оценки сингла
+  await expect.poll(() => cloud.state.singleRatings.find((r) => r.profile_id === ME.id))
+    .toMatchObject({ album_id: SINGLE.id, score: 9.5, confirmed: true });
+
+  // и на странице сингла — тот же балл с подтверждением
+  await row.locator('.track__single').click();
+  await expect(page.locator('#view-single')).toHaveClass(/is-visible/);
+  await expect(page.locator('#sv-mine')).toHaveText('9.5');
+  await expect(page.locator('#sv-confirm-state')).toContainText('подтверждён');
+  await expect(page.locator('#sv-slider')).toBeDisabled();
+});
+
+test('оценка сингла уезжает на его трек в альбоме и фиксирует его', async ({ page }) => {
+  const cloud = backend();
+  cloud.state.ratings.length = 0;   // оценка стоит только у сингла
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await cardByTitle(page, 'Первый сингл').locator('.album__title').click();
+  await expect(page.locator('#view-single')).toHaveClass(/is-visible/);
+
+  await page.locator('#sv-confirm-btn').click();      // снять подтверждение
+  await expect(page.locator('#sv-slider')).toBeEnabled();
+  await page.locator('#sv-num').fill('9');
+  await page.locator('#sv-confirm-btn').click();      // подтвердить заново
+  await expect(page.locator('#sv-confirm-state')).toContainText('подтверждён');
+
+  // балл и подтверждение записались и в оценки трека альбома
+  await expect.poll(() => cloud.state.ratings.find((r) => r.profile_id === ME.id))
+    .toMatchObject({ track_id: TRACK.id, score: 9, confirmed: true });
+
+  // на альбоме трек показывает тот же балл, зафиксирован, и балл учтён в среднем альбома
+  await page.locator('#single-back').click();
+  await page.locator('#seg-albums').click();
+  await cardByTitle(page, 'Общий альбом').click();
+  const row = page.locator('#track-list .track[data-id="track-one"]');
+  await expect(row.locator('.track__numinput')).toHaveValue('9');
+  await expect(row.locator('.track__numinput')).toBeDisabled();
+  // среднее альбома считает все оценки (9 — моя подтверждённая, 6 — второго участника у сингла): (9 + 6) / 2
+  await cardByTitle(page, 'Общий альбом').locator('.album__avg-num').toHaveText('7.5');
 });
 
 test('рейтинг синглов: только релизы, подтверждённые всеми участниками', async ({ page }) => {

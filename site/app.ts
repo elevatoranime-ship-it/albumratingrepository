@@ -75,6 +75,12 @@ const SEED_SINGLES: UiAlbum[] = [
   { id: 's-not-like-us', title: 'Not Like Us', artist: 'Kendrick Lamar', year: 2024, cover: 'covers/not-like-us.jpg', kind: 'single', parentId: null, tracksLocked: false, cohesion: null, albumType: null },
 ];
 
+/* демо-треки: чтобы в демо-режиме было видно связку «трек с меткой сингла ↔ сам сингл»,
+   трек «Nikes» сразу привязан к синглу s-nikes (одинаковая оценка на альбоме и на сингле) */
+const SEED_TRACKS: UiTrack[] = [
+  { id: 'nike-track', albumId: 'blonde', title: 'Nikes', position: 0, locked: false, featArtist: null, singleId: 's-nikes' },
+];
+
 /* демо-оценки синглов: подтверждённые участвуют в рейтинге, неподтверждённые — нет */
 const SEED_SINGLE_RATINGS: RatingMap = {
   's-nikes': {
@@ -178,7 +184,7 @@ function loadLocalTracks(): UiTrack[] {
       }
     }
   } catch { /* ignore */ }
-  return [];
+  return SEED_TRACKS.map((t) => ({ ...t }));
 }
 
 function parseRatingRows(parsed: Record<string, Record<string, number | TrackRating>>): RatingMap {
@@ -315,6 +321,7 @@ async function refreshData(signal?: AbortSignal): Promise<void> {
       (incomingSingles[r.album_id] ??= {})[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
     }
     singleRatings = singlesReady ? mergePending(incomingSingles, pendingSingleRatings, revision) : {};
+    shareRatingsWithSingles();
   } else {
     profileCache.clear();
     const meta = loadLocalMeta();
@@ -334,6 +341,9 @@ async function refreshData(signal?: AbortSignal): Promise<void> {
     tracks = loadLocalTracks();
     trackRatings = mergePending(loadLocalRatings(), pendingRatings, revision);
     singleRatings = mergePending(loadLocalSingleRatings(), pendingSingleRatings, revision);
+    shareRatingsWithSingles();
+    saveLocalRatings();
+    saveLocalSingleRatings();
     singlesReady = true;
   }
 }
@@ -409,8 +419,6 @@ function stopRealtime(): void {
   pendingSingleRatings.clear();
   ratingWrites.clear();
   singleWrites.clear();
-  confirmingRatings.clear();
-  confirmingSingles.clear();
   ratingPointerTrackId = null;
   singlePointerActive = false;
   if (realtimeChannel) {
@@ -1918,7 +1926,6 @@ confirmModal.addEventListener('click', (e) => {
 let ratingPointerTrackId: string | null = null;
 const saveTimers = new Map<string, number>();
 const ratingWrites = new Map<string, Promise<void>>();
-const confirmingRatings = new Set<string>();
 
 function setTrackSave(trackId: string, s: 'save' | 'done' | 'err' | ''): void {
   const li = trackList.querySelector<HTMLLIElement>(`[data-id="${trackId}"]`);
@@ -1964,13 +1971,19 @@ function stageRatingSave(trackId: string): PendingRating {
   return pending;
 }
 
-function scheduleTrackSave(trackId: string): void {
-  stageRatingSave(trackId);
+/** Запускает отложенную запись трека, не трогая «соседнее» хранилище сингла. */
+function armTrackSave(trackId: string): void {
   window.clearTimeout(saveTimers.get(trackId));
   saveTimers.set(trackId, window.setTimeout(() => {
     saveTimers.delete(trackId);
     void persistTrackRating(trackId).catch((err) => toast(messageOf(err)));
   }, 500));
+}
+
+function scheduleTrackSave(trackId: string): void {
+  stageRatingSave(trackId);
+  mirrorTrackToSingle(trackId);
+  armTrackSave(trackId);
 }
 
 function persistTrackRating(trackId: string): Promise<void> {
@@ -2021,7 +2034,7 @@ function persistTrackRating(trackId: string): Promise<void> {
 
 /* Подтверждение использует ту же очередь, что и изменение балла. */
 async function toggleRatingConfirm(trackId: string): Promise<void> {
-  if (!currentUser || confirmingRatings.has(trackId)) return;
+  if (!currentUser) return;
   const entry = trackRatings[trackId]?.[currentUser.id];
   if (!entry) return;
   const epoch = syncEpoch;
@@ -2029,13 +2042,16 @@ async function toggleRatingConfirm(trackId: string): Promise<void> {
   const next = !previous;
   entry.confirmed = next;
   const pending = stageRatingSave(trackId);
-  confirmingRatings.add(trackId);
+  mirrorTrackToSingle(trackId, true);
   if (!CLOUD) saveLocalRatings();
   syncTrackRatingControls();
   renderConfirmState();
+  // Новое состояние кнопки видно сразу, и она остаётся нажимаемой, пока идёт запись:
+  // иначе быстрый повторный клик по ✓ (например, сразу после правки балла) попадал бы
+  // в заблокированную кнопку и терялся.
+  if (epoch === syncEpoch) toast(next ? 'Оценка подтверждена' : 'Оценку можно менять');
   try {
     await persistTrackRating(trackId);
-    if (epoch === syncEpoch) toast(next ? 'Оценка подтверждена' : 'Оценку можно менять');
   } catch (err) {
     if (epoch !== syncEpoch) return;
     if (pendingRatings.get(trackId) === pending) {
@@ -2046,13 +2062,9 @@ async function toggleRatingConfirm(trackId: string): Promise<void> {
       }
       if (!CLOUD) saveLocalRatings();
     }
+    mirrorTrackToSingle(trackId, true); // откат тоже должен уехать в сингл
     renderConfirmState();
     toast(messageOf(err));
-  } finally {
-    if (epoch === syncEpoch) {
-      confirmingRatings.delete(trackId);
-      syncTrackRatingControls();
-    }
   }
 }
 
@@ -2135,7 +2147,7 @@ function syncTrackRatingControls(): void {
     }
     applyRatingLockState(li, mine?.confirmed === true);
     const confirm = li.querySelector<HTMLButtonElement>('.track__confirm-btn');
-    if (confirm) confirm.disabled = !mine || confirmingRatings.has(id);
+    if (confirm) confirm.disabled = !mine;
     const html = peerRatingHTML(id);
     if (li.dataset.peerHtml !== html) {
       li.querySelector('.track__peer')?.remove();
@@ -2233,8 +2245,7 @@ trackList.addEventListener('input', (e) => {
     const num = li.querySelector<HTMLInputElement>('.track__numinput');
     if (num) num.value = fmt(v);
     setTrackRating(li.dataset.id, v);
-    const cbtn = li.querySelector<HTMLButtonElement>('.track__confirm-btn');
-    if (cbtn) cbtn.disabled = confirmingRatings.has(li.dataset.id);
+    syncTrackRatingControls();   // балл появился — ✓ снова доступна
   } else if (target.classList.contains('track__numinput')) {
     const li = target.closest<HTMLLIElement>('.track');
     if (!li || !li.dataset.id) return;
@@ -2253,8 +2264,7 @@ trackList.addEventListener('input', (e) => {
     const slider = li.querySelector<HTMLInputElement>('.track__slider');
     if (slider) slider.value = String(v);
     setTrackRating(li.dataset.id, v);
-    const cbtn = li.querySelector<HTMLButtonElement>('.track__confirm-btn');
-    if (cbtn) cbtn.disabled = confirmingRatings.has(li.dataset.id);
+    syncTrackRatingControls();   // балл появился — ✓ снова доступна
   }
 });
 
@@ -3385,7 +3395,6 @@ function renderSingleImpact(): void {
 let singlePointerActive = false;
 const singleSaveTimers = new Map<string, number>();
 const singleWrites = new Map<string, Promise<void>>();
-const confirmingSingles = new Set<string>();
 
 function setSingleSave(state: 'save' | 'done' | 'err' | ''): void {
   const map: Record<string, string> = { save: 'сохраняю…', done: 'сохранено', err: 'ошибка', '': '' };
@@ -3433,7 +3442,7 @@ function syncSingleControls(): void {
   const confirmed = mine?.confirmed === true;
   svSlider.disabled = confirmed;
   svNum.disabled = confirmed;
-  svConfirmBtn.disabled = !mine || confirmingSingles.has(s.id);
+  svConfirmBtn.disabled = !mine;
   setConfirmIcon(svConfirmBtn, confirmed);
   const label = confirmed ? 'Изменить оценку' : 'Подтвердить оценку';
   svConfirmBtn.title = label;
@@ -3483,13 +3492,104 @@ function stageSingleSave(singleId: string): PendingRating {
   return pending;
 }
 
-function scheduleSingleSave(singleId: string): void {
-  stageSingleSave(singleId);
+/** Запускает отложенную запись сингла, не трогая «соседнее» хранилище трека. */
+function armSingleSave(singleId: string): void {
   window.clearTimeout(singleSaveTimers.get(singleId));
   singleSaveTimers.set(singleId, window.setTimeout(() => {
     singleSaveTimers.delete(singleId);
     void persistSingleRating(singleId).catch((err) => toast(messageOf(err)));
   }, 500));
+}
+
+function scheduleSingleSave(singleId: string): void {
+  stageSingleSave(singleId);
+  mirrorSingleToTracks(singleId);
+  armSingleSave(singleId);
+}
+
+/* --- Трек-сингл и релиз-сингл делят одну оценку ---
+   На альбоме трек с меткой «сингл» выглядит как трек, а на странице сингла — как релиз
+   целиком. Чтобы это была одна и та же оценка, стороны пишут и читают согласованно:
+   при чтении данные сводятся вместе (оценка сингла главнее), а правка балла или
+   подтверждения с любой стороны уезжает в обе таблицы — ratings и single_ratings. */
+
+/** Идентификатор сингла, к которому привязан трек (null — обычный трек). */
+function singleIdOfTrack(trackId: string): string | null {
+  return tracks.find((t) => t.id === trackId)?.singleId ?? null;
+}
+
+/** Треки, отмеченные как этот сингл. */
+function tracksOfSingle(singleId: string): UiTrack[] {
+  return tracks.filter((t) => t.singleId === singleId);
+}
+
+/** Кладёт общую оценку в хранилище: есть значение — ставим, нет — убираем строку профиля. */
+function setSharedRating(store: RatingMap, id: string, profileId: string, value: TrackRating | undefined): void {
+  const map = (store[id] ??= {});
+  if (value) map[profileId] = { score: value.score, confirmed: value.confirmed };
+  else {
+    delete map[profileId];
+    if (!Object.keys(map).length) delete store[id];
+  }
+}
+
+/** Свод оценок трека-сингла и релиза-сингла. Оценка сингла главнее оценки трека
+    (если синглу балл уже поставлен, он фиксируется и на альбоме), а незаписанные
+    правки главнее прочитанного из базы. */
+function shareRatingsWithSingles(): void {
+  const myId = currentUser?.id;
+  for (const t of tracks) {
+    const singleId = t.singleId;
+    if (!singleId) continue;
+    const singleMap = singleRatings[singleId] ?? {};
+    const trackMap = trackRatings[t.id] ?? {};
+    for (const profileId of new Set([...Object.keys(singleMap), ...Object.keys(trackMap)])) {
+      const shared = singleMap[profileId] ?? trackMap[profileId];
+      if (!shared) continue;
+      (singleRatings[singleId] ??= {})[profileId] = { ...shared };
+      (trackRatings[t.id] ??= {})[profileId] = { ...shared };
+    }
+    if (!myId) continue;
+    for (const pending of [pendingRatings.get(t.id), pendingSingleRatings.get(singleId)]) {
+      if (!pending || pending.savedAfterRead !== undefined) continue;
+      setSharedRating(singleRatings, singleId, myId, pending.value ?? undefined);
+      setSharedRating(trackRatings, t.id, myId, pending.value ?? undefined);
+    }
+  }
+}
+
+/** Балл трека уезжает в его сингл: экран сингла и рейтинг синглов показывают то же самое. */
+function mirrorTrackToSingle(trackId: string, immediate = false): void {
+  const singleId = singleIdOfTrack(trackId);
+  if (singleId === null || !currentUser) return;
+  setSharedRating(singleRatings, singleId, currentUser.id, trackRatings[trackId]?.[currentUser.id]);
+  if (CLOUD) {
+    stageSingleSave(singleId);
+    if (immediate) void persistSingleRating(singleId).catch((err) => toast(messageOf(err)));
+    else armSingleSave(singleId);
+  } else saveLocalSingleRatings();
+  if (currentSingleId === singleId) updateSingleDisplays();
+}
+
+/** Обратная сторона: балл сингла ложится на его трек в альбоме. */
+function mirrorSingleToTracks(singleId: string, immediate = false): void {
+  if (!currentUser) return;
+  const linked = tracksOfSingle(singleId);
+  if (!linked.length) return;
+  const mine = singleRatings[singleId]?.[currentUser.id];
+  for (const t of linked) {
+    setSharedRating(trackRatings, t.id, currentUser.id, mine);
+    if (CLOUD) {
+      stageRatingSave(t.id);
+      if (immediate) void persistTrackRating(t.id).catch((err) => toast(messageOf(err)));
+      else armTrackSave(t.id);
+    }
+  }
+  if (!CLOUD) saveLocalRatings();
+  if (currentAlbumId) {
+    syncTrackRatingControls();
+    updateRatingDisplays();
+  }
 }
 
 function persistSingleRating(singleId: string): Promise<void> {
@@ -3541,7 +3641,7 @@ function persistSingleRating(singleId: string): Promise<void> {
 /* Подтверждение идёт через ту же очередь записи, что и изменение балла. */
 async function toggleSingleConfirm(): Promise<void> {
   const s = currentSingle();
-  if (!s || !currentUser || confirmingSingles.has(s.id)) return;
+  if (!s || !currentUser) return;
   const entry = singleRatings[s.id]?.[currentUser.id];
   if (!entry) return;
   const epoch = syncEpoch;
@@ -3549,23 +3649,25 @@ async function toggleSingleConfirm(): Promise<void> {
   const next = !previous;
   entry.confirmed = next;
   const pending = stageSingleSave(s.id);
-  confirmingSingles.add(s.id);
+  mirrorSingleToTracks(s.id, true);
   if (!CLOUD) saveLocalSingleRatings();
   updateSingleDisplays();
+  // Как и у трека: кнопка сразу показывает новое состояние и не блокируется на время
+  // записи, иначе клик по ✓ после правки балла терялся бы.
+  if (epoch === syncEpoch) {
+    if (!next) toast('Оценку можно менять — сингл пока не в рейтинге');
+    else if (singleAllConfirmed(s.id)) toast('Оценка подтверждена — сингл в рейтинге');
+    else {
+      // Второй участник ещё не оценил (или не подтвердил) — релиз пока вне рейтинга.
+      const myId = currentUser.id;
+      const peers = Object.keys(singleRatings[s.id] ?? {}).filter((pid) => pid !== myId);
+      toast(peers.length === 0
+        ? 'Оценка подтверждена — ждём оценку второго участника'
+        : 'Оценка подтверждена — ждём подтверждения второго участника');
+    }
+  }
   try {
     await persistSingleRating(s.id);
-    if (epoch === syncEpoch) {
-      if (!next) toast('Оценку можно менять — сингл пока не в рейтинге');
-      else if (singleAllConfirmed(s.id)) toast('Оценка подтверждена — сингл в рейтинге');
-      else {
-        // Второй участник ещё не оценил (или не подтвердил) — релиз пока вне рейтинга.
-        const myId = currentUser.id;
-        const peers = Object.keys(singleRatings[s.id] ?? {}).filter((pid) => pid !== myId);
-        toast(peers.length === 0
-          ? 'Оценка подтверждена — ждём оценку второго участника'
-          : 'Оценка подтверждена — ждём подтверждения второго участника');
-      }
-    }
   } catch (err) {
     if (epoch !== syncEpoch) return;
     if (pendingSingleRatings.get(s.id) === pending) {
@@ -3576,13 +3678,9 @@ async function toggleSingleConfirm(): Promise<void> {
       }
       if (!CLOUD) saveLocalSingleRatings();
     }
+    mirrorSingleToTracks(s.id, true); // откат тоже должен уехать в трек
     updateSingleDisplays();
     toast(messageOf(err));
-  } finally {
-    if (epoch === syncEpoch) {
-      confirmingSingles.delete(s.id);
-      updateSingleDisplays();
-    }
   }
 }
 
@@ -3905,6 +4003,7 @@ async function markTrackAsSingle(t: UiTrack): Promise<void> {
         tracks = tracks.map((x) => (x.id === t.id ? { ...x, singleId } : x));
         saveLocalAlbums();
         saveLocalTracks();
+        shareRatingsWithSingles();
       }
       toast('Трек отмечен как сингл');
       renderTracks();

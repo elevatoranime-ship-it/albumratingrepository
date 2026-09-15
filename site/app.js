@@ -22477,7 +22477,10 @@ ${suffix}`;
         </div>
       </div>
     </div>`;
-    el.addEventListener("click", () => void openRelease(a.id));
+    el.addEventListener("click", (ev) => {
+      if (ev.target.closest(".album__artist-link")) return;
+      void openRelease(a.id);
+    });
     if (animate) {
       el.addEventListener("animationend", () => {
         if (el.classList.contains("reveal")) {

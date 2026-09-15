@@ -2783,7 +2783,12 @@ function makeAlbumCard(a: UiAlbum, featScore: number | null = null, animate = fa
         </div>
       </div>
     </div>`;
-  el.addEventListener('click', () => void openRelease(a.id));
+  el.addEventListener('click', (ev) => {
+    // Ссылку на артиста обрабатывает обработчик сетки (главная): карточка её не перехватывает,
+    // иначе одно нажатие открыло бы и релиз, и профиль артиста.
+    if ((ev.target as HTMLElement).closest('.album__artist-link')) return;
+    void openRelease(a.id);
+  });
   if (animate) {
     el.addEventListener('animationend', () => {
       if (el.classList.contains('reveal')) {

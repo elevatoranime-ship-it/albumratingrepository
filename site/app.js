@@ -21020,6 +21020,8 @@ ${suffix}`;
   var trackRankList = q("#track-rank-list");
   var rankMenu = q("#rank-menu");
   var rankMenuList = q("#rank-menu-list");
+  var artistLabel = q("#artist-label");
+  var artistNote = q("#artist-note");
   var singleRankList = q("#single-rank-list");
   var avSinglesSection = q("#av-singles-section");
   var avSingles = q("#av-singles");
@@ -22730,7 +22732,17 @@ ${suffix}`;
     renderArtistRank();
     await navigateTo(viewRank, { view: "rank" });
   }
+  function updateRankMenuCounts() {
+    const find = (k) => rankMenuList.querySelector(`.rank-menu__count[data-count="${k}"]`);
+    const artists = find("artists");
+    if (artists) artists.textContent = String(allArtistNames().length);
+    const singles = find("singles");
+    if (singles) singles.textContent = String(singlesOnly().length);
+    const tracksEl = find("tracks");
+    if (tracksEl) tracksEl.textContent = String(trackRanks().length);
+  }
   function setRankMenu(open) {
+    if (open) updateRankMenuCounts();
     rankMenuList.hidden = !open;
     artistsBtn.setAttribute("aria-expanded", String(open));
     artistsBtn.classList.toggle("is-open", open);
@@ -24106,9 +24118,30 @@ ${suffix}`;
     void artistField.offsetWidth;
     artistField.classList.add("is-picked", "pulse");
   }
+  var ARTIST_FEAT_HINT = "\u0444\u0438\u0442 \u0438\u043B\u0438 \u0441\u043E\u0432\u043C\u0435\u0441\u0442\u043A\u0443 \u0443\u043A\u0430\u0437\u044B\u0432\u0430\u0439\u0442\u0435 \u043F\u0440\u044F\u043C\u043E \u0437\u0434\u0435\u0441\u044C: \xAB\u0410\u0440\u0442\u0438\u0441\u0442 & \u0413\u043E\u0441\u0442\u044C\xBB \u0438\u043B\u0438 \xAB\u0410\u0440\u0442\u0438\u0441\u0442 feat. \u0413\u043E\u0441\u0442\u044C\xBB \u2014 \u0433\u043E\u0441\u0442\u044C \u043F\u043E\u043F\u0430\u0434\u0451\u0442 \u0432 \u0431\u043B\u043E\u043A \u0430\u0440\u0442\u0438\u0441\u0442\u0430";
+  function updateArtistFeatNote() {
+    if (addKind !== "single") {
+      artistNote.hidden = true;
+      return;
+    }
+    const raw = artistInput.value;
+    const m = FEAT_RE.exec(raw);
+    if (m) {
+      const main = raw.slice(0, m.index ?? 0).trim();
+      const guest = raw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, "").trim();
+      if (main && guest) {
+        artistNote.textContent = `\u0444\u0438\u0442: ${guest} \u2014 \u0433\u043E\u0441\u0442\u044C \u0431\u0443\u0434\u0435\u0442 \u0432 \u0431\u043B\u043E\u043A\u0435 \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0441\u0438\u043D\u0433\u043B\u0430`;
+        artistNote.hidden = false;
+        return;
+      }
+    }
+    artistNote.textContent = ARTIST_FEAT_HINT;
+    artistNote.hidden = false;
+  }
   artistInput.addEventListener("input", () => {
     artistField.classList.remove("is-picked");
     updateArtistList();
+    updateArtistFeatNote();
     clearAddErrors();
     refreshDupHint();
   });
@@ -24267,6 +24300,8 @@ ${suffix}`;
     addTitle.textContent = single ? "\u041D\u043E\u0432\u044B\u0439 \u0441\u0438\u043D\u0433\u043B" : "\u041D\u043E\u0432\u044B\u0439 \u0430\u043B\u044C\u0431\u043E\u043C";
     addSubmitLabel.textContent = single ? "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0441\u0438\u043D\u0433\u043B" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0430\u043B\u044C\u0431\u043E\u043C";
     titleLabel.textContent = single ? "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0441\u0438\u043D\u0433\u043B\u0430 *" : "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 *";
+    artistLabel.textContent = single ? "\u0410\u0440\u0442\u0438\u0441\u0442 \u0438\u043B\u0438 \u0441\u043E\u0432\u043C\u0435\u0441\u0442\u043A\u0430 *" : "\u0410\u0440\u0442\u0438\u0441\u0442 *";
+    updateArtistFeatNote();
     titleInput.placeholder = single ? "\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, Not Like Us" : "\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, Blonde";
     parentField.hidden = !single;
     parentNote.textContent = single ? "\u043F\u0435\u0440\u0435\u0447\u0438\u0441\u043B\u0438\u0442\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u044B \u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E; \u0441\u0438\u043D\u0433\u043B \u043F\u043E\u044F\u0432\u0438\u0442\u0441\u044F \u043D\u0430 \u043A\u0430\u0436\u0434\u043E\u043C \u0438\u0437 \u043D\u0438\u0445. \u0411\u0435\u0437 \u0441\u0432\u043E\u0435\u0439 \u043E\u0431\u043B\u043E\u0436\u043A\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u043E\u0431\u043B\u043E\u0436\u043A\u0430 \u043F\u0435\u0440\u0432\u043E\u0433\u043E \u0430\u043B\u044C\u0431\u043E\u043C\u0430" : "";

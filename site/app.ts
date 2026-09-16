@@ -1232,6 +1232,8 @@ const trankBack = q<HTMLButtonElement>('#trank-back');
 const trackRankList = q<HTMLOListElement>('#track-rank-list');
 const rankMenu = q<HTMLDivElement>('#rank-menu');
 const rankMenuList = q<HTMLUListElement>('#rank-menu-list');
+const artistLabel = q<HTMLSpanElement>('#artist-label');
+const artistNote = q<HTMLParagraphElement>('#artist-note');
 const singleRankList = q<HTMLOListElement>('#single-rank-list');
 
 /* синглы на странице альбома */
@@ -3102,7 +3104,18 @@ async function openArtists(): Promise<void> {
 }
 
 /* Меню «рейтинги» в шапке: артисты / синглы / все треки. */
+function updateRankMenuCounts(): void {
+  const find = (k: string) => rankMenuList.querySelector<HTMLElement>(`.rank-menu__count[data-count="${k}"]`);
+  const artists = find('artists');
+  if (artists) artists.textContent = String(allArtistNames().length);
+  const singles = find('singles');
+  if (singles) singles.textContent = String(singlesOnly().length);
+  const tracksEl = find('tracks');
+  if (tracksEl) tracksEl.textContent = String(trackRanks().length);
+}
+
 function setRankMenu(open: boolean): void {
+  if (open) updateRankMenuCounts();
   rankMenuList.hidden = !open;
   artistsBtn.setAttribute('aria-expanded', String(open));
   artistsBtn.classList.toggle('is-open', open);
@@ -4637,9 +4650,34 @@ function markArtistPicked(): void {
   artistField.classList.add('is-picked', 'pulse');
 }
 
+const ARTIST_FEAT_HINT = 'фит или совместку указывайте прямо здесь: «Артист & Гость» или «Артист feat. Гость» — гость попадёт в блок артиста';
+
+/* подсказка у поля артиста (режим сингла): обычная — про синтаксис фита,
+   живая — подтверждает распознанного гостя, пока его печатают */
+function updateArtistFeatNote(): void {
+  if (addKind !== 'single') {
+    artistNote.hidden = true;
+    return;
+  }
+  const raw = artistInput.value;
+  const m = FEAT_RE.exec(raw);
+  if (m) {
+    const main = raw.slice(0, m.index ?? 0).trim();
+    const guest = raw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, '').trim();
+    if (main && guest) {
+      artistNote.textContent = `фит: ${guest} — гость будет в блоке артиста сингла`;
+      artistNote.hidden = false;
+      return;
+    }
+  }
+  artistNote.textContent = ARTIST_FEAT_HINT;
+  artistNote.hidden = false;
+}
+
 artistInput.addEventListener('input', () => {
   artistField.classList.remove('is-picked');
   updateArtistList();
+  updateArtistFeatNote();
   clearAddErrors();
   refreshDupHint();
 });
@@ -4815,6 +4853,8 @@ function applyAddMode(kind: ReleaseKind): void {
   addTitle.textContent = single ? 'Новый сингл' : 'Новый альбом';
   addSubmitLabel.textContent = single ? 'Добавить сингл' : 'Добавить альбом';
   titleLabel.textContent = single ? 'Название сингла *' : 'Название альбома *';
+  artistLabel.textContent = single ? 'Артист или совместка *' : 'Артист *';
+  updateArtistFeatNote();
   titleInput.placeholder = single ? 'например, Not Like Us' : 'например, Blonde';
   parentField.hidden = !single;
   parentNote.textContent = single

@@ -833,10 +833,14 @@ test('рейтинг треков: треки и синглы вместе, то
   await cloud.install(page);
   await login(page);
 
-  // меню «рейтинги» в шапке: три пункта
+  // меню «рейтинги» в шапке: три пункта с иконками и счётчиками
   await page.locator('#artists-btn').click();
   await expect(page.locator('#rank-menu-list')).toBeVisible();
   await expect(page.locator('#rank-menu-list .rank-menu__item')).toHaveCount(3);
+  await expect(page.locator('#rank-menu-list .rank-menu__item svg')).toHaveCount(3);
+  await expect(page.locator('.rank-menu__count[data-count="artists"]')).toHaveText('2');
+  await expect(page.locator('.rank-menu__count[data-count="singles"]')).toHaveText('2');
+  await expect(page.locator('.rank-menu__count[data-count="tracks"]')).toHaveText('3');
   await page.locator('#rank-menu-list .rank-menu__item[data-rank="tracks"]').click();
   await expect(page.locator('#view-trank')).toHaveClass(/is-visible/);
 
@@ -901,8 +905,14 @@ test('экран добавления сингла: фит и совместка
   await page.locator('#seg-singles').click();
   await page.locator('#albums .album--add').click();
 
-  // совместка через «&»
+  // подсказка про фиты: обычная, затем живая — с именем гостя
+  await expect(page.locator('#artist-label')).toHaveText('Артист или совместка *');
+  await expect(page.locator('#artist-note')).toBeVisible();
+  await expect(page.locator('#artist-note')).toContainText('Артист & Гость');
   await page.locator('#artist-input').fill('Основной & Гость');
+  await expect(page.locator('#artist-note')).toContainText('фит: Гость');
+
+  // совместка через «&»
   await page.locator('#title-input').fill('Совместка');
   await page.locator('#year-input').fill('2025');
   await page.locator('#add-submit').click();

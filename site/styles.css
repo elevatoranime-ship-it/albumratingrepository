@@ -1792,7 +1792,7 @@ body {
 #artists-btn.is-open .rank-menu__caret { transform: rotate(180deg); }
 .rank-menu__list {
   position: absolute; top: calc(100% + 8px); right: 0; z-index: 80;
-  min-width: 172px;
+  min-width: 208px;
   margin: 0; padding: 6px;
   list-style: none;
   background: #30303a;
@@ -1805,7 +1805,7 @@ body {
   transform-origin: 85% 0;
 }
 .rank-menu__item {
-  display: block; width: 100%;
+  display: flex; align-items: center; gap: 10px; width: 100%;
   padding: 10px 12px;
   background: transparent;
   border: none; border-radius: 8px;
@@ -1813,6 +1813,15 @@ body {
   font: inherit; font-size: 14.5px;
   cursor: pointer; text-align: left;
   transition: background-color 0.25s var(--ease-out);
+}
+.rank-menu__item svg { width: 15px; height: 15px; flex: none; color: var(--accent); }
+.rank-menu__label { flex: 1; min-width: 0; }
+.rank-menu__count {
+  font-size: 11px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 999px;
 }
 .rank-menu__item:hover { background: rgba(255,255,255,0.09); }
 .rank-menu__item:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
@@ -2065,6 +2074,16 @@ body {
   cursor: pointer;
   transition: transform 0.3s var(--ease-out), border-color 0.3s var(--ease-out),
               background-color 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out);
+}
+/* производительность: в длинных рейтингах строки вне экрана не рендерятся —
+   прокрутка не перерисовывает весь список. Топ-3 со свечением исключены:
+   paint-сдерживание обрезало бы их свечение за пределами строки. */
+.rank__list .rank {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 70px;
+}
+.rank__list .rank--1, .rank__list .rank--2, .rank__list .rank--3 {
+  content-visibility: visible;
 }
 .rank:hover {
   border-color: var(--line-strong);

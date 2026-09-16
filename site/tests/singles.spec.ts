@@ -335,12 +335,12 @@ test('глаз у привязки: удержание показывает ми
   // 3px до кнопки и 3px до рамки (итого 13px). Меряем раскладку (offsetLeft):
   // пока кнопка зажата, она в :active чуть уменьшена трансформом, и её
   // визуальный bbox сдвинут внутрь.
-  const gap = await page.evaluate(() => {
+  const cardGap = await page.evaluate(() => {
     const btn = document.querySelector('#sv-parent-peek')!;
     const el = document.querySelector('#sv-peek-card')!;
     return el.offsetLeft - (btn.offsetLeft + btn.offsetWidth);
   });
-  expect(gap).toBeCloseTo(13, 0);
+  expect(cardGap).toBeCloseTo(13, 0);
   await page.mouse.up();                            // отпустили — скрылась
   await expect(page.locator('#sv-peek-card')).toBeHidden();
 

@@ -331,12 +331,11 @@ test('глаз у привязки: удержание показывает ми
   await expect(page.locator('#sv-peek-card')).toBeVisible();
   await expect(page.locator('#sv-peek-title')).toHaveText('Общий альбом');
   await expect(page.locator('#sv-peek-artist')).toHaveText('Артист');
-  // карточка — прямо справа от кнопки, с толстой соединительной стрелкой
+  // карточка — прямо справа от кнопки, с толстым наконечником у рамки
   const card = page.locator('#sv-peek-card');
   const [eyeBox, cardBox] = await Promise.all([peek.boundingBox(), card.boundingBox()]);
   expect(cardBox!.x).toBeGreaterThanOrEqual(eyeBox!.x + eyeBox!.width);
-  expect(cardBox!.x - (eyeBox!.x + eyeBox!.width)).toBeLessThanOrEqual(24);
-  expect(await card.evaluate((el) => getComputedStyle(el, '::before').width)).toBe('11px');
+  expect(cardBox!.x - (eyeBox!.x + eyeBox!.width)).toBeLessThanOrEqual(16);
   await page.mouse.up();                            // отпустили — скрылась
   await expect(page.locator('#sv-peek-card')).toBeHidden();
 

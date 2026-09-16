@@ -3486,10 +3486,13 @@ async function toggleSingleParents(more: HTMLButtonElement): Promise<void> {
     transition.animations.push(animation);
     return animation;
   };
+  // Сворачивание заметно шустрее открытия, чтобы «скрыть» не ощущалось медленнее:
+  // гашение ссылок 70 мс + высота/кнопки 140 мс ≈ так же быстро, как открытие (220 мс).
+  const phase = expanded ? 220 : 140;
 
   // При сворачивании сначала гасим ссылки; только затем убираем их из строки.
   if (!expanded && !reduce) {
-    await animate(list, [{ opacity: 1 }, { opacity: 0 }], 140).finished.catch(() => {});
+    await animate(list, [{ opacity: 1 }, { opacity: 0 }], 70).finished.catch(() => {});
     if (parentTransitions.get(more) !== transition || !more.isConnected) return;
   }
   const beforeHeight = row.getBoundingClientRect().height;
@@ -3504,7 +3507,7 @@ async function toggleSingleParents(more: HTMLButtonElement): Promise<void> {
     const afterHeight = row.getBoundingClientRect().height;
     // При переносе длинного списка нижние блоки тоже перемещаются плавно.
     if (Math.abs(afterHeight - beforeHeight) > 1) {
-      animate(row, [{ height: `${beforeHeight}px` }, { height: `${afterHeight}px` }]);
+      animate(row, [{ height: `${beforeHeight}px` }, { height: `${afterHeight}px` }], phase);
     }
     controls.forEach((el, i) => {
       const after = el.getBoundingClientRect();
@@ -3512,7 +3515,7 @@ async function toggleSingleParents(more: HTMLButtonElement): Promise<void> {
       animate(el, [
         { transform: `translate(${before.x - after.x}px, ${before.y - after.y}px)`, opacity: 0.65 },
         { transform: 'translate(0, 0)', opacity: 1 },
-      ]);
+      ], phase);
     });
     await Promise.all(transition.animations.map((animation) => animation.finished.catch(() => {})));
   }
@@ -4119,9 +4122,12 @@ async function saveSingleLink(parentIds: string[]): Promise<void> {
 svParentEdit.addEventListener('click', openSingleLinkEditor);
 svParentLabel.addEventListener('click', handleParentClick);
 
-/* --- глаз у привязки: пока зажат — видна миниатюра обложки альбома --- */
+/* --- глаз у привязки: пока зажат — рядом видна миниатюра обложки альбома --- */
 function showParentPeek(): void {
   if (svPeekBtn.hidden) return;
+  // у правого края экрана карточка разворачивается влево, чтобы не уезжать за край
+  const box = svPeekBtn.getBoundingClientRect();
+  svPeekCard.classList.toggle('is-flip', box.right + 200 > window.innerWidth);
   svPeekCard.hidden = false;
 }
 function hideParentPeek(): void {

@@ -2495,10 +2495,16 @@ body { -webkit-tap-highlight-color: transparent; }
 .sv__parent-edit:hover { color: var(--text); border-color: var(--text-faint); }
 .sv__parent-edit:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 3px; }
 
-/* глаз у привязки: удерживайте — всплывает миниатюра обложки альбома */
+/* глаз у привязки: удерживайте — рядом с кнопкой всплывает миниатюра обложки */
+.sv__peek-wrap {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: var(--parent-control-gap, 12px);
+}
 .sv__peek {
   display: inline-grid; place-items: center;
-  width: 26px; height: 26px; margin-left: var(--parent-control-gap, 12px); padding: 0;
+  width: 26px; height: 26px; padding: 0;
   vertical-align: middle;
   background: transparent;
   border: 1px solid transparent;
@@ -2515,21 +2521,48 @@ body { -webkit-tap-highlight-color: transparent; }
 .sv__peek:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
 
 .sv__peek-card {
-  position: absolute; bottom: calc(100% + 12px); left: 0; z-index: 40;
+  position: absolute; left: calc(100% + 18px); top: 50%; z-index: 40;
   width: 148px; padding: 7px;
   background: #30303a;
   border: 1px solid rgba(255,255,255,0.28);
   border-radius: 14px;
   box-shadow: 0 24px 50px -10px rgba(0,0,0,0.95), 0 0 0 1px rgba(0,0,0,0.55);
   display: flex; flex-direction: column; gap: 5px;
-  transform-origin: 14px 100%;
+  transform-origin: 0 50%;
 }
 .sv__peek-card:not([hidden]) {
   animation: peekIn 0.18s var(--ease-out) both;
 }
 @keyframes peekIn {
-  from { opacity: 0; transform: translateY(6px) scale(0.95); }
-  to   { opacity: 1; transform: none; }
+  from { opacity: 0; transform: translateY(-50%) translateX(-10px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(-50%); }
+}
+/* толстая соединительная стрелка: линия от кнопки + наконечник у рамки */
+.sv__peek-card::before {
+  content: ''; position: absolute; left: -18px; top: 50%; margin-top: -1.5px;
+  width: 11px; height: 3px; border-radius: 2px;
+  background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+}
+.sv__peek-card::after {
+  content: ''; position: absolute; left: -8px; top: 50%; margin-top: -5px;
+  width: 0; height: 0;
+  border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+  border-left: 7px solid var(--accent-strong);
+}
+/* у правого края экрана карточка разворачивается влево от кнопки */
+.sv__peek-card.is-flip:not([hidden]) { animation-name: peekInFlip; }
+.sv__peek-card.is-flip { left: auto; right: calc(100% + 18px); transform-origin: 100% 50%; }
+.sv__peek-card.is-flip::before {
+  left: auto; right: -18px;
+  background: linear-gradient(270deg, var(--accent), var(--accent-strong));
+}
+.sv__peek-card.is-flip::after {
+  left: auto; right: -8px;
+  border-left: none; border-right: 7px solid var(--accent-strong);
+}
+@keyframes peekInFlip {
+  from { opacity: 0; transform: translateY(-50%) translateX(10px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(-50%); }
 }
 .sv__peek-img {
   width: 100%; aspect-ratio: 1 / 1;

@@ -23063,8 +23063,9 @@ ${suffix}`;
       transition.animations.push(animation);
       return animation;
     };
+    const phase = expanded ? 220 : 140;
     if (!expanded && !reduce) {
-      await animate(list, [{ opacity: 1 }, { opacity: 0 }], 140).finished.catch(() => {
+      await animate(list, [{ opacity: 1 }, { opacity: 0 }], 70).finished.catch(() => {
       });
       if (parentTransitions.get(more) !== transition || !more.isConnected) return;
     }
@@ -23078,7 +23079,7 @@ ${suffix}`;
       if (expanded) animate(list, [{ opacity: 0 }, { opacity: 1 }]);
       const afterHeight = row.getBoundingClientRect().height;
       if (Math.abs(afterHeight - beforeHeight) > 1) {
-        animate(row, [{ height: `${beforeHeight}px` }, { height: `${afterHeight}px` }]);
+        animate(row, [{ height: `${beforeHeight}px` }, { height: `${afterHeight}px` }], phase);
       }
       controls.forEach((el, i) => {
         const after = el.getBoundingClientRect();
@@ -23086,7 +23087,7 @@ ${suffix}`;
         animate(el, [
           { transform: `translate(${before.x - after.x}px, ${before.y - after.y}px)`, opacity: 0.65 },
           { transform: "translate(0, 0)", opacity: 1 }
-        ]);
+        ], phase);
       });
       await Promise.all(transition.animations.map((animation) => animation.finished.catch(() => {
       })));
@@ -23645,6 +23646,8 @@ ${suffix}`;
   svParentLabel.addEventListener("click", handleParentClick);
   function showParentPeek() {
     if (svPeekBtn.hidden) return;
+    const box = svPeekBtn.getBoundingClientRect();
+    svPeekCard.classList.toggle("is-flip", box.right + 200 > window.innerWidth);
     svPeekCard.hidden = false;
   }
   function hideParentPeek() {

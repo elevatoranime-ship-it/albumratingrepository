@@ -20350,6 +20350,7 @@ ${suffix}`;
     singleWrites.clear();
     ratingPointerTrackId = null;
     singlePointerActive = false;
+    activeTrackId = null;
     if (realtimeChannel) {
       const channel = realtimeChannel;
       realtimeChannel = null;
@@ -20402,6 +20403,7 @@ ${suffix}`;
       if (viewHome.classList.contains("is-visible")) renderAlbums(false);
       if (viewArtist.classList.contains("is-visible")) renderArtistPage();
       if (viewRank.classList.contains("is-visible")) renderArtistRank();
+      if (viewArank.classList.contains("is-visible")) renderAlbumRank();
       if (viewSrank.classList.contains("is-visible")) renderSingleRank();
       if (viewTrank.classList.contains("is-visible")) renderTrackRank();
       if (viewAlbum.classList.contains("is-visible")) renderAlbumSingles();
@@ -20904,6 +20906,7 @@ ${suffix}`;
   var viewArtist = q("#view-artist");
   var viewProfile = q("#view-profile");
   var viewRank = q("#view-rank");
+  var viewArank = q("#view-arank");
   var homeTitle = q("#home-title");
   var homeMeta = q("#home-meta");
   var logoutBtn = q("#logout-btn");
@@ -20970,6 +20973,8 @@ ${suffix}`;
   var artistFeatSection = q("#artist-feat-section");
   var rankBack = q("#rank-back");
   var rankList = q("#artist-rank-list");
+  var arankBack = q("#arank-back");
+  var albumRankList = q("#album-rank-list");
   var artistsBtn = q("#artists-btn");
   var profileBack = q("#profile-back");
   var profAvatar = q("#prof-avatar");
@@ -21739,6 +21744,23 @@ ${suffix}`;
   var ratingPointerTrackId = null;
   var saveTimers = /* @__PURE__ */ new Map();
   var ratingWrites = /* @__PURE__ */ new Map();
+  var TOUCH_UI = window.matchMedia("(hover: none) and (pointer: coarse)");
+  var activeTrackId = null;
+  function applyActiveTrackClass() {
+    trackList.querySelectorAll(".track.is-active").forEach((el) => el.classList.remove("is-active"));
+    if (!activeTrackId) return;
+    const li = trackList.querySelector(`.track[data-id="${activeTrackId}"]`);
+    if (!li) {
+      activeTrackId = null;
+      return;
+    }
+    li.classList.add("is-active");
+  }
+  function setActiveTrack(id) {
+    if (activeTrackId === id) return;
+    activeTrackId = id;
+    applyActiveTrackClass();
+  }
   function setTrackSave(trackId, s) {
     const li = trackList.querySelector(`[data-id="${trackId}"]`);
     const el = li?.querySelector(".track__save");
@@ -22005,6 +22027,7 @@ ${suffix}`;
       const el = trackList.querySelector(`[data-id="${enterId}"]`);
       if (el) el.classList.add("track--enter");
     }
+    applyActiveTrackClass();
   }
   trackList.addEventListener("input", (e) => {
     const target = e.target;
@@ -22304,6 +22327,17 @@ ${suffix}`;
     }
   }
   trackList.addEventListener("click", (e) => {
+    if (!TOUCH_UI.matches) return;
+    const target = e.target;
+    if (target.closest(".track__btn, .track__single, .track__feat, .track__numinput, .track__confirm-btn, .track__rename-input, .track__slider")) return;
+    const li = target.closest(".track");
+    if (!li?.dataset.id) return;
+    if (li.classList.contains("track--single") && target.closest(".track__title")) return;
+    setActiveTrack(activeTrackId === li.dataset.id ? null : li.dataset.id);
+    e.__trackRowTap = true;
+  });
+  trackList.addEventListener("click", (e) => {
+    if (e.__trackRowTap) return;
     const target = e.target;
     if (target.closest(".track__slider, .track__numinput, .track__rename-input, .track__confirm-btn, .track__btn, .track__feat, .track__handle, .track__single")) return;
     const marked = target.closest(".track--single");
@@ -22436,7 +22470,7 @@ ${suffix}`;
     return closest.element;
   }
   function visibleView() {
-    for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewTrank, viewAdd]) {
+    for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewArank, viewSrank, viewTrank, viewAdd]) {
       if (v.classList.contains("is-visible")) return v;
     }
     return null;
@@ -22453,6 +22487,7 @@ ${suffix}`;
   }
   async function goBack() {
     viewStack.pop();
+    if (viewAlbum.classList.contains("is-visible")) setActiveTrack(null);
     const prev = topEntry();
     const from = visibleView() ?? viewHome;
     switch (prev.view) {
@@ -22502,6 +22537,16 @@ ${suffix}`;
         renderArtistRank();
         await swapTo(from, viewRank, () => {
           viewRank.scrollTop = 0;
+        });
+        break;
+      }
+      case "arank": {
+        currentAlbumId = null;
+        currentSingleId = null;
+        currentArtistName = null;
+        renderAlbumRank();
+        await swapTo(from, viewArank, () => {
+          viewArank.scrollTop = 0;
         });
         break;
       }
@@ -22732,8 +22777,69 @@ ${suffix}`;
     renderArtistRank();
     await navigateTo(viewRank, { view: "rank" });
   }
+  function albumVotesOf(albumId) {
+    let n = 0;
+    for (const t of tracks) {
+      if (t.albumId !== albumId) continue;
+      const r = trackRatings[t.id];
+      if (r) n += Object.keys(r).length;
+    }
+    return n;
+  }
+  function albumRankedScoreOf(albumId) {
+    return albumAllConfirmed(albumId) ? albumScoreOf(albumId) : null;
+  }
+  function albumRanks() {
+    return albumsOnly().map((a) => ({
+      album: a,
+      score: albumRankedScoreOf(a.id),
+      votes: albumVotesOf(a.id)
+    })).sort((a, b) => {
+      const ta = a.album.title;
+      const tb = b.album.title;
+      if (a.score === null && b.score === null) return ta.localeCompare(tb, "ru");
+      if (a.score === null) return 1;
+      if (b.score === null) return -1;
+      return b.score - a.score || ta.localeCompare(tb, "ru");
+    });
+  }
+  function renderAlbumRank() {
+    albumRankList.innerHTML = "";
+    const list = albumRanks();
+    if (!list.length) {
+      const li = document.createElement("li");
+      li.className = "rank__empty";
+      li.textContent = "\u0430\u043B\u044C\u0431\u043E\u043C\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u2014 \u0434\u043E\u0431\u0430\u0432\u044C\u0442\u0435 \u043F\u0435\u0440\u0432\u044B\u0439 \u0430\u043B\u044C\u0431\u043E\u043C";
+      albumRankList.appendChild(li);
+      return;
+    }
+    list.forEach((r, i) => {
+      const pos = i + 1;
+      const li = document.createElement("li");
+      li.className = "rank" + (pos <= 3 && r.score !== null ? ` rank--${pos}` : "") + (r.score === null ? " is-unranked" : "");
+      const n = trackCountOf(r.album.id);
+      const meta = [r.album.artist, String(r.album.year), `${n} ${tracksPlural(n)}`];
+      if (r.score === null) meta.push(r.votes === 0 ? "\u043E\u0446\u0435\u043D\u043E\u043A \u043F\u043E\u043A\u0430 \u043D\u0435\u0442" : "\u0436\u0434\u0451\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u0441\u0435\u0445 \u043E\u0446\u0435\u043D\u043E\u043A");
+      li.innerHTML = `
+      <span class="rank__pos">${pos}</span>
+      <span class="rank__ava"><img src="${esc(coverSrc(r.album))}" alt="" loading="lazy"></span>
+      <div class="rank__body">
+        <span class="rank__name">${esc(r.album.title)}</span>
+        <span class="rank__meta">${esc(meta.join(" \xB7 "))}</span>
+      </div>
+      <span class="rank__score">${r.score === null ? "\u2014" : fmt(r.score)}</span>`;
+      li.addEventListener("click", () => void openAlbum(r.album.id));
+      albumRankList.appendChild(li);
+    });
+  }
+  async function openAlbumRank() {
+    renderAlbumRank();
+    await navigateTo(viewArank, { view: "arank" });
+  }
   function updateRankMenuCounts() {
     const find = (k) => rankMenuList.querySelector(`.rank-menu__count[data-count="${k}"]`);
+    const albumsEl = find("albums");
+    if (albumsEl) albumsEl.textContent = String(albumsOnly().length);
     const artists = find("artists");
     if (artists) artists.textContent = String(allArtistNames().length);
     const singles = find("singles");
@@ -22755,15 +22861,21 @@ ${suffix}`;
     if (rankMenu.contains(e.target)) return;
     setRankMenu(false);
   });
+  document.addEventListener("click", (e) => {
+    if (!TOUCH_UI.matches || !activeTrackId) return;
+    if (!trackList.contains(e.target)) setActiveTrack(null);
+  });
   rankMenuList.addEventListener("click", (e) => {
     const item = e.target.closest(".rank-menu__item");
     if (!item) return;
     setRankMenu(false);
-    if (item.dataset.rank === "artists") void openArtists();
+    if (item.dataset.rank === "albums") void openAlbumRank();
+    else if (item.dataset.rank === "artists") void openArtists();
     else if (item.dataset.rank === "singles") void openSingleRank();
     else if (item.dataset.rank === "tracks") void openTrackRank();
   });
   rankBack.addEventListener("click", () => void goBack());
+  arankBack.addEventListener("click", () => void goBack());
   srankBack.addEventListener("click", () => void goBack());
   trankBack.addEventListener("click", () => void goBack());
   function singleRanks() {
@@ -24354,6 +24466,10 @@ ${suffix}`;
     }
     if (!rankMenuList.hidden) {
       setRankMenu(false);
+      return;
+    }
+    if (activeTrackId) {
+      setActiveTrack(null);
       return;
     }
     if (visibleView() && !viewHome.classList.contains("is-visible")) void goBack();

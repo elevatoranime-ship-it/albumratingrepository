@@ -123,6 +123,7 @@ type ViewEntry =
   | { view: 'artist' }
   | { view: 'profile' }
   | { view: 'rank' }
+  | { view: 'arank' }
   | { view: 'trank' }
   | { view: 'add'; kind: ReleaseKind };
 const viewStack: ViewEntry[] = [{ view: 'home' }];
@@ -429,6 +430,7 @@ function stopRealtime(): void {
   singleWrites.clear();
   ratingPointerTrackId = null;
   singlePointerActive = false;
+  activeTrackId = null;
   if (realtimeChannel) {
     const channel = realtimeChannel;
     realtimeChannel = null;
@@ -487,6 +489,7 @@ function renderSynchronizedData(changed: boolean): void {
     if (viewHome.classList.contains('is-visible')) renderAlbums(false);
     if (viewArtist.classList.contains('is-visible')) renderArtistPage();
     if (viewRank.classList.contains('is-visible')) renderArtistRank();
+    if (viewArank.classList.contains('is-visible')) renderAlbumRank();
     if (viewSrank.classList.contains('is-visible')) renderSingleRank();
     if (viewTrank.classList.contains('is-visible')) renderTrackRank();
     if (viewAlbum.classList.contains('is-visible')) renderAlbumSingles();
@@ -1100,6 +1103,7 @@ const viewAdd = q<HTMLElement>('#view-add');
 const viewArtist = q<HTMLElement>('#view-artist');
 const viewProfile = q<HTMLElement>('#view-profile');
 const viewRank = q<HTMLElement>('#view-rank');
+const viewArank = q<HTMLElement>('#view-arank');
 const homeTitle = q<HTMLElement>('#home-title');
 const homeMeta = q<HTMLParagraphElement>('#home-meta');
 const logoutBtn = q<HTMLButtonElement>('#logout-btn');
@@ -1174,6 +1178,8 @@ const artistFeatSection = q<HTMLElement>('#artist-feat-section');
 /* рейтинг артистов */
 const rankBack = q<HTMLButtonElement>('#rank-back');
 const rankList = q<HTMLOListElement>('#artist-rank-list');
+const arankBack = q<HTMLButtonElement>('#arank-back');
+const albumRankList = q<HTMLOListElement>('#album-rank-list');
 const artistsBtn = q<HTMLButtonElement>('#artists-btn');
 
 /* мой профиль */
@@ -2047,6 +2053,30 @@ let ratingPointerTrackId: string | null = null;
 const saveTimers = new Map<string, number>();
 const ratingWrites = new Map<string, Promise<void>>();
 
+/* Тач-экран (нет мыши): ползунок оценки «вооружается» только после тапа по строке —
+   случайное касание больше не дёргает балл. Пока строка не выделена, слайдер не ловит
+   пальцы (pointer-events: none в styles.css); числовое поле и ✓ доступны сразу.
+   На десктопе (точерный указатель) поведение не меняется. */
+const TOUCH_UI = window.matchMedia('(hover: none) and (pointer: coarse)');
+let activeTrackId: string | null = null;
+
+function applyActiveTrackClass(): void {
+  trackList.querySelectorAll<HTMLLIElement>('.track.is-active').forEach((el) => el.classList.remove('is-active'));
+  if (!activeTrackId) return;
+  const li = trackList.querySelector<HTMLLIElement>(`.track[data-id="${activeTrackId}"]`);
+  if (!li) {
+    activeTrackId = null; // трек исчез (удалён/пересинхронизирован) — выделение сбрасываем
+    return;
+  }
+  li.classList.add('is-active');
+}
+
+function setActiveTrack(id: string | null): void {
+  if (activeTrackId === id) return;
+  activeTrackId = id;
+  applyActiveTrackClass();
+}
+
 function setTrackSave(trackId: string, s: 'save' | 'done' | 'err' | ''): void {
   const li = trackList.querySelector<HTMLLIElement>(`[data-id="${trackId}"]`);
   const el = li?.querySelector<HTMLElement>('.track__save');
@@ -2357,6 +2387,7 @@ function renderTracks(enterId?: string): void {
     const el = trackList.querySelector<HTMLLIElement>(`[data-id="${enterId}"]`);
     if (el) el.classList.add('track--enter');
   }
+  applyActiveTrackClass();
 }
 
 /* события ввода оценки (делегирование) */
@@ -2669,7 +2700,26 @@ async function persistTrackOrder(): Promise<void> {
 
 /* Нажатие на трек, помеченный синглом: строка спрашивает, перейти ли на страницу,
    бейдж «сингл» открывает её сразу. Поля оценки, кнопки и ссылки не перехватываются. */
+/* Тач: тап по строке — выделение (подсветка) и «вооружение» ползунка; повторный тап
+   по строке снимает выделение. Контролы со своим поведением не участвуют; название
+   трека, помеченного синглом, сохраняет прежнее поведение (модалка перехода).
+   Поглощаем тап меткой на событии: обработчик модалки перехода его увидит, а
+   document-уровневые (закрытие fin-select, подсказок, меню) работают как раньше. */
+type RowTapEvent = MouseEvent & { __trackRowTap?: boolean };
 trackList.addEventListener('click', (e) => {
+  if (!TOUCH_UI.matches) return;
+  const target = e.target as HTMLElement;
+  if (target.closest('.track__btn, .track__single, .track__feat, .track__numinput, .track__confirm-btn, .track__rename-input, .track__slider')) return;
+  const li = target.closest<HTMLLIElement>('.track');
+  if (!li?.dataset.id) return;
+  if (li.classList.contains('track--single') && target.closest('.track__title')) return;
+  setActiveTrack(activeTrackId === li.dataset.id ? null : li.dataset.id);
+  (e as RowTapEvent).__trackRowTap = true;
+});
+
+trackList.addEventListener('click', (e) => {
+  // Тач: тап по строке уже потреблён выделением (метка __trackRowTap) — модалку не показываем.
+  if ((e as RowTapEvent).__trackRowTap) return;
   const target = e.target as HTMLElement;
   // Плашка «сингл» открывает страницу сразу (свой обработчик ниже) — модалку не показываем.
   if (target.closest('.track__slider, .track__numinput, .track__rename-input, .track__confirm-btn, .track__btn, .track__feat, .track__handle, .track__single')) return;
@@ -2797,7 +2847,7 @@ function getDragAfterElement(container: HTMLElement, y: number): HTMLLIElement |
 
 /* --- навигация (единый стек) --- */
 function visibleView(): HTMLElement | null {
-  for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewTrank, viewAdd]) {
+  for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewArank, viewSrank, viewTrank, viewAdd]) {
     if (v.classList.contains('is-visible')) return v;
   }
   return null;
@@ -2816,6 +2866,7 @@ async function navigateTo(view: HTMLElement, entry: ViewEntry): Promise<void> {
 /* вернуться на предыдущий экран */
 async function goBack(): Promise<void> {
   viewStack.pop(); // снимаем текущий экран
+  if (viewAlbum.classList.contains('is-visible')) setActiveTrack(null); // уходим со страницы альбома — выделение не несём с собой
   const prev = topEntry();
   const from = visibleView() ?? viewHome;
   switch (prev.view) {
@@ -2856,6 +2907,14 @@ async function goBack(): Promise<void> {
       currentArtistName = null;
       renderArtistRank();
       await swapTo(from, viewRank, () => { viewRank.scrollTop = 0; });
+      break;
+    }
+    case 'arank': {
+      currentAlbumId = null;
+      currentSingleId = null;
+      currentArtistName = null;
+      renderAlbumRank();
+      await swapTo(from, viewArank, () => { viewArank.scrollTop = 0; });
       break;
     }
     case 'trank': {
@@ -3103,9 +3162,79 @@ async function openArtists(): Promise<void> {
   await navigateTo(viewRank, { view: 'rank' });
 }
 
-/* Меню «рейтинги» в шапке: артисты / синглы / все треки. */
+/* --- рейтинг альбомов: строгий принцип, как у синглов и треков —
+   в чарт попадает альбом, где каждый трек подтверждён всеми участниками --- */
+interface AlbumRank { album: UiAlbum; score: number | null; votes: number; }
+
+function albumVotesOf(albumId: string): number {
+  let n = 0;
+  for (const t of tracks) {
+    if (t.albumId !== albumId) continue;
+    const r = trackRatings[t.id];
+    if (r) n += Object.keys(r).length;
+  }
+  return n;
+}
+
+function albumRankedScoreOf(albumId: string): number | null {
+  return albumAllConfirmed(albumId) ? albumScoreOf(albumId) : null;
+}
+
+function albumRanks(): AlbumRank[] {
+  return albumsOnly().map((a) => ({
+    album: a,
+    score: albumRankedScoreOf(a.id),
+    votes: albumVotesOf(a.id),
+  })).sort((a, b) => {
+    const ta = a.album.title;
+    const tb = b.album.title;
+    if (a.score === null && b.score === null) return ta.localeCompare(tb, 'ru');
+    if (a.score === null) return 1;
+    if (b.score === null) return -1;
+    return b.score - a.score || ta.localeCompare(tb, 'ru');
+  });
+}
+
+function renderAlbumRank(): void {
+  albumRankList.innerHTML = '';
+  const list = albumRanks();
+  if (!list.length) {
+    const li = document.createElement('li');
+    li.className = 'rank__empty';
+    li.textContent = 'альбомов пока нет — добавьте первый альбом';
+    albumRankList.appendChild(li);
+    return;
+  }
+  list.forEach((r, i) => {
+    const pos = i + 1;
+    const li = document.createElement('li');
+    li.className = 'rank' + (pos <= 3 && r.score !== null ? ` rank--${pos}` : '') + (r.score === null ? ' is-unranked' : '');
+    const n = trackCountOf(r.album.id);
+    const meta: string[] = [r.album.artist, String(r.album.year), `${n} ${tracksPlural(n)}`];
+    if (r.score === null) meta.push(r.votes === 0 ? 'оценок пока нет' : 'ждём подтверждения всех оценок');
+    li.innerHTML = `
+      <span class="rank__pos">${pos}</span>
+      <span class="rank__ava"><img src="${esc(coverSrc(r.album))}" alt="" loading="lazy"></span>
+      <div class="rank__body">
+        <span class="rank__name">${esc(r.album.title)}</span>
+        <span class="rank__meta">${esc(meta.join(' · '))}</span>
+      </div>
+      <span class="rank__score">${r.score === null ? '—' : fmt(r.score)}</span>`;
+    li.addEventListener('click', () => void openAlbum(r.album.id));
+    albumRankList.appendChild(li);
+  });
+}
+
+async function openAlbumRank(): Promise<void> {
+  renderAlbumRank();
+  await navigateTo(viewArank, { view: 'arank' });
+}
+
+/* Меню «рейтинги» в шапке: альбомы / артисты / синглы / все треки. */
 function updateRankMenuCounts(): void {
   const find = (k: string) => rankMenuList.querySelector<HTMLElement>(`.rank-menu__count[data-count="${k}"]`);
+  const albumsEl = find('albums');
+  if (albumsEl) albumsEl.textContent = String(albumsOnly().length);
   const artists = find('artists');
   if (artists) artists.textContent = String(allArtistNames().length);
   const singles = find('singles');
@@ -3128,15 +3257,22 @@ document.addEventListener('click', (e) => {
   if (rankMenu.contains(e.target as Node)) return;
   setRankMenu(false);
 });
+/* тач: тап вне списка треков снимает выделение строки */
+document.addEventListener('click', (e) => {
+  if (!TOUCH_UI.matches || !activeTrackId) return;
+  if (!trackList.contains(e.target as Node)) setActiveTrack(null);
+});
 rankMenuList.addEventListener('click', (e) => {
   const item = (e.target as HTMLElement).closest<HTMLButtonElement>('.rank-menu__item');
   if (!item) return;
   setRankMenu(false);
-  if (item.dataset.rank === 'artists') void openArtists();
+  if (item.dataset.rank === 'albums') void openAlbumRank();
+  else if (item.dataset.rank === 'artists') void openArtists();
   else if (item.dataset.rank === 'singles') void openSingleRank();
   else if (item.dataset.rank === 'tracks') void openTrackRank();
 });
 rankBack.addEventListener('click', () => void goBack());
+arankBack.addEventListener('click', () => void goBack());
 srankBack.addEventListener('click', () => void goBack());
 trankBack.addEventListener('click', () => void goBack());
 
@@ -4909,6 +5045,7 @@ document.addEventListener('keydown', (e) => {
   if (!confirmModal.hidden) { closeConfirm(false); return; }
   if (document.querySelector('.fin-select.is-open')) { closeAllFinSelects(); return; }
   if (!rankMenuList.hidden) { setRankMenu(false); return; }
+  if (activeTrackId) { setActiveTrack(null); return; }
   if (visibleView() && !viewHome.classList.contains('is-visible')) void goBack();
 });
 

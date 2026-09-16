@@ -4,6 +4,12 @@ import socketserver
 import sys
 
 PORT = 8080
+# порт можно передать аргументом: python3 server.py 8081 [--demo]
+for _i, _arg in enumerate(sys.argv):
+    if _arg == "--port" and _i + 1 < len(sys.argv):
+        PORT = int(sys.argv[_i + 1])
+    elif _arg.isdigit():
+        PORT = int(_arg)
 
 
 class ReusableTCPServer(socketserver.TCPServer):

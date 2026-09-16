@@ -20403,6 +20403,7 @@ ${suffix}`;
       if (viewArtist.classList.contains("is-visible")) renderArtistPage();
       if (viewRank.classList.contains("is-visible")) renderArtistRank();
       if (viewSrank.classList.contains("is-visible")) renderSingleRank();
+      if (viewTrank.classList.contains("is-visible")) renderTrackRank();
       if (viewAlbum.classList.contains("is-visible")) renderAlbumSingles();
       if (viewSingle.classList.contains("is-visible") && !currentSingle()) {
         viewStack.length = 0;
@@ -20711,7 +20712,7 @@ ${suffix}`;
     const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><rect width='600' height='600' fill='#15151a'/><circle cx='300' cy='300' r='210' fill='none' stroke='rgba(183,168,239,0.16)' stroke-width='1.5'/><text x='300' y='345' font-family='Georgia, serif' font-size='210' fill='rgba(243,241,236,0.8)' text-anchor='middle'>" + esc(initial) + "</text></svg>";
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   }
-  var FEAT_RE = /(\bfeat\.|\bft\.|&)/i;
+  var FEAT_RE = /(\bfeat\b\.?|\bft\b\.?|&)/i;
   function featNameOf(title) {
     const m = FEAT_RE.exec(title);
     if (!m) return null;
@@ -21014,6 +21015,11 @@ ${suffix}`;
   var singleDeleteBtn = q("#single-delete-btn");
   var viewSrank = q("#view-srank");
   var srankBack = q("#srank-back");
+  var viewTrank = q("#view-trank");
+  var trankBack = q("#trank-back");
+  var trackRankList = q("#track-rank-list");
+  var rankMenu = q("#rank-menu");
+  var rankMenuList = q("#rank-menu-list");
   var singleRankList = q("#single-rank-list");
   var avSinglesSection = q("#av-singles-section");
   var avSingles = q("#av-singles");
@@ -21195,7 +21201,7 @@ ${suffix}`;
     segAlbums.tabIndex = albumMode ? 0 : -1;
     segSingles.tabIndex = albumMode ? -1 : 0;
     homeHdrTitle.textContent = albumMode ? "\u0410\u043B\u044C\u0431\u043E\u043C\u044B" : "\u0421\u0438\u043D\u0433\u043B\u044B";
-    rankBtnLabel.textContent = albumMode ? "\u0440\u0435\u0439\u0442\u0438\u043D\u0433 \u0430\u0440\u0442\u0438\u0441\u0442\u043E\u0432" : "\u0440\u0435\u0439\u0442\u0438\u043D\u0433 \u0441\u0438\u043D\u0433\u043B\u043E\u0432";
+    rankBtnLabel.textContent = "\u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0438";
     moveSegThumb();
   }
   function singlesUnavailable() {
@@ -22428,7 +22434,7 @@ ${suffix}`;
     return closest.element;
   }
   function visibleView() {
-    for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewAdd]) {
+    for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewTrank, viewAdd]) {
       if (v.classList.contains("is-visible")) return v;
     }
     return null;
@@ -22494,6 +22500,16 @@ ${suffix}`;
         renderArtistRank();
         await swapTo(from, viewRank, () => {
           viewRank.scrollTop = 0;
+        });
+        break;
+      }
+      case "trank": {
+        currentAlbumId = null;
+        currentSingleId = null;
+        currentArtistName = null;
+        renderTrackRank();
+        await swapTo(from, viewTrank, () => {
+          viewTrank.scrollTop = 0;
         });
         break;
       }
@@ -22714,12 +22730,30 @@ ${suffix}`;
     renderArtistRank();
     await navigateTo(viewRank, { view: "rank" });
   }
-  artistsBtn.addEventListener("click", () => {
-    if (homeMode === "single") void openSingleRank();
-    else void openArtists();
+  function setRankMenu(open) {
+    rankMenuList.hidden = !open;
+    artistsBtn.setAttribute("aria-expanded", String(open));
+    artistsBtn.classList.toggle("is-open", open);
+  }
+  artistsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setRankMenu(rankMenuList.hidden);
+  });
+  document.addEventListener("click", (e) => {
+    if (rankMenu.contains(e.target)) return;
+    setRankMenu(false);
+  });
+  rankMenuList.addEventListener("click", (e) => {
+    const item = e.target.closest(".rank-menu__item");
+    if (!item) return;
+    setRankMenu(false);
+    if (item.dataset.rank === "artists") void openArtists();
+    else if (item.dataset.rank === "singles") void openSingleRank();
+    else if (item.dataset.rank === "tracks") void openTrackRank();
   });
   rankBack.addEventListener("click", () => void goBack());
   srankBack.addEventListener("click", () => void goBack());
+  trankBack.addEventListener("click", () => void goBack());
   function singleRanks() {
     return singlesOnly().map((s) => ({
       single: s,
@@ -22768,6 +22802,101 @@ ${suffix}`;
   async function openSingleRank() {
     renderSingleRank();
     await navigateTo(viewSrank, { view: "rank" });
+  }
+  function trackVotesOf(trackId) {
+    const r = trackRatings[trackId];
+    return r ? Object.keys(r).length : 0;
+  }
+  function trackAllConfirmed(trackId) {
+    if (profileCache.size < 2) return false;
+    const r = trackRatings[trackId];
+    if (!r) return false;
+    for (const pid of profileCache.keys()) {
+      const e = r[pid];
+      if (!e || !e.confirmed) return false;
+    }
+    return true;
+  }
+  function trackRankedScoreOf(trackId) {
+    return trackAllConfirmed(trackId) ? trackScoreOf(trackId) : null;
+  }
+  function trackRankReason(trackId) {
+    return trackVotesOf(trackId) === 0 ? "\u043E\u0446\u0435\u043D\u043E\u043A \u043F\u043E\u043A\u0430 \u043D\u0435\u0442" : "\u0436\u0434\u0451\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u0441\u0435\u0445 \u043E\u0446\u0435\u043D\u043E\u043A";
+  }
+  function trackRanks() {
+    const out = [];
+    for (const a of albumsOnly()) {
+      for (const t of tracks) {
+        if (t.albumId !== a.id) continue;
+        if (t.singleId && singleById(t.singleId)) continue;
+        out.push({
+          kind: "track",
+          track: t,
+          album: a,
+          score: trackRankedScoreOf(t.id),
+          name: stripFeat(t.title).trim() || t.title
+        });
+      }
+    }
+    for (const s of singlesOnly()) {
+      out.push({ kind: "single", single: s, score: singleRankedScoreOf(s.id), name: singleDisplayTitle(s) });
+    }
+    return out.sort((a, b) => {
+      if (a.score === null && b.score === null) return a.name.localeCompare(b.name, "ru");
+      if (a.score === null) return 1;
+      if (b.score === null) return -1;
+      return b.score - a.score || a.name.localeCompare(b.name, "ru");
+    });
+  }
+  function renderTrackRank() {
+    trackRankList.innerHTML = "";
+    const list = trackRanks();
+    if (!list.length) {
+      const li = document.createElement("li");
+      li.className = "rank__empty";
+      li.textContent = "\u0442\u0440\u0435\u043A\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u2014 \u0434\u043E\u0431\u0430\u0432\u044C\u0442\u0435 \u0430\u043B\u044C\u0431\u043E\u043C \u0441 \u0442\u0440\u0435\u043A\u0430\u043C\u0438 \u0438\u043B\u0438 \u0441\u0438\u043D\u0433\u043B";
+      trackRankList.appendChild(li);
+      return;
+    }
+    list.forEach((r, i) => {
+      const pos = i + 1;
+      const li = document.createElement("li");
+      li.className = "rank" + (pos <= 3 && r.score !== null ? ` rank--${pos}` : "") + (r.score === null ? " is-unranked" : "");
+      let cover = "";
+      let artistText = "";
+      let meta = "";
+      if (r.kind === "track") {
+        const t = r.track;
+        const a = r.album;
+        cover = coverSrc(a);
+        artistText = t.featArtist ? `${a.artist} ft. ${t.featArtist}` : a.artist;
+        meta = `\u2116${t.position + 1} \xB7 \u0438\u0437 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \xAB${a.title}\xBB`;
+      } else {
+        const s = r.single;
+        cover = coverSrc(s);
+        artistText = singleArtistText(s);
+      }
+      if (r.score === null) {
+        meta = meta ? `${meta} \xB7 ${r.kind === "track" ? trackRankReason(r.track.id) : singleRankReason(r.single.id)}` : r.kind === "track" ? trackRankReason(r.track.id) : singleRankReason(r.single.id);
+      }
+      li.innerHTML = `
+      <span class="rank__pos">${pos}</span>
+      <span class="rank__ava"><img src="${esc(cover)}" alt="" loading="lazy"></span>
+      <div class="rank__body">
+        <span class="rank__name">${esc(r.name)}</span>
+        <span class="rank__meta">${esc(artistText)}${meta ? ` \xB7 ${esc(meta)}` : ""}</span>
+      </div>
+      <span class="rank__score">${r.score === null ? "\u2014" : fmt(r.score)}</span>`;
+      li.addEventListener("click", () => {
+        if (r.kind === "track" && r.album) void openAlbum(r.album.id);
+        else if (r.kind === "single" && r.single) void openSingle(r.single.id);
+      });
+      trackRankList.appendChild(li);
+    });
+  }
+  async function openTrackRank() {
+    renderTrackRank();
+    await navigateTo(viewTrank, { view: "trank" });
   }
   async function openArtist(name) {
     if (!name) return;
@@ -23785,11 +23914,15 @@ ${suffix}`;
     const al = albums.find((a) => a.id === t.albumId);
     if (!al || !currentUser) return;
     if (!singleById(t.singleId ?? "")) {
+      const guestFromTitle = featNameOf(t.title)?.replace(/[),.\s]+$/, "").trim() ?? "";
+      const guest = (t.featArtist ?? "").trim() || guestFromTitle || "";
+      const cleanTitle = stripFeat(t.title).trim() || t.title.trim();
+      const singleTitle = guest ? `${cleanTitle} (feat. ${canonicalArtistName(guest)})` : cleanTitle;
       try {
         if (CLOUD) {
           const ins = await getSB().from("albums").insert({
             artist: al.artist,
-            title: t.title,
+            title: singleTitle,
             year: al.year,
             cover_url: null,
             tracks_locked: false,
@@ -23802,7 +23935,10 @@ ${suffix}`;
             throw ins.error;
           }
           const singleId = ins.data.id;
-          const upd = await getSB().from("tracks").update({ single_id: singleId }).eq("id", t.id);
+          const upd = await getSB().from("tracks").update({
+            single_id: singleId,
+            ...t.title !== cleanTitle || (t.featArtist ?? "") !== guest ? { title: cleanTitle, feat_artist: guest || null } : {}
+          }).eq("id", t.id);
           if (upd.error) throw upd.error;
           await refreshData();
         } else {
@@ -23810,7 +23946,7 @@ ${suffix}`;
           albums.push({
             id: singleId,
             artist: al.artist,
-            title: t.title,
+            title: singleTitle,
             year: al.year,
             cover: "",
             kind: "single",
@@ -23819,7 +23955,7 @@ ${suffix}`;
             cohesion: null,
             albumType: null
           });
-          tracks = tracks.map((x) => x.id === t.id ? { ...x, singleId } : x);
+          tracks = tracks.map((x) => x.id === t.id ? { ...x, title: cleanTitle, featArtist: guest || null, singleId } : x);
           saveLocalAlbums();
           saveLocalTracks();
           shareRatingsWithSingles();
@@ -24181,6 +24317,10 @@ ${suffix}`;
       closeAllFinSelects();
       return;
     }
+    if (!rankMenuList.hidden) {
+      setRankMenu(false);
+      return;
+    }
     if (visibleView() && !viewHome.classList.contains("is-visible")) void goBack();
   });
   async function addAlbum(input) {
@@ -24266,9 +24406,21 @@ ${suffix}`;
       shakeEl(addPanel);
       return;
     }
-    const artist = normalizeArtist(artistRaw);
+    let artist = normalizeArtist(artistRaw);
+    let titleRecorded = titleRaw;
+    if (single) {
+      const m = FEAT_RE.exec(artistRaw);
+      if (m) {
+        const main = artistRaw.slice(0, m.index ?? 0).trim();
+        const guest = artistRaw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, "").trim();
+        if (main && guest) {
+          artist = normalizeArtist(main);
+          titleRecorded = m[0] === "&" ? `${titleRaw} & ${guest}` : `${titleRaw} (feat. ${guest})`;
+        }
+      }
+    }
     const dup = albums.some(
-      (a) => a.kind === addKind && a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === titleRaw.toLowerCase()
+      (a) => a.kind === addKind && a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === titleRecorded.toLowerCase()
     );
     if (dup) {
       showTitleError(`\u0442\u0430\u043A\u043E\u0439 ${what} \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C`);
@@ -24281,7 +24433,7 @@ ${suffix}`;
     try {
       const createdId = await addAlbum({
         artist,
-        title: titleRaw,
+        title: titleRecorded,
         year: Number(yearRaw),
         coverDataUrl: pendingCover && pendingCover.startsWith("data:") ? pendingCover : null,
         coverUrl: pendingCover && !pendingCover.startsWith("data:") ? pendingCover : null,

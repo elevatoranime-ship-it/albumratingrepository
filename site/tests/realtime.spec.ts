@@ -240,6 +240,7 @@ test('home, artist profile and rankings update while they are open', async ({ pa
   await expect(page.locator('#artist-score')).toHaveText('10');
   await page.locator('#artist-back').click();
   await page.locator('#artists-btn').click();
+  await page.locator('#rank-menu-list .rank-menu__item[data-rank="artists"]').click();
   await expect(page.locator('#view-rank')).toHaveClass(/is-visible/);
   cloud.peer(6);
   await expect(page.locator('#artist-rank-list .rank__score')).toHaveText('6');

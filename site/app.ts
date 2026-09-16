@@ -123,6 +123,7 @@ type ViewEntry =
   | { view: 'artist' }
   | { view: 'profile' }
   | { view: 'rank' }
+  | { view: 'trank' }
   | { view: 'add'; kind: ReleaseKind };
 const viewStack: ViewEntry[] = [{ view: 'home' }];
 const profileCache = new Map<string, { username: string; initials: string; avatarUrl: string | null }>(); // profileId -> подпись + аватар
@@ -487,6 +488,7 @@ function renderSynchronizedData(changed: boolean): void {
     if (viewArtist.classList.contains('is-visible')) renderArtistPage();
     if (viewRank.classList.contains('is-visible')) renderArtistRank();
     if (viewSrank.classList.contains('is-visible')) renderSingleRank();
+    if (viewTrank.classList.contains('is-visible')) renderTrackRank();
     if (viewAlbum.classList.contains('is-visible')) renderAlbumSingles();
     // ссылка на страницу сингла могла исчезнуть (сингл удалён из другой вкладки)
     if (viewSingle.classList.contains('is-visible') && !currentSingle()) {
@@ -862,7 +864,7 @@ function coverSrc(a: UiAlbum): string {
 }
 
 /* --- фиты и профили артистов --- */
-const FEAT_RE = /(\bfeat\.|\bft\.|&)/i;
+const FEAT_RE = /(\bfeat\b\.?|\bft\b\.?|&)/i;
 
 function featNameOf(title: string): string | null {
   const m = FEAT_RE.exec(title);
@@ -1225,6 +1227,11 @@ const singleDeleteBtn = q<HTMLButtonElement>('#single-delete-btn');
 /* рейтинг синглов */
 const viewSrank = q<HTMLElement>('#view-srank');
 const srankBack = q<HTMLButtonElement>('#srank-back');
+const viewTrank = q<HTMLElement>('#view-trank');
+const trankBack = q<HTMLButtonElement>('#trank-back');
+const trackRankList = q<HTMLOListElement>('#track-rank-list');
+const rankMenu = q<HTMLDivElement>('#rank-menu');
+const rankMenuList = q<HTMLUListElement>('#rank-menu-list');
 const singleRankList = q<HTMLOListElement>('#single-rank-list');
 
 /* синглы на странице альбома */
@@ -1421,7 +1428,7 @@ function applyHomeMode(): void {
   segAlbums.tabIndex = albumMode ? 0 : -1;
   segSingles.tabIndex = albumMode ? -1 : 0;
   homeHdrTitle.textContent = albumMode ? 'Альбомы' : 'Синглы';
-  rankBtnLabel.textContent = albumMode ? 'рейтинг артистов' : 'рейтинг синглов';
+  rankBtnLabel.textContent = 'рейтинги';
   moveSegThumb();
 }
 
@@ -2788,7 +2795,7 @@ function getDragAfterElement(container: HTMLElement, y: number): HTMLLIElement |
 
 /* --- навигация (единый стек) --- */
 function visibleView(): HTMLElement | null {
-  for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewAdd]) {
+  for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewTrank, viewAdd]) {
     if (v.classList.contains('is-visible')) return v;
   }
   return null;
@@ -2847,6 +2854,14 @@ async function goBack(): Promise<void> {
       currentArtistName = null;
       renderArtistRank();
       await swapTo(from, viewRank, () => { viewRank.scrollTop = 0; });
+      break;
+    }
+    case 'trank': {
+      currentAlbumId = null;
+      currentSingleId = null;
+      currentArtistName = null;
+      renderTrackRank();
+      await swapTo(from, viewTrank, () => { viewTrank.scrollTop = 0; });
       break;
     }
     case 'add': {
@@ -3086,14 +3101,31 @@ async function openArtists(): Promise<void> {
   await navigateTo(viewRank, { view: 'rank' });
 }
 
-/* Кнопка «рейтинг» ведёт в рейтинг того раздела, который открыт на главной:
-   альбомы → артисты, синглы → топ синглов. */
-artistsBtn.addEventListener('click', () => {
-  if (homeMode === 'single') void openSingleRank();
-  else void openArtists();
+/* Меню «рейтинги» в шапке: артисты / синглы / все треки. */
+function setRankMenu(open: boolean): void {
+  rankMenuList.hidden = !open;
+  artistsBtn.setAttribute('aria-expanded', String(open));
+  artistsBtn.classList.toggle('is-open', open);
+}
+artistsBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  setRankMenu(rankMenuList.hidden);
+});
+document.addEventListener('click', (e) => {
+  if (rankMenu.contains(e.target as Node)) return;
+  setRankMenu(false);
+});
+rankMenuList.addEventListener('click', (e) => {
+  const item = (e.target as HTMLElement).closest<HTMLButtonElement>('.rank-menu__item');
+  if (!item) return;
+  setRankMenu(false);
+  if (item.dataset.rank === 'artists') void openArtists();
+  else if (item.dataset.rank === 'singles') void openSingleRank();
+  else if (item.dataset.rank === 'tracks') void openTrackRank();
 });
 rankBack.addEventListener('click', () => void goBack());
 srankBack.addEventListener('click', () => void goBack());
+trankBack.addEventListener('click', () => void goBack());
 
 /* --- рейтинг синглов: только подтверждённые оценки --- */
 interface SingleRank { single: UiAlbum; score: number | null; votes: number; pending: number; }
@@ -3150,6 +3182,122 @@ function renderSingleRank(): void {
 async function openSingleRank(): Promise<void> {
   renderSingleRank();
   await navigateTo(viewSrank, { view: 'rank' });
+}
+
+/* --- рейтинг треков: треки альбомов и синглы вместе --- */
+interface TrackRankEntry {
+  kind: 'track' | 'single';
+  track?: UiTrack;
+  album?: UiAlbum;
+  single?: UiAlbum;
+  score: number | null;
+  name: string;
+}
+
+function trackVotesOf(trackId: string): number {
+  const r = trackRatings[trackId];
+  return r ? Object.keys(r).length : 0;
+}
+
+/* обе оценки трека подтверждены — трек попадает в рейтинг */
+function trackAllConfirmed(trackId: string): boolean {
+  if (profileCache.size < 2) return false;
+  const r = trackRatings[trackId];
+  if (!r) return false;
+  for (const pid of profileCache.keys()) {
+    const e = r[pid];
+    if (!e || !e.confirmed) return false;
+  }
+  return true;
+}
+
+function trackRankedScoreOf(trackId: string): number | null {
+  return trackAllConfirmed(trackId) ? trackScoreOf(trackId) : null;
+}
+
+function trackRankReason(trackId: string): string {
+  return trackVotesOf(trackId) === 0 ? 'оценок пока нет' : 'ждём подтверждения всех оценок';
+}
+
+function trackRanks(): TrackRankEntry[] {
+  const out: TrackRankEntry[] = [];
+  for (const a of albumsOnly()) {
+    for (const t of tracks) {
+      if (t.albumId !== a.id) continue;
+      // трек, отмеченный синглом, представлен своей карточкой сингла — без дубля
+      if (t.singleId && singleById(t.singleId)) continue;
+      out.push({
+        kind: 'track',
+        track: t,
+        album: a,
+        score: trackRankedScoreOf(t.id),
+        name: stripFeat(t.title).trim() || t.title,
+      });
+    }
+  }
+  for (const s of singlesOnly()) {
+    out.push({ kind: 'single', single: s, score: singleRankedScoreOf(s.id), name: singleDisplayTitle(s) });
+  }
+  return out.sort((a, b) => {
+    if (a.score === null && b.score === null) return a.name.localeCompare(b.name, 'ru');
+    if (a.score === null) return 1;
+    if (b.score === null) return -1;
+    return b.score - a.score || a.name.localeCompare(b.name, 'ru');
+  });
+}
+
+function renderTrackRank(): void {
+  trackRankList.innerHTML = '';
+  const list = trackRanks();
+  if (!list.length) {
+    const li = document.createElement('li');
+    li.className = 'rank__empty';
+    li.textContent = 'треков пока нет — добавьте альбом с треками или сингл';
+    trackRankList.appendChild(li);
+    return;
+  }
+  list.forEach((r, i) => {
+    const pos = i + 1;
+    const li = document.createElement('li');
+    li.className = 'rank' + (pos <= 3 && r.score !== null ? ` rank--${pos}` : '') + (r.score === null ? ' is-unranked' : '');
+    let cover = '';
+    let artistText = '';
+    let meta = '';
+    if (r.kind === 'track') {
+      const t = r.track!;
+      const a = r.album!;
+      cover = coverSrc(a);
+      artistText = t.featArtist ? `${a.artist} ft. ${t.featArtist}` : a.artist;
+      meta = `№${t.position + 1} · из альбома «${a.title}»`;
+    } else {
+      const s = r.single!;
+      cover = coverSrc(s);
+      artistText = singleArtistText(s);
+    }
+    if (r.score === null) {
+      meta = meta
+        ? `${meta} · ${r.kind === 'track' ? trackRankReason(r.track!.id) : singleRankReason(r.single!.id)}`
+        : (r.kind === 'track' ? trackRankReason(r.track!.id) : singleRankReason(r.single!.id));
+    }
+    li.innerHTML = `
+      <span class="rank__pos">${pos}</span>
+      <span class="rank__ava"><img src="${esc(cover)}" alt="" loading="lazy"></span>
+      <div class="rank__body">
+        <span class="rank__name">${esc(r.name)}</span>
+        <span class="rank__meta">${esc(artistText)}${meta ? ` · ${esc(meta)}` : ''}</span>
+      </div>
+      <span class="rank__score">${r.score === null ? '—' : fmt(r.score)}</span>`;
+    li.addEventListener('click', () => {
+      if (r.kind === 'track' && r.album) void openAlbum(r.album.id);
+      else if (r.kind === 'single' && r.single) void openSingle(r.single.id);
+    });
+    trackRankList.appendChild(li);
+  });
+}
+
+async function openTrackRank(): Promise<void> {
+  renderTrackRank();
+  await navigateTo(viewTrank, { view: 'trank' });
 }
 
 async function openArtist(name: string): Promise<void> {
@@ -4280,11 +4428,17 @@ async function markTrackAsSingle(t: UiTrack): Promise<void> {
   const al = albums.find((a) => a.id === t.albumId);
   if (!al || !currentUser) return;
   if (!singleById(t.singleId ?? '')) {
+    // Название трека должно быть чистым, а фит — в отдельном поле: выносим
+    // гостя из названия (если он там) и приводим трек в порядок заранее.
+    const guestFromTitle = featNameOf(t.title)?.replace(/[),.\s]+$/, '').trim() ?? '';
+    const guest = (t.featArtist ?? '').trim() || guestFromTitle || '';
+    const cleanTitle = stripFeat(t.title).trim() || t.title.trim();
+    const singleTitle = guest ? `${cleanTitle} (feat. ${canonicalArtistName(guest)})` : cleanTitle;
     try {
       if (CLOUD) {
         const ins = await getSB().from('albums').insert({
           artist: al.artist,
-          title: t.title,
+          title: singleTitle,
           year: al.year,
           cover_url: null,
           tracks_locked: false,
@@ -4297,16 +4451,19 @@ async function markTrackAsSingle(t: UiTrack): Promise<void> {
           throw ins.error;
         }
         const singleId = (ins.data as { id: string }).id;
-        const upd = await getSB().from('tracks').update({ single_id: singleId }).eq('id', t.id);
+        const upd = await getSB().from('tracks').update({
+          single_id: singleId,
+          ...(t.title !== cleanTitle || (t.featArtist ?? '') !== guest ? { title: cleanTitle, feat_artist: guest || null } : {}),
+        }).eq('id', t.id);
         if (upd.error) throw upd.error;
         await refreshData();
       } else {
         const singleId = 's' + Date.now().toString(36);
         albums.push({
-          id: singleId, artist: al.artist, title: t.title, year: al.year, cover: '',
+          id: singleId, artist: al.artist, title: singleTitle, year: al.year, cover: '',
           kind: 'single', parentId: al.id, tracksLocked: false, cohesion: null, albumType: null,
         });
-        tracks = tracks.map((x) => (x.id === t.id ? { ...x, singleId } : x));
+        tracks = tracks.map((x) => (x.id === t.id ? { ...x, title: cleanTitle, featArtist: guest || null, singleId } : x));
         saveLocalAlbums();
         saveLocalTracks();
         shareRatingsWithSingles();
@@ -4711,6 +4868,7 @@ document.addEventListener('keydown', (e) => {
   }
   if (!confirmModal.hidden) { closeConfirm(false); return; }
   if (document.querySelector('.fin-select.is-open')) { closeAllFinSelects(); return; }
+  if (!rankMenuList.hidden) { setRankMenu(false); return; }
   if (visibleView() && !viewHome.classList.contains('is-visible')) void goBack();
 });
 
@@ -4804,11 +4962,27 @@ async function handleAdd(): Promise<void> {
     return;
   }
 
-  const artist = normalizeArtist(artistRaw);
+  // Фит/совместка в поле артиста (только для синглов): «Артист & Гость» или
+  // «Артист feat. Гость». Основным исполнителем становится первый, гость
+  // записывается в название сингла и показывается в блоке артиста.
+  let artist = normalizeArtist(artistRaw);
+  let titleRecorded = titleRaw;
+  if (single) {
+    const m = FEAT_RE.exec(artistRaw);
+    if (m) {
+      const main = artistRaw.slice(0, m.index ?? 0).trim();
+      const guest = artistRaw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, '').trim();
+      if (main && guest) {
+        artist = normalizeArtist(main);
+        titleRecorded = m[0] === '&' ? `${titleRaw} & ${guest}` : `${titleRaw} (feat. ${guest})`;
+      }
+    }
+  }
+
   const dup = albums.some(
     (a) => a.kind === addKind
       && a.artist.toLowerCase() === artist.toLowerCase()
-      && a.title.toLowerCase() === titleRaw.toLowerCase(),
+      && a.title.toLowerCase() === titleRecorded.toLowerCase(),
   );
   if (dup) {
     showTitleError(`такой ${what} у этого артиста уже есть`);
@@ -4822,7 +4996,7 @@ async function handleAdd(): Promise<void> {
   try {
     const createdId = await addAlbum({
       artist,
-      title: titleRaw,
+      title: titleRecorded,
       year: Number(yearRaw),
       coverDataUrl: pendingCover && pendingCover.startsWith('data:') ? pendingCover : null,
       coverUrl: pendingCover && !pendingCover.startsWith('data:') ? pendingCover : null,

@@ -113,6 +113,7 @@ test('file cover persists without changing tracks, ratings or final album choice
   await expect(page.locator('#artist-own .album__cover img').first()).toHaveAttribute('src', saved.cover);
   await page.locator('#artist-back').click();
   await page.locator('#artists-btn').click();
+  await page.locator('#rank-menu-list .rank-menu__item[data-rank="artists"]').click();
   await expect(page.locator('#artist-rank-list img').first()).toHaveAttribute('src', saved.cover);
   await page.reload();
   await login(page);

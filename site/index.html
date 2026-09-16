@@ -120,8 +120,19 @@
           <div class="hdr__right reveal" style="--d:.12s">
             <span class="hdr__hello">привет, <strong id="home-title">Гость</strong></span>
             <div class="hdr__actions">
-              <button class="btn btn--ghost btn--sm" id="artists-btn" type="button"
-                      aria-haspopup="tablist"><span id="rank-btn-label">рейтинг артистов</span></button>
+              <div class="rank-menu" id="rank-menu">
+                <button class="btn btn--ghost btn--sm" id="artists-btn" type="button"
+                        aria-haspopup="menu" aria-expanded="false" aria-controls="rank-menu-list">
+                  <span id="rank-btn-label">рейтинги</span>
+                  <svg class="rank-menu__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <ul class="rank-menu__list" id="rank-menu-list" role="menu" aria-label="Рейтинги" hidden>
+                  <li role="none"><button class="rank-menu__item" role="menuitem" type="button" data-rank="artists">артисты</button></li>
+                  <li role="none"><button class="rank-menu__item" role="menuitem" type="button" data-rank="singles">синглы</button></li>
+                  <li role="none"><button class="rank-menu__item" role="menuitem" type="button" data-rank="tracks">все треки</button></li>
+                </ul>
+              </div>
               <button class="btn btn--ghost btn--sm hdr__profile" id="profile-btn" type="button">
                 <span class="hdr__avatar" id="home-avatar"></span>
                 <span>мой профиль</span>
@@ -533,6 +544,32 @@
             <p class="rank__sub">по среднему баллу · только подтверждённые оценки</p>
           </header>
           <ol class="rank__list reveal" id="single-rank-list" style="--d:.18s"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== РЕЙТИНГ ТРЕКОВ ===== -->
+    <section class="view view--rank" id="view-trank" aria-label="Рейтинг треков">
+      <div class="rankview">
+        <div class="av__top reveal" style="--d:.04s">
+          <button class="iconbtn" id="trank-back" type="button" aria-label="Назад">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="rank__panel">
+          <header class="rank__head reveal" style="--d:.1s">
+            <h1 class="rank__title">рейтинг треков</h1>
+            <svg class="rank__underline" viewBox="0 0 150 10" fill="none" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M5 6.4C34 3.2 66 8.6 96 5.4C118 3 136 6.8 145 5"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <p class="rank__sub">треки и синглы вместе · по среднему баллу · только подтверждённые оценки</p>
+          </header>
+          <ol class="rank__list reveal" id="track-rank-list" style="--d:.18s"></ol>
         </div>
       </div>
     </section>

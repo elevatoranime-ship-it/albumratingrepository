@@ -487,6 +487,9 @@ body {
   align-items: flex-start;
   gap: 24px;
   flex-wrap: wrap;
+  /* выпадающее меню «рейтинги» должно перекрывать контент под шапкой */
+  position: relative;
+  z-index: 20;
 }
 
 .hdr__title {

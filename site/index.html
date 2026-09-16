@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>Пространство · альбомы и синглы</title>
-  <link rel="stylesheet" href="styles.css?v=39" />
+  <link rel="stylesheet" href="styles.css?v=40" />
 </head>
 <body>
 
@@ -129,6 +129,13 @@
                 </button>
                 <ul class="rank-menu__list" id="rank-menu-list" role="menu" aria-label="Рейтинги" hidden>
                   <li role="none">
+                    <button class="rank-menu__item" role="menuitem" type="button" data-rank="albums">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="3.5" width="12.5" height="12.5" rx="2.5"/><path d="M5.5 7.5v10a3 3 0 0 0 3 3h10"/></svg>
+                      <span class="rank-menu__label">альбомы</span>
+                      <span class="rank-menu__count" data-count="albums"></span>
+                    </button>
+                  </li>
+                  <li role="none">
                     <button class="rank-menu__item" role="menuitem" type="button" data-rank="artists">
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.4-3.2 4-5 7-5s5.6 1.8 7 5"/></svg>
                       <span class="rank-menu__label">артисты</span>
@@ -248,6 +255,7 @@
               <span id="tracks-lock-label">зафиксировать количество</span>
             </button>
           </div>
+          <p class="av__tracks-hint" id="tracks-touch-hint">нажмите на трек, чтобы выделить строку — тогда можно двигать ползунок оценки; повторный тап по строке снимает выделение</p>
           <form class="av__addtrack" id="track-form" novalidate>
             <input class="field__input field__input--plain av__track-input" id="track-input" type="text"
                    autocomplete="off" spellcheck="false" placeholder="название трека…" />
@@ -444,6 +452,32 @@
             <p class="rank__sub">по среднему баллу · только подтверждённые оценки</p>
           </header>
           <ol class="rank__list reveal" id="artist-rank-list" style="--d:.18s"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== РЕЙТИНГ АЛЬБОМОВ ===== -->
+    <section class="view view--rank" id="view-arank" aria-label="Рейтинг альбомов">
+      <div class="rankview">
+        <div class="av__top reveal" style="--d:.04s">
+          <button class="iconbtn" id="arank-back" type="button" aria-label="Назад">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="rank__panel">
+          <header class="rank__head reveal" style="--d:.1s">
+            <h1 class="rank__title">рейтинг альбомов</h1>
+            <svg class="rank__underline" viewBox="0 0 150 10" fill="none" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M5 6.4C34 3.2 66 8.6 96 5.4C118 3 136 6.8 145 5"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <p class="rank__sub">каждый трек подтверждён всеми участниками · по среднему баллу</p>
+          </header>
+          <ol class="rank__list reveal" id="album-rank-list" style="--d:.18s"></ol>
         </div>
       </div>
     </section>
@@ -709,6 +743,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="app.js?v=38"></script>
+  <script src="app.js?v=39"></script>
 </body>
 </html>

@@ -1353,6 +1353,9 @@ body {
 .track__save { min-width: 76px; font-size: 11.5px; color: var(--text-faint); opacity: 0; transition: opacity 0.4s var(--ease-out); white-space: nowrap; }
 .track__save.is-visible { opacity: 1; }
 
+/* подсказка об активации строки — только на тач-экранах (см. блок (hover: none) ниже) */
+.av__tracks-hint { display: none; margin-top: 10px; font-size: 12px; line-height: 1.5; color: var(--text-faint); }
+
 /* инлайн-переименование */
 .track__rename-input {
   flex: 1; padding: 6px 10px;
@@ -1645,7 +1648,7 @@ body {
 .track.is-rated-locked .track__confirm-btn:hover { color: var(--accent); border-color: var(--accent-line); background: var(--accent-soft); }
 
 /* подтверждённая оценка — ползунок плавно сереет, поля блокируются */
-.track__slider { transition: background-color 0.45s var(--ease-out); }
+.track__slider { transition: background-color 0.45s var(--ease-out), opacity 0.25s var(--ease-out); }
 .track__slider::-webkit-slider-thumb {
   transition: background-color 0.45s var(--ease-out), box-shadow 0.45s var(--ease-out);
 }
@@ -1825,6 +1828,14 @@ body {
 }
 .rank-menu__item:hover { background: rgba(255,255,255,0.09); }
 .rank-menu__item:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+
+/* телефоны (≤ 700px): шапка становится колонкой и кнопка «рейтинги» стоит у левого
+   края — список раскрывается вправо, чтобы иконки и подписи полностью помещались
+   на экране (на десктопе кнопка справа, и список по-прежнему уходит влево) */
+@media (max-width: 700px) {
+  .rank-menu__list { right: auto; left: 0; }
+  .rank-menu__list:not([hidden]) { transform-origin: 15% 0; }
+}
 
 /* --- кликабельное имя артиста на карточке альбома (главная) --- */
 .album__artist-link {
@@ -2327,6 +2338,24 @@ body { -webkit-tap-highlight-color: transparent; }
 
   /* действия трека всегда видны */
   .track__actions { opacity: 1; }
+
+  /* подсказка, как активировать строку */
+  .av__tracks-hint { display: block; }
+
+  /* защита ползунка от случайных касаний: пока строка не выделена тапом,
+     слайдер не ловит пальцы (тап по его месту подсвечивает строку);
+     числовое поле и ✓ остаются доступными сразу */
+  .track__slider { pointer-events: none; opacity: 0.55; }
+  .track.is-active .track__slider { pointer-events: auto; opacity: 1; }
+
+  /* выделенная строка — «трек активен, готов к редактированию»: лавандовая
+     рамка, лёгкое свечение и тонировка фона (как у подтверждённых состояний) */
+  .track.is-active {
+    border-color: var(--accent-line);
+    background-image: linear-gradient(var(--accent-soft), var(--accent-soft));
+    box-shadow: 0 0 0 1px var(--accent-line), 0 18px 40px -22px var(--accent-glow);
+  }
+  .track.is-active .track__rate-label { color: var(--accent-strong); }
 
   /* не выделять текст при долгом тапе */
   button, .album, .rank, .profile, .fin-select__option, .combo__item {

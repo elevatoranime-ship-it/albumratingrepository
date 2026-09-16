@@ -833,11 +833,12 @@ test('рейтинг треков: треки и синглы вместе, то
   await cloud.install(page);
   await login(page);
 
-  // меню «рейтинги» в шапке: три пункта с иконками и счётчиками
+  // меню «рейтинги» в шапке: четыре пункта с иконками и счётчиками
   await page.locator('#artists-btn').click();
   await expect(page.locator('#rank-menu-list')).toBeVisible();
-  await expect(page.locator('#rank-menu-list .rank-menu__item')).toHaveCount(3);
-  await expect(page.locator('#rank-menu-list .rank-menu__item svg')).toHaveCount(3);
+  await expect(page.locator('#rank-menu-list .rank-menu__item')).toHaveCount(4);
+  await expect(page.locator('#rank-menu-list .rank-menu__item svg')).toHaveCount(4);
+  await expect(page.locator('.rank-menu__count[data-count="albums"]')).toHaveText('1');
   await expect(page.locator('.rank-menu__count[data-count="artists"]')).toHaveText('2');
   await expect(page.locator('.rank-menu__count[data-count="singles"]')).toHaveText('2');
   await expect(page.locator('.rank-menu__count[data-count="tracks"]')).toHaveText('3');

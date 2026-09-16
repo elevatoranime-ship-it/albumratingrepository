@@ -1007,6 +1007,44 @@ body {
   background: #0d0d10;
 }
 .av__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* --- замена обложки: «проявление» новой обложки с бликом и лавандовым всплеском ---
+   Класс вешается на figure (страницы альбома и сингла) только при замене
+   существующей обложки; при уменьшении движения отключается глобальным правилом. */
+.av__cover.is-fresh img,
+.sv__cover.is-fresh img {
+  animation: coverDevelop 0.9s var(--ease-out) both;
+}
+.av__cover.is-fresh::before,
+.sv__cover.is-fresh::before {
+  content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(183,168,239,0.5), inset 0 0 42px rgba(168,155,235,0.22);
+  animation: coverGlow 1.25s var(--ease-out) both;
+}
+.av__cover.is-fresh::after,
+.sv__cover.is-fresh::after {
+  content: ''; position: absolute; inset: -2px; z-index: 3; pointer-events: none;
+  background: linear-gradient(112deg,
+    transparent 30%,
+    rgba(214,204,246,0.10) 43%,
+    rgba(243,241,236,0.30) 50%,
+    rgba(214,204,246,0.10) 57%,
+    transparent 70%);
+  transform: translateX(-130%);
+  animation: coverShine 1.15s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes coverDevelop {
+  from { opacity: 0; transform: scale(1.05); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes coverGlow {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes coverShine {
+  to { transform: translateX(130%); }
+}
 .av__year {
   position: absolute; top: 12px; right: 12px;
   padding: 4px 10px;
@@ -2432,6 +2470,7 @@ body { -webkit-tap-highlight-color: transparent; }
 .sv__artist { margin-top: 8px; font-size: 15px; color: var(--text-faint); }
 .sv__parent {
   --parent-control-gap: 12px;
+  position: relative;
   display: block;
   margin-top: 20px;
   padding-top: 14px;
@@ -2455,6 +2494,59 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 .sv__parent-edit:hover { color: var(--text); border-color: var(--text-faint); }
 .sv__parent-edit:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 3px; }
+
+/* глаз у привязки: удерживайте — всплывает миниатюра обложки альбома */
+.sv__peek {
+  display: inline-grid; place-items: center;
+  width: 26px; height: 26px; margin-left: 7px; padding: 0;
+  vertical-align: middle;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-faint);
+  cursor: pointer;
+  user-select: none; -webkit-touch-callout: none; touch-action: none;
+  transition: color 0.25s var(--ease-out), background-color 0.25s var(--ease-out),
+              border-color 0.25s var(--ease-out), transform 0.2s var(--ease-out);
+}
+.sv__peek svg { width: 16px; height: 16px; display: block; }
+.sv__peek:hover { color: var(--text); background: rgba(255,255,255,0.05); border-color: var(--line); }
+.sv__peek:active { transform: scale(0.9); color: var(--text); }
+.sv__peek:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+
+.sv__peek-card {
+  position: absolute; bottom: calc(100% + 12px); left: 0; z-index: 40;
+  width: 148px; padding: 7px;
+  background: #30303a;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 14px;
+  box-shadow: 0 24px 50px -10px rgba(0,0,0,0.95), 0 0 0 1px rgba(0,0,0,0.55);
+  display: flex; flex-direction: column; gap: 5px;
+  transform-origin: 14px 100%;
+}
+.sv__peek-card:not([hidden]) {
+  animation: peekIn 0.18s var(--ease-out) both;
+}
+@keyframes peekIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.95); }
+  to   { opacity: 1; transform: none; }
+}
+.sv__peek-img {
+  width: 100%; aspect-ratio: 1 / 1;
+  object-fit: cover; display: block;
+  border-radius: 9px;
+  background: #0d0d10;
+}
+.sv__peek-title {
+  padding: 0 2px;
+  font-size: 12px; line-height: 1.3; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sv__peek-artist {
+  padding: 0 2px 1px;
+  font-size: 11px; color: var(--text-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .sv__origin {
   margin-top: 10px;
   font-family: var(--serif);

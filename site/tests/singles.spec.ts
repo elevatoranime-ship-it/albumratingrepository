@@ -306,6 +306,32 @@ test('фит из названия сингла показывается в бл
   await expect(row.locator('.rank__meta')).toContainText('Основной & Гость');
 });
 
+test('глаз у привязки: удержание показывает миниатюру альбома', async ({ page }) => {
+  const cloud = backend();
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await cardByTitle(page, 'Первый сингл').locator('.album__title').click();
+  await expect(page.locator('#view-single')).toHaveClass(/is-visible/);
+
+  const peek = page.locator('#sv-parent-peek');
+  await expect(peek).toBeVisible();
+  const box = (await peek.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();                          // зажали — миниатюра видна
+  await expect(page.locator('#sv-peek-card')).toBeVisible();
+  await expect(page.locator('#sv-peek-title')).toHaveText('Общий альбом');
+  await expect(page.locator('#sv-peek-artist')).toHaveText('Артист');
+  await page.mouse.up();                            // отпустили — скрылась
+  await expect(page.locator('#sv-peek-card')).toBeHidden();
+
+  // у сингла вне альбома глаза нет
+  await page.locator('#single-back').click();
+  await cardByTitle(page, 'Отдельный сингл').locator('.album__title').click();
+  await expect(page.locator('#sv-parent-peek')).toBeHidden();
+  await expect(page.locator('#sv-peek-card')).toBeHidden();
+});
+
 test('трек-сингл и релиз делят оценку: подтверждение на альбоме видно на сингле', async ({ page }) => {
   const cloud = backend();
   await cloud.install(page);

@@ -20421,7 +20421,10 @@ ${suffix}`;
         const artistHtml = singleArtistHTML(s, "sv__artist-link");
         if (svArtist.innerHTML !== artistHtml) svArtist.innerHTML = artistHtml;
         if (svYear.textContent !== String(s.year)) svYear.textContent = String(s.year);
-        if (svCoverImg.getAttribute("src") !== coverSrc(s)) renderSingleCover(s);
+        if (svCoverImg.getAttribute("src") !== coverSrc(s)) {
+          maybePlayCoverFresh(svCoverImg, coverSrc(s));
+          renderSingleCover(s);
+        }
         renderSingleParents(s);
         const origin = singleOriginText(s);
         svOrigin.hidden = !origin;
@@ -20437,7 +20440,10 @@ ${suffix}`;
           avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
         }
         avYear.textContent = String(al.year);
-        if (avCoverImg.getAttribute("src") !== coverSrc(al)) renderAlbumCover(al);
+        if (avCoverImg.getAttribute("src") !== coverSrc(al)) {
+          maybePlayCoverFresh(avCoverImg, coverSrc(al));
+          renderAlbumCover(al);
+        }
         if (finalizeRenderDeferred && !document.querySelector(".fin-select.is-open")) {
           renderFinalize();
           finalizeRenderDeferred = false;
@@ -20981,6 +20987,11 @@ ${suffix}`;
   var viewSingle = q("#view-single");
   var singleBack = q("#single-back");
   var svCoverImg = q("#sv-cover-img");
+  var svPeekBtn = q("#sv-parent-peek");
+  var svPeekCard = q("#sv-peek-card");
+  var svPeekImg = q("#sv-peek-img");
+  var svPeekTitle = q("#sv-peek-title");
+  var svPeekArtist = q("#sv-peek-artist");
   var svCoverEdit = q("#sv-cover-edit");
   var svCoverEditLabel = q("#sv-cover-edit-label");
   var svYear = q("#sv-year");
@@ -21408,9 +21419,35 @@ ${suffix}`;
     updateAlbumCoverControls();
     albumCoverUrlTimer = window.setTimeout(() => void previewAlbumCover(url, request), 400);
   });
+  function playCoverFresh(img) {
+    const fig = img.closest("figure");
+    if (!fig) return;
+    fig.classList.remove("is-fresh");
+    void fig.offsetWidth;
+    const start = () => {
+      fig.classList.add("is-fresh");
+      const stop = () => {
+        fig.classList.remove("is-fresh");
+        img.removeEventListener("animationend", onAnimationEnd);
+        window.clearTimeout(fallback);
+      };
+      const onAnimationEnd = () => stop();
+      const fallback = window.setTimeout(stop, 2500);
+      img.addEventListener("animationend", onAnimationEnd, { once: true });
+    };
+    if (img.complete && img.naturalWidth > 0) start();
+    else img.addEventListener("load", start, { once: true });
+  }
+  function maybePlayCoverFresh(img, nextSrc) {
+    const prev = img.getAttribute("src") ?? "";
+    if (!prev || prev === nextSrc) return;
+    if (prev.startsWith("data:image/svg")) return;
+    playCoverFresh(img);
+  }
   async function saveAlbumCover(albumId, source) {
     if (!currentUser) throw new Error("\u0412\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u0430\u043A\u043A\u0430\u0443\u043D\u0442 \u0437\u0430\u043D\u043E\u0432\u043E");
     if (!albums.some((a) => a.id === albumId)) throw new Error("\u0410\u043B\u044C\u0431\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D");
+    const before = albums.find((a) => a.id === albumId)?.cover ?? "";
     let url = source;
     if (CLOUD) {
       if (source.startsWith("data:")) url = await uploadCover(source);
@@ -21429,11 +21466,16 @@ ${suffix}`;
       }
     }
     albums = next;
+    const replaced = Boolean(before) && before !== url;
     const al = currentAlbum();
-    if (al?.id === albumId) renderAlbumCover(al);
+    if (al?.id === albumId) {
+      renderAlbumCover(al);
+      if (replaced) playCoverFresh(avCoverImg);
+    }
     const s = currentSingle();
     if (s?.id === albumId) {
       renderSingleCover(s);
+      if (replaced) playCoverFresh(svCoverImg);
       if (currentAlbumId) renderAlbumSingles();
     }
   }
@@ -22999,6 +23041,16 @@ ${suffix}`;
       svParentLabel.dataset.content = html;
     }
     svParentEdit.textContent = parentsOf(s).length ? "\u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C" : "\u043F\u0440\u0438\u0432\u044F\u0437\u0430\u0442\u044C \u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443";
+    const parent = parentsOf(s)[0];
+    svPeekBtn.hidden = !parent;
+    if (parent) {
+      if (svPeekImg.getAttribute("src") !== coverSrc(parent)) svPeekImg.src = coverSrc(parent);
+      svPeekImg.alt = `${parent.artist} \u2014 ${parent.title}`;
+      svPeekTitle.textContent = parent.title;
+      svPeekArtist.textContent = parent.artist;
+    } else {
+      hideParentPeek();
+    }
   }
   var parentTransitions = /* @__PURE__ */ new WeakMap();
   async function toggleSingleParents(more) {
@@ -23596,6 +23648,33 @@ ${suffix}`;
   }
   svParentEdit.addEventListener("click", openSingleLinkEditor);
   svParentLabel.addEventListener("click", handleParentClick);
+  function showParentPeek() {
+    if (svPeekBtn.hidden) return;
+    svPeekCard.hidden = false;
+  }
+  function hideParentPeek() {
+    svPeekCard.hidden = true;
+  }
+  svPeekBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    showParentPeek();
+  });
+  for (const type of ["pointerup", "pointercancel"]) {
+    window.addEventListener(type, hideParentPeek);
+  }
+  svPeekBtn.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    showParentPeek();
+  });
+  svPeekBtn.addEventListener("keyup", (e) => {
+    if (e.key === "Enter" || e.key === " ") hideParentPeek();
+  });
+  svPeekBtn.addEventListener("blur", hideParentPeek);
+  svPeekBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideParentPeek();
+  });
   svArtist.addEventListener("click", (e) => {
     const a = e.target.closest(".sv__artist-link");
     if (!a) return;

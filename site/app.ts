@@ -504,7 +504,10 @@ function renderSynchronizedData(changed: boolean): void {
       const artistHtml = singleArtistHTML(s, 'sv__artist-link');
       if (svArtist.innerHTML !== artistHtml) svArtist.innerHTML = artistHtml;
       if (svYear.textContent !== String(s.year)) svYear.textContent = String(s.year);
-      if (svCoverImg.getAttribute('src') !== coverSrc(s)) renderSingleCover(s);
+      if (svCoverImg.getAttribute('src') !== coverSrc(s)) {
+        maybePlayCoverFresh(svCoverImg, coverSrc(s)); // до смены src: сравниваем со старой
+        renderSingleCover(s);
+      }
       renderSingleParents(s);
       const origin = singleOriginText(s);
       svOrigin.hidden = !origin;
@@ -520,7 +523,10 @@ function renderSynchronizedData(changed: boolean): void {
         avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
       }
       avYear.textContent = String(al.year);
-      if (avCoverImg.getAttribute('src') !== coverSrc(al)) renderAlbumCover(al);
+      if (avCoverImg.getAttribute('src') !== coverSrc(al)) {
+        maybePlayCoverFresh(avCoverImg, coverSrc(al)); // до смены src: сравниваем со старой
+        renderAlbumCover(al);
+      }
       if (finalizeRenderDeferred && !document.querySelector('.fin-select.is-open')) {
         renderFinalize();
         finalizeRenderDeferred = false;
@@ -1190,6 +1196,11 @@ const rankBtnLabel = q<HTMLSpanElement>('#rank-btn-label');
 const viewSingle = q<HTMLElement>('#view-single');
 const singleBack = q<HTMLButtonElement>('#single-back');
 const svCoverImg = q<HTMLImageElement>('#sv-cover-img');
+const svPeekBtn = q<HTMLButtonElement>('#sv-parent-peek');
+const svPeekCard = q<HTMLDivElement>('#sv-peek-card');
+const svPeekImg = q<HTMLImageElement>('#sv-peek-img');
+const svPeekTitle = q<HTMLSpanElement>('#sv-peek-title');
+const svPeekArtist = q<HTMLSpanElement>('#sv-peek-artist');
 const svCoverEdit = q<HTMLButtonElement>('#sv-cover-edit');
 const svCoverEditLabel = q<HTMLSpanElement>('#sv-cover-edit-label');
 const svYear = q<HTMLSpanElement>('#sv-year');
@@ -1673,9 +1684,44 @@ albumCoverUrl.addEventListener('input', () => {
   albumCoverUrlTimer = window.setTimeout(() => void previewAlbumCover(url, request), 400);
 });
 
+/**
+ * Эффект «свежей обложки» после замены: новая обложка проявляется с лёгким
+ * увеличением, по ней проходит блик и вспыхивает лавандовый контур.
+ * Стартуем по событию load, чтобы анимация не играла на старом изображении.
+ */
+function playCoverFresh(img: HTMLImageElement): void {
+  const fig = img.closest('figure');
+  if (!fig) return;
+  fig.classList.remove('is-fresh');
+  void fig.offsetWidth; // перезапуск, если эффект ещё не отыграл
+  const start = () => {
+    fig.classList.add('is-fresh');
+    const stop = () => {
+      fig.classList.remove('is-fresh');
+      img.removeEventListener('animationend', onAnimationEnd);
+      window.clearTimeout(fallback);
+    };
+    const onAnimationEnd = () => stop();
+    const fallback = window.setTimeout(stop, 2500);
+    img.addEventListener('animationend', onAnimationEnd, { once: true });
+  };
+  if (img.complete && img.naturalWidth > 0) start();
+  else img.addEventListener('load', start, { once: true });
+}
+
+/** Замена видимой обложки при фоновой сверке: играем эффект, если обложка
+    уже была (не первое добавление) и действительно поменялась. */
+function maybePlayCoverFresh(img: HTMLImageElement, nextSrc: string): void {
+  const prev = img.getAttribute('src') ?? '';
+  if (!prev || prev === nextSrc) return;
+  if (prev.startsWith('data:image/svg')) return; // была заглушка — это добавление, не замена
+  playCoverFresh(img);
+}
+
 async function saveAlbumCover(albumId: string, source: string): Promise<void> {
   if (!currentUser) throw new Error('Войдите в аккаунт заново');
   if (!albums.some((a) => a.id === albumId)) throw new Error('Альбом больше не доступен');
+  const before = albums.find((a) => a.id === albumId)?.cover ?? '';
   let url = source;
   if (CLOUD) {
     if (source.startsWith('data:')) url = await uploadCover(source);
@@ -1694,11 +1740,17 @@ async function saveAlbumCover(albumId: string, source: string): Promise<void> {
     catch { throw new Error('Не удалось сохранить обложку в браузере. Возможно, закончилось место. Попробуйте ссылку вместо файла.'); }
   }
   albums = next;
+  // Эффект — только при замене существующей обложки, не при первом добавлении.
+  const replaced = Boolean(before) && before !== url;
   const al = currentAlbum();
-  if (al?.id === albumId) renderAlbumCover(al);
+  if (al?.id === albumId) {
+    renderAlbumCover(al);
+    if (replaced) playCoverFresh(avCoverImg);
+  }
   const s = currentSingle();
   if (s?.id === albumId) {
     renderSingleCover(s);
+    if (replaced) playCoverFresh(svCoverImg);
     if (currentAlbumId) renderAlbumSingles(); // обложка сингла могла браться у альбома
   }
 }
@@ -3405,6 +3457,17 @@ function renderSingleParents(s: UiAlbum): void {
     svParentLabel.dataset.content = html;
   }
   svParentEdit.textContent = parentsOf(s).length ? 'изменить' : 'привязать к альбому';
+  // глаз с миниатюрой: показывает обложку первого (основного) альбома
+  const parent = parentsOf(s)[0];
+  svPeekBtn.hidden = !parent;
+  if (parent) {
+    if (svPeekImg.getAttribute('src') !== coverSrc(parent)) svPeekImg.src = coverSrc(parent);
+    svPeekImg.alt = `${parent.artist} — ${parent.title}`;
+    svPeekTitle.textContent = parent.title;
+    svPeekArtist.textContent = parent.artist;
+  } else {
+    hideParentPeek();
+  }
 }
 
 type ParentTransition = { animations: Animation[] };
@@ -4057,6 +4120,35 @@ async function saveSingleLink(parentIds: string[]): Promise<void> {
 
 svParentEdit.addEventListener('click', openSingleLinkEditor);
 svParentLabel.addEventListener('click', handleParentClick);
+
+/* --- глаз у привязки: пока зажат — видна миниатюра обложки альбома --- */
+function showParentPeek(): void {
+  if (svPeekBtn.hidden) return;
+  svPeekCard.hidden = false;
+}
+function hideParentPeek(): void {
+  svPeekCard.hidden = true;
+}
+svPeekBtn.addEventListener('pointerdown', (e) => {
+  e.preventDefault(); // без перетаскивания текста и фокуса — чистое «зажатие»
+  showParentPeek();
+});
+for (const type of ['pointerup', 'pointercancel'] as const) {
+  window.addEventListener(type, hideParentPeek);
+}
+svPeekBtn.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  e.preventDefault();
+  showParentPeek();
+});
+svPeekBtn.addEventListener('keyup', (e) => {
+  if (e.key === 'Enter' || e.key === ' ') hideParentPeek();
+});
+svPeekBtn.addEventListener('blur', hideParentPeek);
+svPeekBtn.addEventListener('contextmenu', (e) => e.preventDefault()); // долгий тап на телефоне
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') hideParentPeek();
+});
 svArtist.addEventListener('click', (e) => {
   const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('.sv__artist-link');
   if (!a) return;

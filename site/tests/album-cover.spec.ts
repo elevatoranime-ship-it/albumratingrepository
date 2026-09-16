@@ -172,6 +172,35 @@ test('cancel and Escape discard the draft and restore focus without leaving the 
   await expect(page.locator('#av-cover-edit')).toBeFocused();
 });
 
+test.describe('cover replace flourish', () => {
+  test.use({ reducedMotion: 'no-preference' });
+
+  test('замена обложки проигрывает эффект «свежей обложки»', async ({ page }) => {
+    await demo(page, 'covers/blonde.jpg');
+    await openAlbum(page);
+    const url = await imageUrl(page);
+    await openEditor(page);
+    await page.locator('#album-cover-url').fill(url);
+    await page.locator('#album-cover-save').click();
+    await expect(page.locator('#album-cover-dialog')).not.toBeVisible();
+    await expect(page.locator('#av-cover-img')).toHaveAttribute('src', url);
+    // эффект появляется после загрузки новой обложки и сам снимается по окончании
+    await expect.poll(() => page.locator('figure.av__cover').getAttribute('class')).toContain('is-fresh');
+    await expect.poll(() => page.locator('figure.av__cover').getAttribute('class'), { timeout: 5000 }).not.toContain('is-fresh');
+  });
+
+  test('первое добавление обложки эффекта не запускает', async ({ page }) => {
+    await demo(page);
+    await openAlbum(page);
+    await openEditor(page);
+    await pickFile(page);
+    await save(page);
+    await expect(page.locator('#av-cover-img')).toHaveAttribute('src', /^data:image\/jpeg/);
+    await page.waitForTimeout(300); // окно, за которое эффект успел бы появиться
+    await expect(page.locator('figure.av__cover')).not.toHaveClass(/is-fresh/);
+  });
+});
+
 test('reduced motion closes the dialog without an animation delay', async ({ page }) => {
   await demo(page);
   await openAlbum(page);

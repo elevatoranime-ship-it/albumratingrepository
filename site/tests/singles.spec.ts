@@ -332,11 +332,15 @@ test('глаз у привязки: удержание показывает ми
   await expect(page.locator('#sv-peek-title')).toHaveText('Общий альбом');
   await expect(page.locator('#sv-peek-artist')).toHaveText('Артист');
   // карточка — прямо справа от кнопки; наконечник висит с равными отступами
-  // 3px до кнопки и 3px до рамки (итого 13px между кнопкой и рамкой)
-  const card = page.locator('#sv-peek-card');
-  const [eyeBox, cardBox] = await Promise.all([peek.boundingBox(), card.boundingBox()]);
-  expect(cardBox!.x).toBeGreaterThanOrEqual(eyeBox!.x + eyeBox!.width);
-  expect(cardBox!.x - (eyeBox!.x + eyeBox!.width)).toBeCloseTo(13, 0);
+  // 3px до кнопки и 3px до рамки (итого 13px). Меряем раскладку (offsetLeft):
+  // пока кнопка зажата, она в :active чуть уменьшена трансформом, и её
+  // визуальный bbox сдвинут внутрь.
+  const gap = await page.evaluate(() => {
+    const btn = document.querySelector('#sv-parent-peek')!;
+    const el = document.querySelector('#sv-peek-card')!;
+    return el.offsetLeft - (btn.offsetLeft + btn.offsetWidth);
+  });
+  expect(gap).toBeCloseTo(13, 0);
   await page.mouse.up();                            // отпустили — скрылась
   await expect(page.locator('#sv-peek-card')).toBeHidden();
 

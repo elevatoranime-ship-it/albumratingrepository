@@ -24309,5 +24309,15 @@ ${suffix}`;
   }
 `;
   document.head.appendChild(style);
+  (() => {
+    const bgLayer = document.querySelector(".bg");
+    if (!bgLayer) return;
+    let timer = 0;
+    window.addEventListener("scroll", () => {
+      bgLayer.classList.add("is-scrolling");
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => bgLayer.classList.remove("is-scrolling"), 160);
+    }, { passive: true, capture: true });
+  })();
   void init();
 })();

@@ -539,6 +539,28 @@ test('экран добавления сингла: привязка к альб
   expect(insert?.body).toMatchObject({ artist: 'Новый артист', title: 'Свежий сингл', kind: 'single', parent_album_id: ALBUM.id });
 });
 
+test('подсказки появляются с анимацией, фон замирает при прокрутке', async ({ page }) => {
+  const cloud = backend();
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await page.locator('#albums .album--add').click();
+  await expect(page.locator('#view-add')).toHaveClass(/is-visible/);
+
+  // подсказки артистов плавно появляются (анимация задана видимому списку)
+  await page.locator('#artist-input').fill('Друг');
+  const list = page.locator('#artist-list');
+  await expect(list).toBeVisible();
+  await expect(list.locator('.combo__item').first()).toContainText('Другой артист');
+  expect(await list.evaluate((el) => getComputedStyle(el).animationName)).not.toBe('none');
+
+  // пока идёт прокрутка, декоративный фон приостанавливает «дыхание»,
+  // а после остановки продолжает — класс снимается сам
+  await page.evaluate(() => document.querySelector('#view-add')!.dispatchEvent(new Event('scroll')));
+  await expect(page.locator('.bg')).toHaveClass(/is-scrolling/);
+  await expect.poll(() => page.locator('.bg').getAttribute('class')).not.toContain('is-scrolling');
+});
+
 test('если миграция не выполнена, раздел синглов честно сообщает об этом', async ({ page }) => {
   await page.route('**/*', (route) => (new URL(route.request().url()).origin === 'http://127.0.0.1:8080' ? route.continue() : route.abort()));
   await page.route('**/config.js', (route) => route.fulfill({

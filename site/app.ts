@@ -4845,4 +4845,20 @@ style.textContent = `
 `;
 document.head.appendChild(style);
 
+/* производительность: пока пользователь прокручивает любой экран,
+   декоративный фон приостанавливает «дыхание» (класс .is-scrolling),
+   а через 160 мс после остановки продолжает с той же фазы.
+   Слушатель пассивный и в фазе захвата: события scroll не всплывают,
+   но проходят через window при захвате — ловим прокрутку всех экранов. */
+(() => {
+  const bgLayer = document.querySelector<HTMLElement>('.bg');
+  if (!bgLayer) return;
+  let timer = 0;
+  window.addEventListener('scroll', () => {
+    bgLayer.classList.add('is-scrolling');
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => bgLayer.classList.remove('is-scrolling'), 160);
+  }, { passive: true, capture: true });
+})();
+
 void init();

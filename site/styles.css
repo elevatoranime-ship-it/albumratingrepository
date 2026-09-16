@@ -66,6 +66,11 @@ body {
   50%      { opacity: 0.85; }
 }
 
+/* производительность: во время прокрутки декоративное «дыхание» фона
+   приостанавливается — слабым устройствам проще собирать кадр; после
+   остановки анимация продолжается с той же фазы, без скачка */
+.bg.is-scrolling .bg__glow { animation-play-state: paused; }
+
 /* зерно плёнки — поверх всего фона */
 .bg__noise {
   position: absolute; inset: 0;
@@ -659,6 +664,10 @@ body {
 }
 
 .add { max-width: 480px; margin: 0 auto; }
+/* производительность: содержимое формы при прокрутке статично — кэшируем его
+   отдельным композитным слоем, чтобы скролл не перерисовывал поля поверх
+   фиксированного фона; визуально ничего не меняется */
+.view--add .add { will-change: transform; }
 .add__top { margin-bottom: 16px; }
 
 /* карточка добавления — шире и просторнее, чем карточка входа */
@@ -769,6 +778,15 @@ body {
   max-height: 240px; overflow-y: auto;
   opacity: 1;
   isolation: isolate;
+}
+/* появление подсказок: мягкий выезд от поля (срабатывает при снятии hidden) */
+.combo__list:not([hidden]) {
+  animation: comboIn 0.2s var(--ease-out) both;
+  transform-origin: 50% 0;
+}
+@keyframes comboIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
 }
 .combo__item {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;

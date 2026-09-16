@@ -120,8 +120,37 @@
           <div class="hdr__right reveal" style="--d:.12s">
             <span class="hdr__hello">привет, <strong id="home-title">Гость</strong></span>
             <div class="hdr__actions">
-              <button class="btn btn--ghost btn--sm" id="artists-btn" type="button"
-                      aria-haspopup="tablist"><span id="rank-btn-label">рейтинг артистов</span></button>
+              <div class="rank-menu" id="rank-menu">
+                <button class="btn btn--ghost btn--sm" id="artists-btn" type="button"
+                        aria-haspopup="menu" aria-expanded="false" aria-controls="rank-menu-list">
+                  <span id="rank-btn-label">рейтинги</span>
+                  <svg class="rank-menu__caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                </button>
+                <ul class="rank-menu__list" id="rank-menu-list" role="menu" aria-label="Рейтинги" hidden>
+                  <li role="none">
+                    <button class="rank-menu__item" role="menuitem" type="button" data-rank="artists">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.4-3.2 4-5 7-5s5.6 1.8 7 5"/></svg>
+                      <span class="rank-menu__label">артисты</span>
+                      <span class="rank-menu__count" data-count="artists"></span>
+                    </button>
+                  </li>
+                  <li role="none">
+                    <button class="rank-menu__item" role="menuitem" type="button" data-rank="singles">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3M5.4 5.4l2.1 2.1M16.5 16.5l2.1 2.1M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1"/></svg>
+                      <span class="rank-menu__label">синглы</span>
+                      <span class="rank-menu__count" data-count="singles"></span>
+                    </button>
+                  </li>
+                  <li role="none">
+                    <button class="rank-menu__item" role="menuitem" type="button" data-rank="tracks">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 17.5V6l11-2v11.5"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="15.5" r="2.5"/></svg>
+                      <span class="rank-menu__label">все треки</span>
+                      <span class="rank-menu__count" data-count="tracks"></span>
+                    </button>
+                  </li>
+                </ul>
+              </div>
               <button class="btn btn--ghost btn--sm hdr__profile" id="profile-btn" type="button">
                 <span class="hdr__avatar" id="home-avatar"></span>
                 <span>мой профиль</span>
@@ -280,7 +309,7 @@
 
           <form class="form form--add" id="add-form" novalidate>
             <div class="field field--artist reveal" id="artist-field" style="--d:.12s">
-              <span class="field__label">Артист *</span>
+              <span class="field__label" id="artist-label">Артист *</span>
               <div class="combobox" id="artist-box">
                 <input class="field__input field__input--plain" id="artist-input" type="text"
                        autocomplete="off" spellcheck="false" placeholder="начните вводить…" />
@@ -290,6 +319,7 @@
                 </span>
                 <ul class="combo__list" id="artist-list" hidden></ul>
               </div>
+              <p class="cover-pick__note" id="artist-note" hidden></p>
             </div>
 
             <div class="field reveal" style="--d:.18s">
@@ -454,7 +484,11 @@
             <p class="sv__artist" id="sv-artist"></p>
 
             <div class="sv__parent" id="sv-parent">
-              <span class="sv__parent-label" id="sv-parent-label">сингл вне альбома</span><span class="parent-control-space" aria-hidden="true"> </span><button class="sv__parent-edit" id="sv-parent-edit" type="button">изменить</button>
+              <span class="sv__parent-label" id="sv-parent-label">сингл вне альбома</span><span class="parent-control-space" aria-hidden="true"> </span><button class="sv__parent-edit" id="sv-parent-edit" type="button">изменить</button><span class="sv__peek-wrap"><button class="sv__peek" id="sv-parent-peek" type="button" hidden aria-label="Обложка альбома — удерживайте, чтобы посмотреть" title="Удерживайте, чтобы посмотреть обложку"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12s3.5-6.5 9.5-6.5S21.5 12 21.5 12s-3.5 6.5-9.5 6.5S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/></svg></button><div class="sv__peek-card" id="sv-peek-card" role="tooltip" hidden>
+                <img class="sv__peek-img" id="sv-peek-img" alt="" />
+                <span class="sv__peek-title" id="sv-peek-title"></span>
+                <span class="sv__peek-artist" id="sv-peek-artist"></span>
+              </div></span>
             </div>
             <p class="sv__origin" id="sv-origin" hidden></p>
 
@@ -529,6 +563,32 @@
             <p class="rank__sub">по среднему баллу · только подтверждённые оценки</p>
           </header>
           <ol class="rank__list reveal" id="single-rank-list" style="--d:.18s"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== РЕЙТИНГ ТРЕКОВ ===== -->
+    <section class="view view--rank" id="view-trank" aria-label="Рейтинг треков">
+      <div class="rankview">
+        <div class="av__top reveal" style="--d:.04s">
+          <button class="iconbtn" id="trank-back" type="button" aria-label="Назад">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="rank__panel">
+          <header class="rank__head reveal" style="--d:.1s">
+            <h1 class="rank__title">рейтинг треков</h1>
+            <svg class="rank__underline" viewBox="0 0 150 10" fill="none" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M5 6.4C34 3.2 66 8.6 96 5.4C118 3 136 6.8 145 5"
+                    stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            <p class="rank__sub">треки и синглы вместе · по среднему баллу · только подтверждённые оценки</p>
+          </header>
+          <ol class="rank__list reveal" id="track-rank-list" style="--d:.18s"></ol>
         </div>
       </div>
     </section>

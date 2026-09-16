@@ -168,6 +168,14 @@ async function login(page: Page, email = ME.email) {
   await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
 }
 
+/* меню «рейтинги» в шапке: открыть и выбрать пункт */
+async function openRank(page: Page, which: 'artists' | 'singles' | 'tracks'): Promise<void> {
+  await page.locator('#artists-btn').click();
+  await expect(page.locator('#rank-menu-list')).toBeVisible();
+  await page.locator(`#rank-menu-list .rank-menu__item[data-rank="${which}"]`).click();
+  await expect(page.locator('#rank-menu-list')).toBeHidden();
+}
+
 const cards = (page: Page) => page.locator('#albums .album');
 const cardByTitle = (page: Page, title: string) => cards(page).filter({ has: page.locator('.album__title', { hasText: title }) });
 
@@ -178,13 +186,13 @@ test('главная: переключатель разделов, карточ�
 
   await expect(cards(page)).toHaveCount(2); // альбом + плитка добавления
   await expect(page.locator('#home-hdr-title')).toHaveText('Альбомы');
-  await expect(page.locator('#rank-btn-label')).toHaveText('рейтинг артистов');
+  await expect(page.locator('#rank-btn-label')).toHaveText('рейтинги');
 
   await page.locator('#seg-singles').click();
   await expect(page.locator('#home-hdr-title')).toHaveText('Синглы');
   await expect(cards(page)).toHaveCount(3); // два сингла + плитка
   await expect(page.locator('.album__badge')).toHaveCount(2);
-  await expect(page.locator('#rank-btn-label')).toHaveText('рейтинг синглов');
+  await expect(page.locator('#rank-btn-label')).toHaveText('рейтинги');
   await expect(page.locator('#albums .album--add')).toContainText('добавить сингл');
   await expect(cardByTitle(page, 'Первый сингл')).toContainText('к альбому «Общий альбом»');
   // карточка показывает среднее по всем оценкам релиза, как у альбомов: (8 + 6) / 2 = 7,
@@ -244,6 +252,111 @@ test('страница сингла: чужая неподтверждённая
   const upserts = cloud.state.writes.filter((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/single_ratings'));
   expect(upserts.length).toBeGreaterThan(0);
   expect(upserts[upserts.length - 1].body).toMatchObject({ album_id: SINGLE.id, profile_id: ME.id, score: 9, confirmed: true });
+});
+
+test('фит из названия сингла показывается в блоке артиста, а не в названии', async ({ page }) => {
+  const cloud = backend();
+  cloud.state.albums.push(
+    { ...SOLO, id: 'single-collab', title: 'Мегахит & Гость', artist: 'Основной', year: 2025 },
+    { ...SOLO, id: 'single-feat', title: 'Антология (ft. Гость)', artist: 'Основной', year: 2025 },
+  );
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+
+  // карточки на главной: название чистое, гостя показывает строка артиста
+  const collab = cardByTitle(page, 'Мегахит');
+  await expect(collab.locator('.album__title')).toHaveText('Мегахит');
+  await expect(collab.locator('.album__artist')).toHaveText('Основной & Гость');
+  const feat = cardByTitle(page, 'Антология');
+  await expect(feat.locator('.album__title')).toHaveText('Антология');
+  await expect(feat.locator('.album__artist')).toHaveText('Основной (feat. Гость)');
+
+  // страница сингла: «&» остаётся «&», оба имени — ссылки на профили
+  await collab.locator('.album__title').click();
+  await expect(page.locator('#sv-title')).toHaveText('Мегахит');
+  await expect(page.locator('#sv-artist')).toHaveText('Основной & Гость');
+  const guest = page.locator('#sv-artist a').nth(1);
+  await expect(guest).toHaveAttribute('data-artist', 'Гость');
+  await guest.click();
+  await expect(page.locator('#view-artist')).toHaveClass(/is-visible/);
+  await expect(page.locator('#artist-name')).toHaveText('Гость');
+  // гость видит совместный сингл в разделе «при участии» — с чистым названием
+  await expect(page.locator('#artist-feat')).toContainText('Мегахит');
+
+  // «ft.» в названии на экране сингла автоматически показывается как «feat.»
+  await page.locator('#artist-back').click();   // со страницы артиста — назад, на страницу сингла
+  await page.locator('#single-back').click();   // и на главную, где лежат карточки
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  await feat.locator('.album__title').click();
+  await expect(page.locator('#sv-title')).toHaveText('Антология');
+  await expect(page.locator('#sv-artist')).toHaveText('Основной (feat. Гость)');
+
+  // привязка совместки к чужому альбому: трек создаётся от чистого названия,
+  // без двойного «& Гость & Артист»
+  await page.locator('#single-back').click();
+  await collab.locator('.album__title').click();
+  await page.locator('#sv-parent-edit').click();
+  await expect(page.locator('#single-link-name')).toHaveText('Основной & Гость — Мегахит');
+  await page.locator('#single-link-input').fill('Общий');
+  await page.locator('#single-link-list .combo__item').first().click();
+  await page.locator('#single-link-save').click();
+  await expect(page.locator('#single-link-dialog')).not.toBeVisible();
+  const trackInsert = cloud.state.writes.filter((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/tracks')).pop();
+  expect(trackInsert?.body).toMatchObject({ album_id: ALBUM.id, title: 'Мегахит & Основной', feat_artist: 'Основной', single_id: 'single-collab' });
+
+  // рейтинг синглов: чистые названия, полный состав исполнителей — в подписи
+  await page.locator('#single-back').click();
+  await openRank(page, 'singles');
+  await expect(page.locator('#view-srank')).toHaveClass(/is-visible/);
+  const row = page.locator('#single-rank-list .rank').filter({ hasText: 'Мегахит' });
+  await expect(row.locator('.rank__name')).toHaveText('Мегахит');
+  await expect(row.locator('.rank__meta')).toContainText('Основной & Гость');
+});
+
+test('глаз у привязки: удержание показывает миниатюру альбома', async ({ page }) => {
+  const cloud = backend();
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await cardByTitle(page, 'Первый сингл').locator('.album__title').click();
+  await expect(page.locator('#view-single')).toHaveClass(/is-visible/);
+
+  const peek = page.locator('#sv-parent-peek');
+  await expect(peek).toBeVisible();
+  // глаз стоит после «изменить» с тем же отступом, что и остальные кнопки ряда
+  // (замер на широком экране — как в тесте равных отступов, без переносов)
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const gap = await page.evaluate(() => {
+    const edit = document.querySelector('#sv-parent-edit')!.getBoundingClientRect();
+    const eye = document.querySelector('#sv-parent-peek')!.getBoundingClientRect();
+    return eye.left - edit.right;
+  });
+  expect(gap).toBeCloseTo(12, 0);
+  const box = (await peek.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();                          // зажали — миниатюра видна
+  await expect(page.locator('#sv-peek-card')).toBeVisible();
+  await expect(page.locator('#sv-peek-title')).toHaveText('Общий альбом');
+  await expect(page.locator('#sv-peek-artist')).toHaveText('Артист');
+  // карточка — прямо справа от кнопки; наконечник висит с равными отступами
+  // 3px до кнопки и 3px до рамки (итого 13px). Меряем раскладку (offsetLeft):
+  // пока кнопка зажата, она в :active чуть уменьшена трансформом, и её
+  // визуальный bbox сдвинут внутрь.
+  const cardGap = await page.evaluate(() => {
+    const btn = document.querySelector('#sv-parent-peek')!;
+    const el = document.querySelector('#sv-peek-card')!;
+    return el.offsetLeft - (btn.offsetLeft + btn.offsetWidth);
+  });
+  expect(cardGap).toBeCloseTo(13, 0);
+  await page.mouse.up();                            // отпустили — скрылась
+  await expect(page.locator('#sv-peek-card')).toBeHidden();
+
+  // у сингла вне альбома глаза нет
+  await page.locator('#single-back').click();
+  await cardByTitle(page, 'Отдельный сингл').locator('.album__title').click();
+  await expect(page.locator('#sv-parent-peek')).toBeHidden();
+  await expect(page.locator('#sv-peek-card')).toBeHidden();
 });
 
 test('трек-сингл и релиз делят оценку: подтверждение на альбоме видно на сингле', async ({ page }) => {
@@ -312,7 +425,7 @@ test('рейтинг синглов: только релизы, подтверж
   await cloud.install(page);
   await login(page);
   await page.locator('#seg-singles').click();
-  await page.locator('#artists-btn').click();
+  await openRank(page, 'singles');
   await expect(page.locator('#view-srank')).toHaveClass(/is-visible/);
 
   const rows = page.locator('#single-rank-list .rank');
@@ -335,7 +448,7 @@ test('рейтинг синглов: только релизы, подтверж
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
   await expect(page.locator('#sv-confirm-state')).toContainText('подтверждён');
   await page.locator('#single-back').click();
-  await page.locator('#artists-btn').click();
+  await openRank(page, 'singles');
   await expect(page.locator('#single-rank-list .rank').first().locator('.rank__score')).toHaveText('7');   // (8 + 6) / 2
   await expect(page.locator('#single-rank-list .rank').first()).toContainText('Первый сингл');
 });
@@ -477,6 +590,28 @@ test('экран добавления сингла: привязка к альб
 
   const insert = cloud.state.writes.filter((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/albums')).pop();
   expect(insert?.body).toMatchObject({ artist: 'Новый артист', title: 'Свежий сингл', kind: 'single', parent_album_id: ALBUM.id });
+});
+
+test('подсказки появляются с анимацией, фон замирает при прокрутке', async ({ page }) => {
+  const cloud = backend();
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await page.locator('#albums .album--add').click();
+  await expect(page.locator('#view-add')).toHaveClass(/is-visible/);
+
+  // подсказки артистов плавно появляются (анимация задана видимому списку)
+  await page.locator('#artist-input').fill('Друг');
+  const list = page.locator('#artist-list');
+  await expect(list).toBeVisible();
+  await expect(list.locator('.combo__item').first()).toContainText('Другой артист');
+  expect(await list.evaluate((el) => getComputedStyle(el).animationName)).not.toBe('none');
+
+  // пока идёт прокрутка, декоративный фон приостанавливает «дыхание»,
+  // а после остановки продолжает — класс снимается сам
+  await page.evaluate(() => document.querySelector('#view-add')!.dispatchEvent(new Event('scroll')));
+  await expect(page.locator('.bg')).toHaveClass(/is-scrolling/);
+  await expect.poll(() => page.locator('.bg').getAttribute('class')).not.toContain('is-scrolling');
 });
 
 test('если миграция не выполнена, раздел синглов честно сообщает об этом', async ({ page }) => {
@@ -692,6 +827,112 @@ for (const count of [0, 1, 2, 5, 11, 21, 22, 101, 111]) {
     else await expect(page.locator('#sv-origin')).toHaveText(`Отмечен синглом в ${count} ${[1, 21, 101].includes(count) ? 'альбоме' : 'альбомах'}`);
   });
 }
+
+test('рейтинг треков: треки и синглы вместе, только подтверждённые', async ({ page }) => {
+  const cloud = backend();
+  await cloud.install(page);
+  await login(page);
+
+  // меню «рейтинги» в шапке: три пункта с иконками и счётчиками
+  await page.locator('#artists-btn').click();
+  await expect(page.locator('#rank-menu-list')).toBeVisible();
+  await expect(page.locator('#rank-menu-list .rank-menu__item')).toHaveCount(3);
+  await expect(page.locator('#rank-menu-list .rank-menu__item svg')).toHaveCount(3);
+  await expect(page.locator('.rank-menu__count[data-count="artists"]')).toHaveText('2');
+  await expect(page.locator('.rank-menu__count[data-count="singles"]')).toHaveText('2');
+  await expect(page.locator('.rank-menu__count[data-count="tracks"]')).toHaveText('3');
+  await page.locator('#rank-menu-list .rank-menu__item[data-rank="tracks"]').click();
+  await expect(page.locator('#view-trank')).toHaveClass(/is-visible/);
+
+  // трек-сингл не дублируется: Второй трек (без метки), Первый сингл, Отдельный сингл
+  let rows = page.locator('#track-rank-list .rank');
+  await expect(rows).toHaveCount(3);
+  for (const r of [rows.nth(0), rows.nth(1), rows.nth(2)]) {
+    await expect(r.locator('.rank__score')).toHaveText('—');
+  }
+
+  // оба участника подтвердили: трек 9+8, сингл 8+6 — попадают в топ с подсветкой
+  cloud.state.ratings.push({ track_id: TRACK_TWO.id, profile_id: ME.id, score: 9, confirmed: true });
+  cloud.state.ratings.push({ track_id: TRACK_TWO.id, profile_id: PEER.id, score: 8, confirmed: true });
+  cloud.state.singleRatings.find((r) => r.profile_id === PEER.id).confirmed = true;
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
+
+  await expect(rows.nth(0)).toHaveClass(/rank--1/);
+  await expect(rows.nth(0).locator('.rank__name')).toHaveText('Второй трек');
+  await expect(rows.nth(0).locator('.rank__score')).toHaveText('8.5');
+  // альбомный трек: артист, номер в альбоме и альбом
+  await expect(rows.nth(0).locator('.rank__meta')).toHaveText('Артист · №2 · из альбома «Общий альбом»');
+  await expect(rows.nth(1)).toHaveClass(/rank--2/);
+  await expect(rows.nth(1).locator('.rank__name')).toHaveText('Первый сингл');
+  await expect(rows.nth(1).locator('.rank__score')).toHaveText('7');
+  // сингл: только артист — без номера и альбома
+  await expect(rows.nth(1).locator('.rank__meta')).toHaveText('Артист');
+  await expect(rows.nth(2)).not.toHaveClass(/rank--\d/);
+  await expect(rows.nth(2)).toContainText('оценок пока нет');
+
+  // клик: трек → страница альбома, сингл → страница сингла
+  await rows.nth(0).click();
+  await expect(page.locator('#view-album')).toHaveClass(/is-visible/);
+  await page.locator('#album-back').click();
+  await rows.nth(1).click();
+  await expect(page.locator('#view-single')).toHaveClass(/is-visible/);
+});
+
+test('метка «сингл» выносит фит из названия трека в блок артиста сингла', async ({ page }) => {
+  const cloud = backend();
+  cloud.state.tracks.push({ id: 'track-feat', album_id: ALBUM.id, title: 'Фитовый трек ft. Гость', position: 2, locked: false, feat_artist: 'Гость', single_id: null });
+  await cloud.install(page);
+  await login(page);
+  await cardByTitle(page, 'Общий альбом').click();
+
+  await page.locator('#track-list .track[data-id="track-feat"] [data-act="single"]').click();
+  await expect(page.locator('#view-single')).toHaveClass(/is-visible/);
+  // экран сингла: чистое название, гость — в блоке артиста
+  await expect(page.locator('#sv-title')).toHaveText('Фитовый трек');
+  await expect(page.locator('#sv-artist')).toHaveText('Артист (feat. Гость)');
+
+  // сингл записан с фитом в названии, трек очищен
+  const insert = cloud.state.writes.filter((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/albums')).pop();
+  expect(insert?.body).toMatchObject({ artist: 'Артист', title: 'Фитовый трек (feat. Гость)', kind: 'single', parent_album_id: ALBUM.id });
+  const patch = cloud.state.writes.filter((w) => w.method === 'PATCH' && w.path.startsWith('/rest/v1/tracks')).pop();
+  expect(patch?.body).toMatchObject({ title: 'Фитовый трек', feat_artist: 'Гость', single_id: 'created-single' });
+});
+
+test('экран добавления сингла: фит и совместка в поле артиста', async ({ page }) => {
+  const cloud = backend();
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await page.locator('#albums .album--add').click();
+
+  // подсказка про фиты: обычная, затем живая — с именем гостя
+  await expect(page.locator('#artist-label')).toHaveText('Артист или совместка *');
+  await expect(page.locator('#artist-note')).toBeVisible();
+  await expect(page.locator('#artist-note')).toContainText('Артист & Гость');
+  await page.locator('#artist-input').fill('Основной & Гость');
+  await expect(page.locator('#artist-note')).toContainText('фит: Гость');
+
+  // совместка через «&»
+  await page.locator('#title-input').fill('Совместка');
+  await page.locator('#year-input').fill('2025');
+  await page.locator('#add-submit').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  let insert = cloud.state.writes.filter((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/albums')).pop();
+  expect(insert?.body).toMatchObject({ artist: 'Основной', title: 'Совместка & Гость', kind: 'single' });
+  const collab = cardByTitle(page, 'Совместка');
+  await expect(collab.locator('.album__title')).toHaveText('Совместка');
+  await expect(collab.locator('.album__artist')).toHaveText('Основной & Гость');
+
+  // фит через «feat.»
+  await page.locator('#albums .album--add').click();
+  await page.locator('#artist-input').fill('Второй основной feat. Второй гость');
+  await page.locator('#title-input').fill('Соло');
+  await page.locator('#year-input').fill('2025');
+  await page.locator('#add-submit').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  insert = cloud.state.writes.filter((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/albums')).pop();
+  expect(insert?.body).toMatchObject({ artist: 'Второй основной', title: 'Соло (feat. Второй гость)', kind: 'single' });
+});
 
 test('равные отступы, анимация раскрытия и быстрые повторные нажатия', async ({ page }) => {
   const cloud = backend();

@@ -20024,7 +20024,7 @@ ${suffix}`;
   ];
   var SEED_SINGLES = [
     { id: "s-nikes", title: "Nikes", artist: "Frank Ocean", year: 2016, cover: "", kind: "single", parentId: "blonde", tracksLocked: false, cohesion: null, albumType: null },
-    { id: "s-timeless", title: "Timeless", artist: "The Weeknd", year: 2024, cover: "", kind: "single", parentId: "hurry-up-tomorrow", tracksLocked: false, cohesion: null, albumType: null },
+    { id: "s-timeless", title: "Timeless & Playboi Carti", artist: "The Weeknd", year: 2024, cover: "", kind: "single", parentId: "hurry-up-tomorrow", tracksLocked: false, cohesion: null, albumType: null },
     { id: "s-mojo-jojo", title: "MOJO JOJO", artist: "Playboi Carti", year: 2025, cover: "", kind: "single", parentId: "music", parentIds: ["music", "music-demo"], tracksLocked: false, cohesion: null, albumType: null },
     { id: "s-not-like-us", title: "Not Like Us", artist: "Kendrick Lamar", year: 2024, cover: "covers/not-like-us.jpg", kind: "single", parentId: null, tracksLocked: false, cohesion: null, albumType: null }
   ];
@@ -20403,6 +20403,7 @@ ${suffix}`;
       if (viewArtist.classList.contains("is-visible")) renderArtistPage();
       if (viewRank.classList.contains("is-visible")) renderArtistRank();
       if (viewSrank.classList.contains("is-visible")) renderSingleRank();
+      if (viewTrank.classList.contains("is-visible")) renderTrackRank();
       if (viewAlbum.classList.contains("is-visible")) renderAlbumSingles();
       if (viewSingle.classList.contains("is-visible") && !currentSingle()) {
         viewStack.length = 0;
@@ -20417,9 +20418,14 @@ ${suffix}`;
     if (viewSingle.classList.contains("is-visible")) {
       const s = currentSingle();
       if (s) {
-        if (svTitle.textContent !== s.title) svTitle.textContent = s.title;
+        if (svTitle.textContent !== singleDisplayTitle(s)) svTitle.textContent = singleDisplayTitle(s);
+        const artistHtml = singleArtistHTML(s, "sv__artist-link");
+        if (svArtist.innerHTML !== artistHtml) svArtist.innerHTML = artistHtml;
         if (svYear.textContent !== String(s.year)) svYear.textContent = String(s.year);
-        if (svCoverImg.getAttribute("src") !== coverSrc(s)) renderSingleCover(s);
+        if (svCoverImg.getAttribute("src") !== coverSrc(s)) {
+          maybePlayCoverFresh(svCoverImg, coverSrc(s));
+          renderSingleCover(s);
+        }
         renderSingleParents(s);
         const origin = singleOriginText(s);
         svOrigin.hidden = !origin;
@@ -20435,7 +20441,10 @@ ${suffix}`;
           avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
         }
         avYear.textContent = String(al.year);
-        if (avCoverImg.getAttribute("src") !== coverSrc(al)) renderAlbumCover(al);
+        if (avCoverImg.getAttribute("src") !== coverSrc(al)) {
+          maybePlayCoverFresh(avCoverImg, coverSrc(al));
+          renderAlbumCover(al);
+        }
         if (finalizeRenderDeferred && !document.querySelector(".fin-select.is-open")) {
           renderFinalize();
           finalizeRenderDeferred = false;
@@ -20703,12 +20712,44 @@ ${suffix}`;
     const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><rect width='600' height='600' fill='#15151a'/><circle cx='300' cy='300' r='210' fill='none' stroke='rgba(183,168,239,0.16)' stroke-width='1.5'/><text x='300' y='345' font-family='Georgia, serif' font-size='210' fill='rgba(243,241,236,0.8)' text-anchor='middle'>" + esc(initial) + "</text></svg>";
     return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
   }
-  var FEAT_RE = /(\bfeat\.|\bft\.|&)/i;
+  var FEAT_RE = /(\bfeat\b\.?|\bft\b\.?|&)/i;
   function featNameOf(title) {
     const m = FEAT_RE.exec(title);
     if (!m) return null;
     const after = title.slice((m.index ?? 0) + m[0].length).trim();
     return after || null;
+  }
+  function singleTitleInfo(a) {
+    const raw = a.title.trim();
+    const m = FEAT_RE.exec(raw);
+    if (!m) return { title: raw, featArtist: null, featAmp: false };
+    const title = raw.slice(0, m.index ?? 0).replace(/[\s([]+$/, "").trim();
+    const featArtist = raw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, "").trim();
+    if (!title || !featArtist) return { title: raw, featArtist: null, featAmp: false };
+    return { title, featArtist, featAmp: m[0] === "&" };
+  }
+  function singleDisplayTitle(a) {
+    return a.kind === "single" ? singleTitleInfo(a).title : a.title;
+  }
+  function singleFeatSuffix(a) {
+    if (a.kind !== "single") return "";
+    const info = singleTitleInfo(a);
+    if (!info.featArtist) return "";
+    return info.featAmp ? ` & ${info.featArtist}` : ` (feat. ${info.featArtist})`;
+  }
+  function singleArtistText(a) {
+    return `${a.artist}${singleFeatSuffix(a)}`;
+  }
+  function singleArtistHTML(a, linkClass) {
+    const main = `<a class="${linkClass}" data-artist="${esc(a.artist)}">${esc(a.artist)}</a>`;
+    if (a.kind !== "single") return main;
+    const info = singleTitleInfo(a);
+    if (!info.featArtist) return main;
+    const guest = `<a class="${linkClass}" data-artist="${esc(info.featArtist)}">${esc(info.featArtist)}</a>`;
+    return info.featAmp ? `${main} &amp; ${guest}` : `${main} (feat. ${guest})`;
+  }
+  function releaseFullName(a) {
+    return `${singleArtistText(a)} \u2014 ${singleDisplayTitle(a)}`;
   }
   function allArtistNames() {
     const map = /* @__PURE__ */ new Map();
@@ -20947,6 +20988,11 @@ ${suffix}`;
   var viewSingle = q("#view-single");
   var singleBack = q("#single-back");
   var svCoverImg = q("#sv-cover-img");
+  var svPeekBtn = q("#sv-parent-peek");
+  var svPeekCard = q("#sv-peek-card");
+  var svPeekImg = q("#sv-peek-img");
+  var svPeekTitle = q("#sv-peek-title");
+  var svPeekArtist = q("#sv-peek-artist");
   var svCoverEdit = q("#sv-cover-edit");
   var svCoverEditLabel = q("#sv-cover-edit-label");
   var svYear = q("#sv-year");
@@ -20969,6 +21015,13 @@ ${suffix}`;
   var singleDeleteBtn = q("#single-delete-btn");
   var viewSrank = q("#view-srank");
   var srankBack = q("#srank-back");
+  var viewTrank = q("#view-trank");
+  var trankBack = q("#trank-back");
+  var trackRankList = q("#track-rank-list");
+  var rankMenu = q("#rank-menu");
+  var rankMenuList = q("#rank-menu-list");
+  var artistLabel = q("#artist-label");
+  var artistNote = q("#artist-note");
   var singleRankList = q("#single-rank-list");
   var avSinglesSection = q("#av-singles-section");
   var avSingles = q("#av-singles");
@@ -21150,7 +21203,7 @@ ${suffix}`;
     segAlbums.tabIndex = albumMode ? 0 : -1;
     segSingles.tabIndex = albumMode ? -1 : 0;
     homeHdrTitle.textContent = albumMode ? "\u0410\u043B\u044C\u0431\u043E\u043C\u044B" : "\u0421\u0438\u043D\u0433\u043B\u044B";
-    rankBtnLabel.textContent = albumMode ? "\u0440\u0435\u0439\u0442\u0438\u043D\u0433 \u0430\u0440\u0442\u0438\u0441\u0442\u043E\u0432" : "\u0440\u0435\u0439\u0442\u0438\u043D\u0433 \u0441\u0438\u043D\u0433\u043B\u043E\u0432";
+    rankBtnLabel.textContent = "\u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0438";
     moveSegThumb();
   }
   function singlesUnavailable() {
@@ -21279,7 +21332,7 @@ ${suffix}`;
     editingCoverAlbumId = al.id;
     albumCoverForm.reset();
     albumCoverTitle.textContent = al.kind === "single" ? al.cover ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443 \u0441\u0438\u043D\u0433\u043B\u0430" : "\u041E\u0431\u043B\u043E\u0436\u043A\u0430 \u0441\u0438\u043D\u0433\u043B\u0430" : al.cover ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443";
-    albumCoverName.textContent = `${al.artist} \u2014 ${al.title}`;
+    albumCoverName.textContent = releaseFullName(al);
     resetAlbumCoverDraft();
     albumCoverDialog.showModal();
     void albumCoverDialog.offsetWidth;
@@ -21374,9 +21427,30 @@ ${suffix}`;
     updateAlbumCoverControls();
     albumCoverUrlTimer = window.setTimeout(() => void previewAlbumCover(url, request), 400);
   });
+  var coverFreshTimers = /* @__PURE__ */ new WeakMap();
+  function playCoverFresh(img) {
+    const fig = img.closest("figure");
+    if (!fig) return;
+    fig.classList.remove("is-fresh");
+    window.clearTimeout(coverFreshTimers.get(fig));
+    void fig.offsetWidth;
+    const start = () => {
+      fig.classList.add("is-fresh");
+      coverFreshTimers.set(fig, window.setTimeout(() => fig.classList.remove("is-fresh"), 2e3));
+    };
+    if (img.complete && img.naturalWidth > 0) start();
+    else img.addEventListener("load", start, { once: true });
+  }
+  function maybePlayCoverFresh(img, nextSrc) {
+    const prev = img.getAttribute("src") ?? "";
+    if (!prev || prev === nextSrc) return;
+    if (prev.startsWith("data:image/svg")) return;
+    playCoverFresh(img);
+  }
   async function saveAlbumCover(albumId, source) {
     if (!currentUser) throw new Error("\u0412\u043E\u0439\u0434\u0438\u0442\u0435 \u0432 \u0430\u043A\u043A\u0430\u0443\u043D\u0442 \u0437\u0430\u043D\u043E\u0432\u043E");
     if (!albums.some((a) => a.id === albumId)) throw new Error("\u0410\u043B\u044C\u0431\u043E\u043C \u0431\u043E\u043B\u044C\u0448\u0435 \u043D\u0435 \u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D");
+    const before = albums.find((a) => a.id === albumId)?.cover ?? "";
     let url = source;
     if (CLOUD) {
       if (source.startsWith("data:")) url = await uploadCover(source);
@@ -21395,11 +21469,16 @@ ${suffix}`;
       }
     }
     albums = next;
+    const replaced = Boolean(before) && before !== url;
     const al = currentAlbum();
-    if (al?.id === albumId) renderAlbumCover(al);
+    if (al?.id === albumId) {
+      renderAlbumCover(al);
+      if (replaced) playCoverFresh(avCoverImg);
+    }
     const s = currentSingle();
     if (s?.id === albumId) {
       renderSingleCover(s);
+      if (replaced) playCoverFresh(svCoverImg);
       if (currentAlbumId) renderAlbumSingles();
     }
   }
@@ -21900,7 +21979,7 @@ ${suffix}`;
         <span class="track__handle"${canOrder ? ' draggable="true"' : ""} aria-hidden="true">${GRIP_SVG}</span>
         <span class="track__num">${i + 1}</span>
         <span class="track__title">${trackTitleHTML(t)}</span>
-        ${single ? `<button class="track__single" type="button" title="\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441\u0438\u043D\u0433\u043B\u0430 \xAB${esc(single.title)}\xBB">\u0441\u0438\u043D\u0433\u043B</button>` : ""}
+        ${single ? `<button class="track__single" type="button" title="\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441\u0438\u043D\u0433\u043B\u0430 \xAB${esc(singleDisplayTitle(single))}\xBB">\u0441\u0438\u043D\u0433\u043B</button>` : ""}
         ${peerBadge}
         ${t.locked ? `<span class="track__lock" title="\u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u043E">${LOCK_SVG}</span>` : ""}
         <span class="track__avg" data-tid="${t.id}" title="\u0441\u0440\u0435\u0434\u043D\u044F\u044F \u043F\u043E \u0442\u0440\u0435\u043A\u0443">${tavgStr}</span>
@@ -22357,7 +22436,7 @@ ${suffix}`;
     return closest.element;
   }
   function visibleView() {
-    for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewAdd]) {
+    for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewSrank, viewTrank, viewAdd]) {
       if (v.classList.contains("is-visible")) return v;
     }
     return null;
@@ -22426,6 +22505,16 @@ ${suffix}`;
         });
         break;
       }
+      case "trank": {
+        currentAlbumId = null;
+        currentSingleId = null;
+        currentArtistName = null;
+        renderTrackRank();
+        await swapTo(from, viewTrank, () => {
+          viewTrank.scrollTop = 0;
+        });
+        break;
+      }
       case "add": {
         currentAlbumId = null;
         currentSingleId = null;
@@ -22471,17 +22560,18 @@ ${suffix}`;
     const avgStr = avg === null ? "\u2014" : fmt(avg);
     const n = trackCountOf(a.id);
     const parent = single ? parentOf(a) : void 0;
+    const title = single ? singleDisplayTitle(a) : a.title;
     el.innerHTML = `
     <div class="album__cover">
-      <img src="${esc(coverSrc(a))}" alt="${esc(a.artist)} \u2014 ${esc(a.title)}" loading="lazy">
+      <img src="${esc(coverSrc(a))}" alt="${esc(singleArtistText(a))} \u2014 ${esc(title)}" loading="lazy">
       <span class="album__year">${a.year}</span>
       ${single ? '<span class="album__badge">\u0441\u0438\u043D\u0433\u043B</span>' : ""}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ""}
       ${featScore !== null ? `<span class="album__featbadge">\u0444\u0438\u0442 ${fmt(featScore)}</span>` : ""}
     </div>
     <div class="album__body">
-      <h3 class="album__title">${esc(a.title)}</h3>
-      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(a.artist)}">${esc(a.artist)}</a></p>
+      <h3 class="album__title">${esc(title)}</h3>
+      <p class="album__artist">${singleArtistHTML(a, "album__artist-link")}</p>
       ${parent ? `<div class="album__parent">${parentLinksHtml(a)}</div>` : ""}
       <div class="album__rating">
         <div class="album__avg">
@@ -22516,15 +22606,16 @@ ${suffix}`;
     const parent = parentOf(s);
     const votes = singleVotesOf(s.id);
     const pending = pendingCountOf(s.id);
+    const title = singleDisplayTitle(s);
     el.innerHTML = `
     <div class="album__cover">
-      <img src="${esc(coverSrc(s))}" alt="${esc(s.artist)} \u2014 ${esc(s.title)}" loading="lazy">
+      <img src="${esc(coverSrc(s))}" alt="${esc(singleArtistText(s))} \u2014 ${esc(title)}" loading="lazy">
       <span class="album__year">${s.year}</span>
       <span class="album__badge">\u0441\u0438\u043D\u0433\u043B</span>
     </div>
     <div class="album__body">
-      <h3 class="album__title">${esc(s.title)}</h3>
-      <p class="album__artist"><a class="album__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a></p>
+      <h3 class="album__title">${esc(title)}</h3>
+      <p class="album__artist">${singleArtistHTML(s, "album__artist-link")}</p>
       ${parent ? `<div class="album__parent">${parentLinksHtml(s)}</div>` : ""}
       <div class="album__rating">
         <div class="album__avg">
@@ -22561,7 +22652,7 @@ ${suffix}`;
     el.innerHTML = `
     <span class="scard__cover"><img src="${esc(coverSrc(s))}" alt="" loading="lazy"></span>
     <span class="scard__body">
-      <span class="scard__title">${esc(s.title)}</span>
+      <span class="scard__title">${esc(singleDisplayTitle(s))}</span>
       <span class="scard__meta">${s.year} \xB7 ${votes} ${votesPlural(votes)}</span>
     </span>
     <span class="scard__score">${avg === null ? "\u2014" : fmt(avg)}</span>`;
@@ -22641,12 +22732,40 @@ ${suffix}`;
     renderArtistRank();
     await navigateTo(viewRank, { view: "rank" });
   }
-  artistsBtn.addEventListener("click", () => {
-    if (homeMode === "single") void openSingleRank();
-    else void openArtists();
+  function updateRankMenuCounts() {
+    const find = (k) => rankMenuList.querySelector(`.rank-menu__count[data-count="${k}"]`);
+    const artists = find("artists");
+    if (artists) artists.textContent = String(allArtistNames().length);
+    const singles = find("singles");
+    if (singles) singles.textContent = String(singlesOnly().length);
+    const tracksEl = find("tracks");
+    if (tracksEl) tracksEl.textContent = String(trackRanks().length);
+  }
+  function setRankMenu(open) {
+    if (open) updateRankMenuCounts();
+    rankMenuList.hidden = !open;
+    artistsBtn.setAttribute("aria-expanded", String(open));
+    artistsBtn.classList.toggle("is-open", open);
+  }
+  artistsBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    setRankMenu(rankMenuList.hidden);
+  });
+  document.addEventListener("click", (e) => {
+    if (rankMenu.contains(e.target)) return;
+    setRankMenu(false);
+  });
+  rankMenuList.addEventListener("click", (e) => {
+    const item = e.target.closest(".rank-menu__item");
+    if (!item) return;
+    setRankMenu(false);
+    if (item.dataset.rank === "artists") void openArtists();
+    else if (item.dataset.rank === "singles") void openSingleRank();
+    else if (item.dataset.rank === "tracks") void openTrackRank();
   });
   rankBack.addEventListener("click", () => void goBack());
   srankBack.addEventListener("click", () => void goBack());
+  trankBack.addEventListener("click", () => void goBack());
   function singleRanks() {
     return singlesOnly().map((s) => ({
       single: s,
@@ -22654,10 +22773,12 @@ ${suffix}`;
       votes: singleVotesOf(s.id),
       pending: pendingCountOf(s.id)
     })).sort((a, b) => {
-      if (a.score === null && b.score === null) return a.single.title.localeCompare(b.single.title, "ru");
+      const ta = singleDisplayTitle(a.single);
+      const tb = singleDisplayTitle(b.single);
+      if (a.score === null && b.score === null) return ta.localeCompare(tb, "ru");
       if (a.score === null) return 1;
       if (b.score === null) return -1;
-      return b.score - a.score || a.single.title.localeCompare(b.single.title, "ru");
+      return b.score - a.score || ta.localeCompare(tb, "ru");
     });
   }
   function renderSingleRank() {
@@ -22675,14 +22796,14 @@ ${suffix}`;
       const li = document.createElement("li");
       li.className = "rank" + (pos <= 3 && r.score !== null ? ` rank--${pos}` : "") + (r.score === null ? " is-unranked" : "");
       const parent = parentOf(r.single);
-      const meta = [String(r.single.year), r.single.artist];
+      const meta = [String(r.single.year), singleArtistText(r.single)];
       meta.push(parent ? `\u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443 \xAB${parent.title}\xBB` : "\u0432\u043D\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430");
       if (r.score === null) meta.push(singleRankReason(r.single.id));
       li.innerHTML = `
       <span class="rank__pos">${pos}</span>
       <span class="rank__ava"><img src="${esc(coverSrc(r.single))}" alt="" loading="lazy"></span>
       <div class="rank__body">
-        <span class="rank__name">${esc(r.single.title)}</span>
+        <span class="rank__name">${esc(singleDisplayTitle(r.single))}</span>
         <span class="rank__meta">${esc(meta.join(" \xB7 "))}</span>
       </div>
       <span class="rank__score">${r.score === null ? "\u2014" : fmt(r.score)}</span>`;
@@ -22693,6 +22814,101 @@ ${suffix}`;
   async function openSingleRank() {
     renderSingleRank();
     await navigateTo(viewSrank, { view: "rank" });
+  }
+  function trackVotesOf(trackId) {
+    const r = trackRatings[trackId];
+    return r ? Object.keys(r).length : 0;
+  }
+  function trackAllConfirmed(trackId) {
+    if (profileCache.size < 2) return false;
+    const r = trackRatings[trackId];
+    if (!r) return false;
+    for (const pid of profileCache.keys()) {
+      const e = r[pid];
+      if (!e || !e.confirmed) return false;
+    }
+    return true;
+  }
+  function trackRankedScoreOf(trackId) {
+    return trackAllConfirmed(trackId) ? trackScoreOf(trackId) : null;
+  }
+  function trackRankReason(trackId) {
+    return trackVotesOf(trackId) === 0 ? "\u043E\u0446\u0435\u043D\u043E\u043A \u043F\u043E\u043A\u0430 \u043D\u0435\u0442" : "\u0436\u0434\u0451\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0432\u0441\u0435\u0445 \u043E\u0446\u0435\u043D\u043E\u043A";
+  }
+  function trackRanks() {
+    const out = [];
+    for (const a of albumsOnly()) {
+      for (const t of tracks) {
+        if (t.albumId !== a.id) continue;
+        if (t.singleId && singleById(t.singleId)) continue;
+        out.push({
+          kind: "track",
+          track: t,
+          album: a,
+          score: trackRankedScoreOf(t.id),
+          name: stripFeat(t.title).trim() || t.title
+        });
+      }
+    }
+    for (const s of singlesOnly()) {
+      out.push({ kind: "single", single: s, score: singleRankedScoreOf(s.id), name: singleDisplayTitle(s) });
+    }
+    return out.sort((a, b) => {
+      if (a.score === null && b.score === null) return a.name.localeCompare(b.name, "ru");
+      if (a.score === null) return 1;
+      if (b.score === null) return -1;
+      return b.score - a.score || a.name.localeCompare(b.name, "ru");
+    });
+  }
+  function renderTrackRank() {
+    trackRankList.innerHTML = "";
+    const list = trackRanks();
+    if (!list.length) {
+      const li = document.createElement("li");
+      li.className = "rank__empty";
+      li.textContent = "\u0442\u0440\u0435\u043A\u043E\u0432 \u043F\u043E\u043A\u0430 \u043D\u0435\u0442 \u2014 \u0434\u043E\u0431\u0430\u0432\u044C\u0442\u0435 \u0430\u043B\u044C\u0431\u043E\u043C \u0441 \u0442\u0440\u0435\u043A\u0430\u043C\u0438 \u0438\u043B\u0438 \u0441\u0438\u043D\u0433\u043B";
+      trackRankList.appendChild(li);
+      return;
+    }
+    list.forEach((r, i) => {
+      const pos = i + 1;
+      const li = document.createElement("li");
+      li.className = "rank" + (pos <= 3 && r.score !== null ? ` rank--${pos}` : "") + (r.score === null ? " is-unranked" : "");
+      let cover = "";
+      let artistText = "";
+      let meta = "";
+      if (r.kind === "track") {
+        const t = r.track;
+        const a = r.album;
+        cover = coverSrc(a);
+        artistText = t.featArtist ? `${a.artist} ft. ${t.featArtist}` : a.artist;
+        meta = `\u2116${t.position + 1} \xB7 \u0438\u0437 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \xAB${a.title}\xBB`;
+      } else {
+        const s = r.single;
+        cover = coverSrc(s);
+        artistText = singleArtistText(s);
+      }
+      if (r.score === null) {
+        meta = meta ? `${meta} \xB7 ${r.kind === "track" ? trackRankReason(r.track.id) : singleRankReason(r.single.id)}` : r.kind === "track" ? trackRankReason(r.track.id) : singleRankReason(r.single.id);
+      }
+      li.innerHTML = `
+      <span class="rank__pos">${pos}</span>
+      <span class="rank__ava"><img src="${esc(cover)}" alt="" loading="lazy"></span>
+      <div class="rank__body">
+        <span class="rank__name">${esc(r.name)}</span>
+        <span class="rank__meta">${esc(artistText)}${meta ? ` \xB7 ${esc(meta)}` : ""}</span>
+      </div>
+      <span class="rank__score">${r.score === null ? "\u2014" : fmt(r.score)}</span>`;
+      li.addEventListener("click", () => {
+        if (r.kind === "track" && r.album) void openAlbum(r.album.id);
+        else if (r.kind === "single" && r.single) void openSingle(r.single.id);
+      });
+      trackRankList.appendChild(li);
+    });
+  }
+  async function openTrackRank() {
+    renderTrackRank();
+    await navigateTo(viewTrank, { view: "trank" });
   }
   async function openArtist(name) {
     if (!name) return;
@@ -22932,7 +23148,7 @@ ${suffix}`;
   function renderSingleCover(s) {
     const src = coverSrc(s);
     if (svCoverImg.getAttribute("src") !== src) svCoverImg.src = src;
-    svCoverImg.alt = `${s.artist} \u2014 ${s.title}`;
+    svCoverImg.alt = releaseFullName(s);
     svCoverImg.style.opacity = "";
     svCoverEdit.hidden = !currentUser;
     const parent = parentOf(s);
@@ -22961,6 +23177,16 @@ ${suffix}`;
       svParentLabel.dataset.content = html;
     }
     svParentEdit.textContent = parentsOf(s).length ? "\u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C" : "\u043F\u0440\u0438\u0432\u044F\u0437\u0430\u0442\u044C \u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443";
+    const parent = parentsOf(s)[0];
+    svPeekBtn.hidden = !parent;
+    if (parent) {
+      if (svPeekImg.getAttribute("src") !== coverSrc(parent)) svPeekImg.src = coverSrc(parent);
+      svPeekImg.alt = `${parent.artist} \u2014 ${parent.title}`;
+      svPeekTitle.textContent = parent.title;
+      svPeekArtist.textContent = parent.artist;
+    } else {
+      hideParentPeek();
+    }
   }
   var parentTransitions = /* @__PURE__ */ new WeakMap();
   async function toggleSingleParents(more) {
@@ -22978,8 +23204,9 @@ ${suffix}`;
       transition.animations.push(animation);
       return animation;
     };
+    const phase = expanded ? 220 : 140;
     if (!expanded && !reduce) {
-      await animate(list, [{ opacity: 1 }, { opacity: 0 }], 140).finished.catch(() => {
+      await animate(list, [{ opacity: 1 }, { opacity: 0 }], 70).finished.catch(() => {
       });
       if (parentTransitions.get(more) !== transition || !more.isConnected) return;
     }
@@ -22993,7 +23220,7 @@ ${suffix}`;
       if (expanded) animate(list, [{ opacity: 0 }, { opacity: 1 }]);
       const afterHeight = row.getBoundingClientRect().height;
       if (Math.abs(afterHeight - beforeHeight) > 1) {
-        animate(row, [{ height: `${beforeHeight}px` }, { height: `${afterHeight}px` }]);
+        animate(row, [{ height: `${beforeHeight}px` }, { height: `${afterHeight}px` }], phase);
       }
       controls.forEach((el, i) => {
         const after = el.getBoundingClientRect();
@@ -23001,7 +23228,7 @@ ${suffix}`;
         animate(el, [
           { transform: `translate(${before.x - after.x}px, ${before.y - after.y}px)`, opacity: 0.65 },
           { transform: "translate(0, 0)", opacity: 1 }
-        ]);
+        ], phase);
       });
       await Promise.all(transition.animations.map((animation) => animation.finished.catch(() => {
       })));
@@ -23023,8 +23250,8 @@ ${suffix}`;
     return true;
   }
   function renderSinglePage(s) {
-    svTitle.textContent = s.title;
-    svArtist.innerHTML = `<a class="sv__artist-link" data-artist="${esc(s.artist)}">${esc(s.artist)}</a>`;
+    svTitle.textContent = singleDisplayTitle(s);
+    svArtist.innerHTML = singleArtistHTML(s, "sv__artist-link");
     svYear.textContent = String(s.year);
     renderSingleCover(s);
     renderSingleParents(s);
@@ -23398,7 +23625,7 @@ ${suffix}`;
     if (!s) return;
     const ok = await openConfirm(
       "\u0423\u0434\u0430\u043B\u0438\u0442\u044C \u0441\u0438\u043D\u0433\u043B?",
-      `\u0421\u0438\u043D\u0433\u043B <b>\xAB${esc(s.title)}\xBB</b> \u2014 ${esc(s.artist)} \u0431\u0443\u0434\u0435\u0442 \u0443\u0434\u0430\u043B\u0451\u043D <b>\u043D\u0430\u0432\u0441\u0435\u0433\u0434\u0430</b> \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438. \u041C\u0435\u0442\u043A\u0430 \xAB\u0441\u0438\u043D\u0433\u043B\xBB \u0441 \u0442\u0440\u0435\u043A\u0430 \u0441\u043D\u0438\u043C\u0435\u0442\u0441\u044F. \u042D\u0442\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043D\u0435\u043B\u044C\u0437\u044F \u043E\u0442\u043C\u0435\u043D\u0438\u0442\u044C.`,
+      `\u0421\u0438\u043D\u0433\u043B <b>\xAB${esc(singleDisplayTitle(s))}\xBB</b> \u2014 ${esc(singleArtistText(s))} \u0431\u0443\u0434\u0435\u0442 \u0443\u0434\u0430\u043B\u0451\u043D <b>\u043D\u0430\u0432\u0441\u0435\u0433\u0434\u0430</b> \u0432\u043C\u0435\u0441\u0442\u0435 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438. \u041C\u0435\u0442\u043A\u0430 \xAB\u0441\u0438\u043D\u0433\u043B\xBB \u0441 \u0442\u0440\u0435\u043A\u0430 \u0441\u043D\u0438\u043C\u0435\u0442\u0441\u044F. \u042D\u0442\u043E \u0434\u0435\u0439\u0441\u0442\u0432\u0438\u0435 \u043D\u0435\u043B\u044C\u0437\u044F \u043E\u0442\u043C\u0435\u043D\u0438\u0442\u044C.`,
       true
     );
     if (!ok) return;
@@ -23502,7 +23729,7 @@ ${suffix}`;
     if (!s || singleLinkDialog.open) return;
     singleLinkEditingId = s.id;
     singleLinkInput.value = parentsOf(s).map((a) => quoteAlbumToken(albumInputLabel(a))).join(", ");
-    singleLinkName.textContent = `${s.artist} \u2014 ${s.title}`;
+    singleLinkName.textContent = releaseFullName(s);
     singleLinkError.textContent = "";
     singleLinkError.classList.remove("is-visible");
     singleLinkSave.classList.remove("is-loading");
@@ -23558,6 +23785,35 @@ ${suffix}`;
   }
   svParentEdit.addEventListener("click", openSingleLinkEditor);
   svParentLabel.addEventListener("click", handleParentClick);
+  function showParentPeek() {
+    if (svPeekBtn.hidden) return;
+    const box = svPeekBtn.getBoundingClientRect();
+    svPeekCard.classList.toggle("is-flip", box.right + 200 > window.innerWidth);
+    svPeekCard.hidden = false;
+  }
+  function hideParentPeek() {
+    svPeekCard.hidden = true;
+  }
+  svPeekBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    showParentPeek();
+  });
+  for (const type of ["pointerup", "pointercancel"]) {
+    window.addEventListener(type, hideParentPeek);
+  }
+  svPeekBtn.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    showParentPeek();
+  });
+  svPeekBtn.addEventListener("keyup", (e) => {
+    if (e.key === "Enter" || e.key === " ") hideParentPeek();
+  });
+  svPeekBtn.addEventListener("blur", hideParentPeek);
+  svPeekBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") hideParentPeek();
+  });
   svArtist.addEventListener("click", (e) => {
     const a = e.target.closest(".sv__artist-link");
     if (!a) return;
@@ -23613,10 +23869,11 @@ ${suffix}`;
     if (al.tracksLocked) {
       return "\u0421\u0438\u043D\u0433\u043B \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D, \u043D\u043E \u0442\u0440\u0435\u043A\u0438 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u044B \u2014 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u0442\u0440\u0435\u043A\u043E\u0432 \u043E\u043D \u043D\u0435 \u043F\u043E\u044F\u0432\u0438\u043B\u0441\u044F";
     }
-    const title = single.title.trim();
+    const info = singleTitleInfo(single);
+    const title = info.title;
     const sameArtist = al.artist.trim().toLowerCase() === single.artist.trim().toLowerCase();
-    const feat = sameArtist ? null : canonicalArtistName(single.artist);
-    const fullTitle = feat ? `${title} & ${feat}` : title;
+    const feat = sameArtist ? info.featArtist ? canonicalArtistName(info.featArtist) : null : canonicalArtistName(single.artist);
+    const fullTitle = feat && !sameArtist ? `${title} & ${feat}` : title;
     const existing = tracks.find(
       (t) => t.albumId === parentId && stripFeat(t.title).toLowerCase() === title.toLowerCase()
     );
@@ -23669,11 +23926,15 @@ ${suffix}`;
     const al = albums.find((a) => a.id === t.albumId);
     if (!al || !currentUser) return;
     if (!singleById(t.singleId ?? "")) {
+      const guestFromTitle = featNameOf(t.title)?.replace(/[),.\s]+$/, "").trim() ?? "";
+      const guest = (t.featArtist ?? "").trim() || guestFromTitle || "";
+      const cleanTitle = stripFeat(t.title).trim() || t.title.trim();
+      const singleTitle = guest ? `${cleanTitle} (feat. ${canonicalArtistName(guest)})` : cleanTitle;
       try {
         if (CLOUD) {
           const ins = await getSB().from("albums").insert({
             artist: al.artist,
-            title: t.title,
+            title: singleTitle,
             year: al.year,
             cover_url: null,
             tracks_locked: false,
@@ -23686,7 +23947,10 @@ ${suffix}`;
             throw ins.error;
           }
           const singleId = ins.data.id;
-          const upd = await getSB().from("tracks").update({ single_id: singleId }).eq("id", t.id);
+          const upd = await getSB().from("tracks").update({
+            single_id: singleId,
+            ...t.title !== cleanTitle || (t.featArtist ?? "") !== guest ? { title: cleanTitle, feat_artist: guest || null } : {}
+          }).eq("id", t.id);
           if (upd.error) throw upd.error;
           await refreshData();
         } else {
@@ -23694,7 +23958,7 @@ ${suffix}`;
           albums.push({
             id: singleId,
             artist: al.artist,
-            title: t.title,
+            title: singleTitle,
             year: al.year,
             cover: "",
             kind: "single",
@@ -23703,7 +23967,7 @@ ${suffix}`;
             cohesion: null,
             albumType: null
           });
-          tracks = tracks.map((x) => x.id === t.id ? { ...x, singleId } : x);
+          tracks = tracks.map((x) => x.id === t.id ? { ...x, title: cleanTitle, featArtist: guest || null, singleId } : x);
           saveLocalAlbums();
           saveLocalTracks();
           shareRatingsWithSingles();
@@ -23724,7 +23988,7 @@ ${suffix}`;
     const single = singleOfTrack(t);
     const ok = await openConfirm(
       "\u0421\u043D\u044F\u0442\u044C \u043C\u0435\u0442\u043A\u0443 \xAB\u0441\u0438\u043D\u0433\u043B\xBB?",
-      single ? `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C. \u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u0441\u0438\u043D\u0433\u043B\u0430 <b>\xAB${esc(single.title)}\xBB</b> \u0438 \u0435\u0433\u043E \u043E\u0446\u0435\u043D\u043A\u0438 \u043E\u0441\u0442\u0430\u043D\u0443\u0442\u0441\u044F \u2014 \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E, \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0441\u0438\u043D\u0433\u043B\u0430.` : `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C.`
+      single ? `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C. \u041A\u0430\u0440\u0442\u043E\u0447\u043A\u0430 \u0441\u0438\u043D\u0433\u043B\u0430 <b>\xAB${esc(singleDisplayTitle(single))}\xBB</b> \u0438 \u0435\u0433\u043E \u043E\u0446\u0435\u043D\u043A\u0438 \u043E\u0441\u0442\u0430\u043D\u0443\u0442\u0441\u044F \u2014 \u0443\u0434\u0430\u043B\u0438\u0442\u044C \u0435\u0433\u043E \u043C\u043E\u0436\u043D\u043E \u043E\u0442\u0434\u0435\u043B\u044C\u043D\u043E, \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0441\u0438\u043D\u0433\u043B\u0430.` : `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043F\u0435\u0440\u0435\u0441\u0442\u0430\u043D\u0435\u0442 \u0431\u044B\u0442\u044C \u0441\u0438\u043D\u0433\u043B\u043E\u043C.`
     );
     if (!ok) return;
     try {
@@ -23749,7 +24013,7 @@ ${suffix}`;
     if (!single) return;
     const ok = await openConfirm(
       "\u041F\u0435\u0440\u0435\u0439\u0442\u0438 \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441\u0438\u043D\u0433\u043B\u0430?",
-      `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043E\u0442\u043C\u0435\u0447\u0435\u043D \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B <b>\xAB${esc(single.title)}\xBB</b>. \u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0435\u0433\u043E \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438?`,
+      `\u0422\u0440\u0435\u043A <b>\xAB${esc(t.title)}\xBB</b> \u043E\u0442\u043C\u0435\u0447\u0435\u043D \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B <b>\xAB${esc(singleDisplayTitle(single))}\xBB</b>. \u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0435\u0433\u043E \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441 \u043E\u0446\u0435\u043D\u043A\u0430\u043C\u0438?`,
       false,
       { ok: "\u0434\u0430", cancel: "\u043D\u0430\u0437\u0430\u0434" }
     );
@@ -23854,9 +24118,30 @@ ${suffix}`;
     void artistField.offsetWidth;
     artistField.classList.add("is-picked", "pulse");
   }
+  var ARTIST_FEAT_HINT = "\u0444\u0438\u0442 \u0438\u043B\u0438 \u0441\u043E\u0432\u043C\u0435\u0441\u0442\u043A\u0443 \u0443\u043A\u0430\u0437\u044B\u0432\u0430\u0439\u0442\u0435 \u043F\u0440\u044F\u043C\u043E \u0437\u0434\u0435\u0441\u044C: \xAB\u0410\u0440\u0442\u0438\u0441\u0442 & \u0413\u043E\u0441\u0442\u044C\xBB \u0438\u043B\u0438 \xAB\u0410\u0440\u0442\u0438\u0441\u0442 feat. \u0413\u043E\u0441\u0442\u044C\xBB \u2014 \u0433\u043E\u0441\u0442\u044C \u043F\u043E\u043F\u0430\u0434\u0451\u0442 \u0432 \u0431\u043B\u043E\u043A \u0430\u0440\u0442\u0438\u0441\u0442\u0430";
+  function updateArtistFeatNote() {
+    if (addKind !== "single") {
+      artistNote.hidden = true;
+      return;
+    }
+    const raw = artistInput.value;
+    const m = FEAT_RE.exec(raw);
+    if (m) {
+      const main = raw.slice(0, m.index ?? 0).trim();
+      const guest = raw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, "").trim();
+      if (main && guest) {
+        artistNote.textContent = `\u0444\u0438\u0442: ${guest} \u2014 \u0433\u043E\u0441\u0442\u044C \u0431\u0443\u0434\u0435\u0442 \u0432 \u0431\u043B\u043E\u043A\u0435 \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0441\u0438\u043D\u0433\u043B\u0430`;
+        artistNote.hidden = false;
+        return;
+      }
+    }
+    artistNote.textContent = ARTIST_FEAT_HINT;
+    artistNote.hidden = false;
+  }
   artistInput.addEventListener("input", () => {
     artistField.classList.remove("is-picked");
     updateArtistList();
+    updateArtistFeatNote();
     clearAddErrors();
     refreshDupHint();
   });
@@ -24015,6 +24300,8 @@ ${suffix}`;
     addTitle.textContent = single ? "\u041D\u043E\u0432\u044B\u0439 \u0441\u0438\u043D\u0433\u043B" : "\u041D\u043E\u0432\u044B\u0439 \u0430\u043B\u044C\u0431\u043E\u043C";
     addSubmitLabel.textContent = single ? "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0441\u0438\u043D\u0433\u043B" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0430\u043B\u044C\u0431\u043E\u043C";
     titleLabel.textContent = single ? "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0441\u0438\u043D\u0433\u043B\u0430 *" : "\u041D\u0430\u0437\u0432\u0430\u043D\u0438\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 *";
+    artistLabel.textContent = single ? "\u0410\u0440\u0442\u0438\u0441\u0442 \u0438\u043B\u0438 \u0441\u043E\u0432\u043C\u0435\u0441\u0442\u043A\u0430 *" : "\u0410\u0440\u0442\u0438\u0441\u0442 *";
+    updateArtistFeatNote();
     titleInput.placeholder = single ? "\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, Not Like Us" : "\u043D\u0430\u043F\u0440\u0438\u043C\u0435\u0440, Blonde";
     parentField.hidden = !single;
     parentNote.textContent = single ? "\u043F\u0435\u0440\u0435\u0447\u0438\u0441\u043B\u0438\u0442\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u044B \u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E; \u0441\u0438\u043D\u0433\u043B \u043F\u043E\u044F\u0432\u0438\u0442\u0441\u044F \u043D\u0430 \u043A\u0430\u0436\u0434\u043E\u043C \u0438\u0437 \u043D\u0438\u0445. \u0411\u0435\u0437 \u0441\u0432\u043E\u0435\u0439 \u043E\u0431\u043B\u043E\u0436\u043A\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u043E\u0431\u043B\u043E\u0436\u043A\u0430 \u043F\u0435\u0440\u0432\u043E\u0433\u043E \u0430\u043B\u044C\u0431\u043E\u043C\u0430" : "";
@@ -24063,6 +24350,10 @@ ${suffix}`;
     }
     if (document.querySelector(".fin-select.is-open")) {
       closeAllFinSelects();
+      return;
+    }
+    if (!rankMenuList.hidden) {
+      setRankMenu(false);
       return;
     }
     if (visibleView() && !viewHome.classList.contains("is-visible")) void goBack();
@@ -24150,9 +24441,21 @@ ${suffix}`;
       shakeEl(addPanel);
       return;
     }
-    const artist = normalizeArtist(artistRaw);
+    let artist = normalizeArtist(artistRaw);
+    let titleRecorded = titleRaw;
+    if (single) {
+      const m = FEAT_RE.exec(artistRaw);
+      if (m) {
+        const main = artistRaw.slice(0, m.index ?? 0).trim();
+        const guest = artistRaw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, "").trim();
+        if (main && guest) {
+          artist = normalizeArtist(main);
+          titleRecorded = m[0] === "&" ? `${titleRaw} & ${guest}` : `${titleRaw} (feat. ${guest})`;
+        }
+      }
+    }
     const dup = albums.some(
-      (a) => a.kind === addKind && a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === titleRaw.toLowerCase()
+      (a) => a.kind === addKind && a.artist.toLowerCase() === artist.toLowerCase() && a.title.toLowerCase() === titleRecorded.toLowerCase()
     );
     if (dup) {
       showTitleError(`\u0442\u0430\u043A\u043E\u0439 ${what} \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C`);
@@ -24165,7 +24468,7 @@ ${suffix}`;
     try {
       const createdId = await addAlbum({
         artist,
-        title: titleRaw,
+        title: titleRecorded,
         year: Number(yearRaw),
         coverDataUrl: pendingCover && pendingCover.startsWith("data:") ? pendingCover : null,
         coverUrl: pendingCover && !pendingCover.startsWith("data:") ? pendingCover : null,
@@ -24270,5 +24573,15 @@ ${suffix}`;
   }
 `;
   document.head.appendChild(style);
+  (() => {
+    const bgLayer = document.querySelector(".bg");
+    if (!bgLayer) return;
+    let timer = 0;
+    window.addEventListener("scroll", () => {
+      bgLayer.classList.add("is-scrolling");
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => bgLayer.classList.remove("is-scrolling"), 160);
+    }, { passive: true, capture: true });
+  })();
   void init();
 })();

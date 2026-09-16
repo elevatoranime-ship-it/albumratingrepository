@@ -66,6 +66,11 @@ body {
   50%      { opacity: 0.85; }
 }
 
+/* производительность: во время прокрутки декоративное «дыхание» фона
+   приостанавливается — слабым устройствам проще собирать кадр; после
+   остановки анимация продолжается с той же фазы, без скачка */
+.bg.is-scrolling .bg__glow { animation-play-state: paused; }
+
 /* зерно плёнки — поверх всего фона */
 .bg__noise {
   position: absolute; inset: 0;
@@ -482,6 +487,9 @@ body {
   align-items: flex-start;
   gap: 24px;
   flex-wrap: wrap;
+  /* выпадающее меню «рейтинги» должно перекрывать контент под шапкой */
+  position: relative;
+  z-index: 20;
 }
 
 .hdr__title {
@@ -659,6 +667,10 @@ body {
 }
 
 .add { max-width: 480px; margin: 0 auto; }
+/* производительность: содержимое формы при прокрутке статично — кэшируем его
+   отдельным композитным слоем, чтобы скролл не перерисовывал поля поверх
+   фиксированного фона; визуально ничего не меняется */
+.view--add .add { will-change: transform; }
 .add__top { margin-bottom: 16px; }
 
 /* карточка добавления — шире и просторнее, чем карточка входа */
@@ -769,6 +781,15 @@ body {
   max-height: 240px; overflow-y: auto;
   opacity: 1;
   isolation: isolate;
+}
+/* появление подсказок: мягкий выезд от поля (срабатывает при снятии hidden) */
+.combo__list:not([hidden]) {
+  animation: comboIn 0.2s var(--ease-out) both;
+  transform-origin: 50% 0;
+}
+@keyframes comboIn {
+  from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+  to   { opacity: 1; transform: none; }
 }
 .combo__item {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -989,6 +1010,44 @@ body {
   background: #0d0d10;
 }
 .av__cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+/* --- замена обложки: «проявление» новой обложки с бликом и лавандовым всплеском ---
+   Класс вешается на figure (страницы альбома и сингла) только при замене
+   существующей обложки; при уменьшении движения отключается глобальным правилом. */
+.av__cover.is-fresh img,
+.sv__cover.is-fresh img {
+  animation: coverDevelop 0.9s var(--ease-out) both;
+}
+.av__cover.is-fresh::before,
+.sv__cover.is-fresh::before {
+  content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(183,168,239,0.5), inset 0 0 42px rgba(168,155,235,0.22);
+  animation: coverGlow 1.25s var(--ease-out) both;
+}
+.av__cover.is-fresh::after,
+.sv__cover.is-fresh::after {
+  content: ''; position: absolute; inset: -2px; z-index: 3; pointer-events: none;
+  background: linear-gradient(112deg,
+    transparent 30%,
+    rgba(214,204,246,0.10) 43%,
+    rgba(243,241,236,0.30) 50%,
+    rgba(214,204,246,0.10) 57%,
+    transparent 70%);
+  transform: translateX(-130%);
+  animation: coverShine 1.15s 0.1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes coverDevelop {
+  from { opacity: 0; transform: scale(1.05); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes coverGlow {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes coverShine {
+  to { transform: translateX(130%); }
+}
 .av__year {
   position: absolute; top: 12px; right: 12px;
   padding: 4px 10px;
@@ -1723,6 +1782,50 @@ body {
 }
 .av__artist-link:hover { color: var(--accent-strong); border-bottom-color: var(--accent-line); }
 
+/* --- меню «рейтинги» в шапке главной --- */
+.rank-menu { position: relative; display: inline-block; }
+.rank-menu .btn { display: inline-flex; align-items: center; gap: 7px; }
+.rank-menu__caret {
+  width: 13px; height: 13px; flex: none;
+  transition: transform 0.25s var(--ease-out);
+}
+#artists-btn.is-open .rank-menu__caret { transform: rotate(180deg); }
+.rank-menu__list {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 80;
+  min-width: 208px;
+  margin: 0; padding: 6px;
+  list-style: none;
+  background: #30303a;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 12px;
+  box-shadow: 0 24px 50px -10px rgba(0,0,0,0.95), 0 0 0 1px rgba(0,0,0,0.55);
+}
+.rank-menu__list:not([hidden]) {
+  animation: comboIn 0.2s var(--ease-out) both;
+  transform-origin: 85% 0;
+}
+.rank-menu__item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none; border-radius: 8px;
+  color: var(--text);
+  font: inherit; font-size: 14.5px;
+  cursor: pointer; text-align: left;
+  transition: background-color 0.25s var(--ease-out);
+}
+.rank-menu__item svg { width: 15px; height: 15px; flex: none; color: var(--accent); }
+.rank-menu__label { flex: 1; min-width: 0; }
+.rank-menu__count {
+  font-size: 11px; color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  padding: 2px 8px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 999px;
+}
+.rank-menu__item:hover { background: rgba(255,255,255,0.09); }
+.rank-menu__item:focus-visible { outline: 2px solid var(--accent-line); outline-offset: -2px; }
+
 /* --- кликабельное имя артиста на карточке альбома (главная) --- */
 .album__artist-link {
   color: inherit;
@@ -1971,6 +2074,16 @@ body {
   cursor: pointer;
   transition: transform 0.3s var(--ease-out), border-color 0.3s var(--ease-out),
               background-color 0.3s var(--ease-out), box-shadow 0.3s var(--ease-out);
+}
+/* производительность: в длинных рейтингах строки вне экрана не рендерятся —
+   прокрутка не перерисовывает весь список. Топ-3 со свечением исключены:
+   paint-сдерживание обрезало бы их свечение за пределами строки. */
+.rank__list .rank {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 70px;
+}
+.rank__list .rank--1, .rank__list .rank--2, .rank__list .rank--3 {
+  content-visibility: visible;
 }
 .rank:hover {
   border-color: var(--line-strong);
@@ -2414,6 +2527,7 @@ body { -webkit-tap-highlight-color: transparent; }
 .sv__artist { margin-top: 8px; font-size: 15px; color: var(--text-faint); }
 .sv__parent {
   --parent-control-gap: 12px;
+  position: relative;
   display: block;
   margin-top: 20px;
   padding-top: 14px;
@@ -2437,6 +2551,83 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 .sv__parent-edit:hover { color: var(--text); border-color: var(--text-faint); }
 .sv__parent-edit:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 3px; }
+
+/* глаз у привязки: удерживайте — рядом с кнопкой всплывает миниатюра обложки */
+.sv__peek-wrap {
+  position: relative;
+  display: inline-block;
+  vertical-align: middle;
+  margin-left: var(--parent-control-gap, 12px);
+}
+.sv__peek {
+  display: inline-grid; place-items: center;
+  width: 26px; height: 26px; padding: 0;
+  vertical-align: middle;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-faint);
+  cursor: pointer;
+  user-select: none; -webkit-touch-callout: none; touch-action: none;
+  transition: color 0.25s var(--ease-out), background-color 0.25s var(--ease-out),
+              border-color 0.25s var(--ease-out), transform 0.2s var(--ease-out);
+}
+.sv__peek svg { width: 16px; height: 16px; display: block; }
+.sv__peek:hover { color: var(--text); background: rgba(255,255,255,0.05); border-color: var(--line); }
+.sv__peek:active { transform: scale(0.9); color: var(--text); }
+.sv__peek:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+
+.sv__peek-card {
+  position: absolute; left: calc(100% + 13px); top: 50%; z-index: 40;
+  width: 148px; padding: 7px;
+  background: #30303a;
+  border: 1px solid rgba(255,255,255,0.28);
+  border-radius: 14px;
+  box-shadow: 0 24px 50px -10px rgba(0,0,0,0.95), 0 0 0 1px rgba(0,0,0,0.55);
+  display: flex; flex-direction: column; gap: 5px;
+  transform-origin: 0 50%;
+}
+.sv__peek-card:not([hidden]) {
+  animation: peekIn 0.18s var(--ease-out) both;
+}
+@keyframes peekIn {
+  from { opacity: 0; transform: translateY(-50%) translateX(-10px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(-50%); }
+}
+/* толстый наконечник у рамки — висит между кнопкой и рамкой с равными отступами (3px) */
+.sv__peek-card::after {
+  content: ''; position: absolute; left: -10px; top: 50%; margin-top: -5px;
+  width: 0; height: 0;
+  border-top: 5px solid transparent; border-bottom: 5px solid transparent;
+  border-left: 7px solid var(--accent-strong);
+}
+/* у правого края экрана карточка разворачивается влево от кнопки */
+.sv__peek-card.is-flip:not([hidden]) { animation-name: peekInFlip; }
+.sv__peek-card.is-flip { left: auto; right: calc(100% + 13px); transform-origin: 100% 50%; }
+.sv__peek-card.is-flip::after {
+  left: auto; right: -10px;
+  border-left: none; border-right: 7px solid var(--accent-strong);
+}
+@keyframes peekInFlip {
+  from { opacity: 0; transform: translateY(-50%) translateX(10px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(-50%); }
+}
+.sv__peek-img {
+  width: 100%; aspect-ratio: 1 / 1;
+  object-fit: cover; display: block;
+  border-radius: 9px;
+  background: #0d0d10;
+}
+.sv__peek-title {
+  padding: 0 2px;
+  font-size: 12px; line-height: 1.3; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.sv__peek-artist {
+  padding: 0 2px 1px;
+  font-size: 11px; color: var(--text-faint);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 .sv__origin {
   margin-top: 10px;
   font-family: var(--serif);
@@ -2468,7 +2659,17 @@ body { -webkit-tap-highlight-color: transparent; }
 .sv__rate-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
 .sv__rate-label { font-family: var(--serif); font-style: italic; font-size: 15px; color: var(--text-dim); }
 .sv__mine { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; min-width: 2.4em; color: var(--text); }
-.sv__controls { max-width: 460px; }
+
+/* Сингл — один трек: оценка занимает всю ширину панели и чуть крупнее,
+   чем компактный рядок в списке треков альбома. */
+.sv__controls { max-width: none; }
+.sv__controls input[type="range"] { height: 5px; border-radius: 3px; }
+.sv__controls input[type="range"]::-webkit-slider-thumb { width: 20px; height: 20px; box-shadow: 0 0 0 6px var(--accent-soft); }
+.sv__controls input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; box-shadow: 0 0 0 6px var(--accent-soft); }
+.sv__controls input[type="range"]::-moz-range-track { height: 5px; border-radius: 3px; }
+.sv__controls .track__numinput { width: 84px; padding: 10px; font-size: 15px; border-radius: 11px; }
+.sv__controls .track__confirm-btn { width: 38px; height: 38px; border-radius: 11px; }
+.sv__controls .track__confirm-btn svg { width: 17px; height: 17px; }
 .sv__note { margin-top: 14px; font-size: 11.5px; line-height: 1.55; color: var(--text-faint); }
 .sv__impact { margin-top: 28px; }
 .sv__danger { margin-top: 44px; display: flex; justify-content: center; }
@@ -2480,6 +2681,10 @@ body { -webkit-tap-highlight-color: transparent; }
   .sv__title { font-size: 31px; }
   .sv__avg-num { font-size: 50px; }
   .sv__rate { padding: 18px 16px 16px; }
+  /* на телефоне панель оценки остаётся компактной, как у треков */
+  .sv__controls .track__numinput { width: 76px; padding: 8px 9px; font-size: 14px; }
+  .sv__controls .track__confirm-btn { width: 34px; height: 34px; }
+  .sv__controls .track__confirm-btn svg { width: 15px; height: 15px; }
   .sv__danger .btn { width: 100%; justify-content: center; }
   .sgrid { grid-template-columns: 1fr; }
 }

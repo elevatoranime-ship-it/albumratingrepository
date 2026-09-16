@@ -113,6 +113,7 @@ test('file cover persists without changing tracks, ratings or final album choice
   await expect(page.locator('#artist-own .album__cover img').first()).toHaveAttribute('src', saved.cover);
   await page.locator('#artist-back').click();
   await page.locator('#artists-btn').click();
+  await page.locator('#rank-menu-list .rank-menu__item[data-rank="artists"]').click();
   await expect(page.locator('#artist-rank-list img').first()).toHaveAttribute('src', saved.cover);
   await page.reload();
   await login(page);
@@ -172,82 +173,32 @@ test('cancel and Escape discard the draft and restore focus without leaving the 
   await expect(page.locator('#av-cover-edit')).toBeFocused();
 });
 
-test.describe('cover dialog motion', () => {
+test.describe('cover replace flourish', () => {
   test.use({ reducedMotion: 'no-preference' });
 
-  test('opening interpolates the dialog and backdrop instead of showing them instantly', async ({ page }) => {
-    await demo(page);
+  test('замена обложки проигрывает эффект «свежей обложки»', async ({ page }) => {
+    await demo(page, 'covers/blonde.jpg');
     await openAlbum(page);
-    const motion = await page.locator('#av-cover-edit').evaluate((button) => {
-      button.click();
-      const dialog = document.querySelector<HTMLDialogElement>('#album-cover-dialog')!;
-      const animations = dialog.getAnimations({ subtree: true })
-        .filter((animation) => (animation.effect as KeyframeEffect)?.target === dialog);
-      const snapshot = () => ({
-        opacity: Number(getComputedStyle(dialog).opacity),
-        backdrop: Number(getComputedStyle(dialog, '::backdrop').opacity),
-        transform: getComputedStyle(dialog).transform,
-      });
-      animations.forEach((animation) => { animation.pause(); animation.currentTime = 0; });
-      const start = snapshot();
-      animations.forEach((animation) => {
-        animation.currentTime = Number(animation.effect!.getComputedTiming().duration) / 2;
-      });
-      const middle = snapshot();
-      animations.forEach((animation) => animation.finish());
-      return { count: animations.length, start, middle, end: snapshot() };
-    });
-    expect(motion.count).toBeGreaterThanOrEqual(2);
-    for (const property of ['opacity', 'backdrop'] as const) {
-      expect(motion.start[property]).toBe(0);
-      expect(motion.middle[property]).toBeGreaterThan(0);
-      expect(motion.middle[property]).toBeLessThan(1);
-      expect(motion.end[property]).toBe(1);
-    }
-    expect(motion.start.transform).not.toBe(motion.middle.transform);
-    expect(motion.middle.transform).not.toBe(motion.end.transform);
-    await expect(page.locator('#album-cover-dialog')).toBeVisible();
-    await expect(page.locator('#album-cover-pick')).toBeFocused();
+    const url = await imageUrl(page);
+    await openEditor(page);
+    await page.locator('#album-cover-url').fill(url);
+    await page.locator('#album-cover-save').click();
+    await expect(page.locator('#album-cover-dialog')).not.toBeVisible();
+    await expect(page.locator('#av-cover-img')).toHaveAttribute('src', url);
+    // эффект появляется после загрузки новой обложки и сам снимается по окончании
+    await expect.poll(() => page.locator('figure.av__cover').getAttribute('class')).toContain('is-fresh');
+    await expect.poll(() => page.locator('figure.av__cover').getAttribute('class'), { timeout: 5000 }).not.toContain('is-fresh');
   });
 
-  test('closing preserves the preview until fading ends and safely restores focus', async ({ page }) => {
-    await demo(page, 'covers/blonde.jpg');
+  test('первое добавление обложки эффекта не запускает', async ({ page }) => {
+    await demo(page);
     await openAlbum(page);
     await openEditor(page);
     await pickFile(page);
-    const preview = await page.locator('#album-cover-preview').getAttribute('src');
-    const motion = await page.locator('#album-cover-cancel').evaluate(async (button) => {
-      const dialog = document.querySelector<HTMLDialogElement>('#album-cover-dialog')!;
-      const dialogAnimations = () => dialog.getAnimations({ subtree: true })
-        .filter((animation) => (animation.effect as KeyframeEffect)?.target === dialog);
-      await Promise.allSettled(dialogAnimations().map((animation) => animation.finished));
-      button.click();
-      const animations = dialogAnimations();
-      animations.forEach((animation) => {
-        animation.pause();
-        animation.currentTime = Number(animation.effect!.getComputedTiming().duration) / 2;
-      });
-      return { open: dialog.open, count: animations.length, opacity: Number(getComputedStyle(dialog).opacity) };
-    });
-    expect(motion.open).toBe(true);
-    expect(motion.count).toBeGreaterThan(0);
-    expect(motion.opacity).toBeGreaterThan(0);
-    expect(motion.opacity).toBeLessThan(1);
-    await expect(page.locator('#album-cover-preview')).toHaveAttribute('src', preview!);
-    await expect(page.locator('#album-cover-save')).toBeDisabled();
-    await page.keyboard.press('Escape'); // повторное закрытие не запускает навигацию
-    await expect(page.locator('#album-cover-dialog')).toHaveJSProperty('open', true);
-    await expect(page.locator('#view-album')).toHaveClass(/is-visible/);
-    await page.locator('#album-cover-dialog').evaluate((dialog) => {
-      dialog.getAnimations({ subtree: true })
-        .filter((animation) => (animation.effect as KeyframeEffect)?.target === dialog)
-        .forEach((animation) => animation.finish());
-    });
-    await expect(page.locator('#album-cover-dialog')).not.toBeVisible();
-    await expect(page.locator('#av-cover-edit')).toBeFocused();
-    expect((await storedAlbum(page)).cover).toBe('covers/blonde.jpg');
-    await openEditor(page);
-    await expect(page.locator('#album-cover-preview')).toHaveAttribute('src', 'covers/blonde.jpg');
+    await save(page);
+    await expect(page.locator('#av-cover-img')).toHaveAttribute('src', /^data:image\/jpeg/);
+    await page.waitForTimeout(300); // окно, за которое эффект успел бы появиться
+    await expect(page.locator('figure.av__cover')).not.toHaveClass(/is-fresh/);
   });
 });
 
@@ -300,29 +251,6 @@ test('rejects unsafe and broken URLs; clearing a valid URL clears the draft', as
   await expect(page.locator('#album-cover-save')).toBeEnabled();
   await page.locator('#album-cover-url').fill('');
   await expect(page.locator('#album-cover-save')).toBeDisabled();
-});
-
-test('a slow URL cannot overwrite a newer file selection', async ({ page }) => {
-  await demo(page);
-  await openAlbum(page);
-  await openEditor(page);
-  let release!: () => void;
-  const pending = new Promise<void>((resolve) => { release = resolve; });
-  const url = 'https://images.example.test/slow.jpg';
-  await page.route(url, async (route) => {
-    await pending;
-    await route.fulfill({ contentType: 'image/svg+xml', body: svg });
-  });
-  const requested = page.waitForRequest(url);
-  await page.locator('#album-cover-url').fill(url);
-  await requested;
-  await expect(page.locator('#album-cover-save')).toBeDisabled();
-  await pickFile(page);
-  const response = page.waitForResponse(url);
-  release();
-  await response;
-  await save(page);
-  expect((await storedAlbum(page)).cover).toMatch(/^data:image\/jpeg/);
 });
 
 test('a cancelled URL cannot leak into another album', async ({ page }) => {

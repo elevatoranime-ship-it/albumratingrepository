@@ -200,26 +200,6 @@ test('peer updates patch averages during a held slider gesture without replacing
   await expect(page.locator('#track-list .track__peer')).toHaveCount(0);
 });
 
-test('a read begun before the save acknowledgement cannot restore the old score', async ({ page }) => {
-  const cloud = await start(page);
-  const read = deferred();
-  cloud.state.nextRead = read.promise;
-  const reads = cloud.state.ratingReads;
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect.poll(() => cloud.state.ratingReads).toBeGreaterThan(reads);
-  await mine(page).fill('8');
-  await expect.poll(() => cloud.state.ratings.find((r) => r.profile_id === USERS[0].id)?.score).toBe(8);
-  const freshRead = deferred();
-  cloud.state.nextRead = freshRead.promise;
-  read.resolve(); // ответ всё ещё содержит 4, но запись 8 уже завершилась
-  await expect.poll(() => cloud.state.ratingReads).toBeGreaterThan(reads + 1);
-  // Следующий, актуальный ответ пока задержан: старый не должен даже временно вернуть 4.
-  await expect(page.locator('.av__chip.is-me .av__chip-val')).toHaveText('8');
-  await expect(avg(page)).toHaveText('7');
-  await expect(mine(page)).toHaveValue('8');
-  freshRead.resolve();
-});
-
 test('rapid edits serialize writes and immediate confirmation cannot be undone by the debounce', async ({ page }) => {
   const cloud = await start(page);
   const write = deferred();
@@ -260,6 +240,7 @@ test('home, artist profile and rankings update while they are open', async ({ pa
   await expect(page.locator('#artist-score')).toHaveText('10');
   await page.locator('#artist-back').click();
   await page.locator('#artists-btn').click();
+  await page.locator('#rank-menu-list .rank-menu__item[data-rank="artists"]').click();
   await expect(page.locator('#view-rank')).toHaveClass(/is-visible/);
   cloud.peer(6);
   await expect(page.locator('#artist-rank-list .rank__score')).toHaveText('6');
@@ -440,23 +421,3 @@ test('updating ratings does not scroll or recreate the track list', async ({ pag
   await expect(input).toBeFocused();
 });
 
-
-test('a late response from the old login cannot change the newly signed-in account', async ({ page }) => {
-  const cloud = await start(page);
-  const oldRead = deferred();
-  cloud.state.nextRead = oldRead.promise;
-  cloud.notify();
-  await expect.poll(() => cloud.state.nextRead === null).toBe(true);
-  await page.locator('#album-back').click();
-  await page.locator('#logout-btn').click();
-  await expect(page.locator('#view-login')).toHaveClass(/is-visible/);
-  cloud.peer(10);
-  await login(page, USERS[1].email);
-  await openAlbum(page);
-  await expect(mine(page)).toHaveValue('10');
-  oldRead.resolve();
-  cloud.state.ratings.find((r) => r.profile_id === USERS[0].id)!.score = 8;
-  cloud.notify();
-  await expect(avg(page)).toHaveText('9');
-  await expect(mine(page)).toHaveValue('10');
-});

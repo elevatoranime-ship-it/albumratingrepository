@@ -2498,7 +2498,7 @@ body { -webkit-tap-highlight-color: transparent; }
 /* глаз у привязки: удерживайте — всплывает миниатюра обложки альбома */
 .sv__peek {
   display: inline-grid; place-items: center;
-  width: 26px; height: 26px; margin-left: 7px; padding: 0;
+  width: 26px; height: 26px; margin-left: var(--parent-control-gap, 12px); padding: 0;
   vertical-align: middle;
   background: transparent;
   border: 1px solid transparent;

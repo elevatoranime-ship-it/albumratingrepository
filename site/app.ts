@@ -1688,22 +1688,20 @@ albumCoverUrl.addEventListener('input', () => {
  * Эффект «свежей обложки» после замены: новая обложка проявляется с лёгким
  * увеличением, по ней проходит блик и вспыхивает лавандовый контур.
  * Стартуем по событию load, чтобы анимация не играла на старом изображении.
+ * Класс снимаем фиксированным таймаутом: после окончания анимаций (≈1.3 с)
+ * он визуально ничего не меняет, а окно остаётся предсказуемым.
  */
+const coverFreshTimers = new WeakMap<HTMLElement, number>();
+
 function playCoverFresh(img: HTMLImageElement): void {
   const fig = img.closest('figure');
   if (!fig) return;
   fig.classList.remove('is-fresh');
+  window.clearTimeout(coverFreshTimers.get(fig));
   void fig.offsetWidth; // перезапуск, если эффект ещё не отыграл
   const start = () => {
     fig.classList.add('is-fresh');
-    const stop = () => {
-      fig.classList.remove('is-fresh');
-      img.removeEventListener('animationend', onAnimationEnd);
-      window.clearTimeout(fallback);
-    };
-    const onAnimationEnd = () => stop();
-    const fallback = window.setTimeout(stop, 2500);
-    img.addEventListener('animationend', onAnimationEnd, { once: true });
+    coverFreshTimers.set(fig, window.setTimeout(() => fig.classList.remove('is-fresh'), 2000));
   };
   if (img.complete && img.naturalWidth > 0) start();
   else img.addEventListener('load', start, { once: true });

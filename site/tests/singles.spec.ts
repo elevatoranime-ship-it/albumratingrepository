@@ -316,6 +316,15 @@ test('глаз у привязки: удержание показывает ми
 
   const peek = page.locator('#sv-parent-peek');
   await expect(peek).toBeVisible();
+  // глаз стоит после «изменить» с тем же отступом, что и остальные кнопки ряда
+  // (замер на широком экране — как в тесте равных отступов, без переносов)
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  const gap = await page.evaluate(() => {
+    const edit = document.querySelector('#sv-parent-edit')!.getBoundingClientRect();
+    const eye = document.querySelector('#sv-parent-peek')!.getBoundingClientRect();
+    return eye.left - edit.right;
+  });
+  expect(gap).toBeCloseTo(12, 0);
   const box = (await peek.boundingBox())!;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();                          // зажали — миниатюра видна

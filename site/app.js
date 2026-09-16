@@ -21419,21 +21419,16 @@ ${suffix}`;
     updateAlbumCoverControls();
     albumCoverUrlTimer = window.setTimeout(() => void previewAlbumCover(url, request), 400);
   });
+  var coverFreshTimers = /* @__PURE__ */ new WeakMap();
   function playCoverFresh(img) {
     const fig = img.closest("figure");
     if (!fig) return;
     fig.classList.remove("is-fresh");
+    window.clearTimeout(coverFreshTimers.get(fig));
     void fig.offsetWidth;
     const start = () => {
       fig.classList.add("is-fresh");
-      const stop = () => {
-        fig.classList.remove("is-fresh");
-        img.removeEventListener("animationend", onAnimationEnd);
-        window.clearTimeout(fallback);
-      };
-      const onAnimationEnd = () => stop();
-      const fallback = window.setTimeout(stop, 2500);
-      img.addEventListener("animationend", onAnimationEnd, { once: true });
+      coverFreshTimers.set(fig, window.setTimeout(() => fig.classList.remove("is-fresh"), 2e3));
     };
     if (img.complete && img.naturalWidth > 0) start();
     else img.addEventListener("load", start, { once: true });

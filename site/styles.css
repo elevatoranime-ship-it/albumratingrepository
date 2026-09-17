@@ -1624,11 +1624,23 @@ body {
 .cover-search__section + .cover-search__section { border-top: 1px solid var(--line); }
 .cover-search__head { display: flex; align-items: baseline; gap: 10px; }
 .cover-search__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
+}
+/* знак платформы рядом с названием: однотонный в цвет текста
+   (у Genius — фирменный жёлтый смайлик, зашитый в разметку) */
+.cover-search__logo {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  fill: currentColor;
+  opacity: 0.92;
 }
 .cover-search__state { font-size: 12.5px; color: var(--text-faint); }
 .cover-search__state.is-searching { color: var(--text-dim); }

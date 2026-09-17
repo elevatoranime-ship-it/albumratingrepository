@@ -24306,6 +24306,8 @@ ${suffix}`;
       name: "Deezer",
       enabled: true,
       transport: "jsonp",
+      // фирменный эквалайзер Deezer: четыре колонки ступенчатых полос
+      logo: '<path d="M18.81 4.16v3.03H24V4.16h-5.19zM6.27 8.38v3.027h5.189V8.38h-5.19zm12.54 0v3.027H24V8.38h-5.19zM0 12.595v3.027h5.19v-3.027H0zm6.27 0v3.027h5.189v-3.027h-5.19zm12.54 0v3.027H24v-3.027h-5.19zM0 16.81v3.029h5.19v-3.03H0zm6.27 0v3.029h5.189v-3.03h-5.19zm6.27 0v3.029h5.19v-3.03h-5.19zm6.27 0v3.029H24v-3.03h-5.19z"/>',
       buildUrl: (q0) => `https://api.deezer.com/search/album?q=${encodeURIComponent(q0)}&limit=${COVER_SEARCH_LIMIT}&output=jsonp`,
       parse: parseDeezer
     },
@@ -24314,6 +24316,8 @@ ${suffix}`;
       name: "Genius",
       enabled: true,
       transport: "fetch",
+      // знак Genius — жёлтый улыбающийся кругляшек (в тон заглушке-обложке сайта)
+      logo: '<path style="fill:#f2cf5e" d="M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20z"/><circle cx="8.3" cy="9.6" r="1.5" style="fill:#141418"/><circle cx="15.7" cy="9.6" r="1.5" style="fill:#141418"/><path d="M7.6 13.4c1.4 1.8 3 2.6 4.4 2.6s3-.8 4.4-2.6" fill="none" style="stroke:#141418" stroke-width="1.7" stroke-linecap="round"/>',
       // Токен клиента Genius — публичные данные только для чтения; передаём
       // параметром access_token: у Genius не проходит CORS-preflight,
       // поэтому заголовок Authorization из браузера использовать нельзя.
@@ -24327,6 +24331,8 @@ ${suffix}`;
       name: "iTunes",
       enabled: true,
       transport: "jsonp",
+      // яблоко — знак iTunes Store / Apple Music
+      logo: '<path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/>',
       // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
       buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
       parse: parseItunes
@@ -24533,7 +24539,7 @@ ${suffix}`;
       head2.className = "cover-search__head";
       const name = document.createElement("span");
       name.className = "cover-search__name";
-      name.textContent = provider.name;
+      name.innerHTML = `${esc(provider.name)}<svg class="cover-search__logo" viewBox="0 0 24 24" aria-hidden="true">${provider.logo}</svg>`;
       const state = document.createElement("span");
       state.className = "cover-search__state is-searching";
       state.textContent = "\u0438\u0449\u0435\u043C\u2026";

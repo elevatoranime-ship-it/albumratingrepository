@@ -24244,14 +24244,6 @@ ${suffix}`;
   }
   var COVER_PROVIDERS = [
     {
-      id: "itunes",
-      name: "iTunes",
-      enabled: true,
-      // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
-      buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
-      parse: parseItunes
-    },
-    {
       id: "deezer",
       name: "Deezer",
       enabled: true,
@@ -24275,6 +24267,14 @@ ${suffix}`;
       hint: "\u043D\u0443\u0436\u0435\u043D access token",
       buildUrl: (q0) => `https://api.genius.com/search?access_token=\u041F\u041E\u041B\u0423\u0427\u0418\u0422\u042C_\u0422\u041E\u041A\u0415\u041D&q=${encodeURIComponent(q0)}`,
       parse: () => []
+    },
+    {
+      id: "itunes",
+      name: "iTunes",
+      enabled: true,
+      // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
+      buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
+      parse: parseItunes
     }
   ];
   function coverSearchNoteText() {
@@ -24354,13 +24354,13 @@ ${suffix}`;
         this.launch(d.query.value);
       });
       d.query.addEventListener("input", () => {
-        this.manualEdit = d.query.value.trim() !== "";
         window.clearTimeout(this.timer);
-        if (this.manualEdit) {
+        if (d.query.value.trim() !== "") {
+          this.manualEdit = true;
           const q0 = d.query.value;
           this.timer = window.setTimeout(() => this.launch(q0), COVER_SEARCH_DEBOUNCE);
         } else {
-          this.syncContext();
+          this.manualEdit = false;
         }
       });
       d.query.addEventListener("keydown", (e) => {

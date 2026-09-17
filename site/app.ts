@@ -4838,14 +4838,6 @@ interface CoverProvider {
 
 const COVER_PROVIDERS: CoverProvider[] = [
   {
-    id: 'itunes',
-    name: 'iTunes',
-    enabled: true,
-    // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
-    buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
-    parse: parseItunes,
-  },
-  {
     id: 'deezer',
     name: 'Deezer',
     enabled: true,
@@ -4869,6 +4861,14 @@ const COVER_PROVIDERS: CoverProvider[] = [
     hint: 'нужен access token',
     buildUrl: (q0) => `https://api.genius.com/search?access_token=ПОЛУЧИТЬ_ТОКЕН&q=${encodeURIComponent(q0)}`,
     parse: () => [],
+  },
+  {
+    id: 'itunes',
+    name: 'iTunes',
+    enabled: true,
+    // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
+    buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
+    parse: parseItunes,
   },
 ];
 
@@ -4984,14 +4984,16 @@ class CoverSearchBox {
       this.launch(d.query.value);
     });
     d.query.addEventListener('input', () => {
-      this.manualEdit = d.query.value.trim() !== '';
       window.clearTimeout(this.timer);
-      if (this.manualEdit) {
+      if (d.query.value.trim() !== '') {
+        this.manualEdit = true; // правим свой запрос — авто-подстановка подождёт
         const q0 = d.query.value;
         this.timer = window.setTimeout(() => this.launch(q0), COVER_SEARCH_DEBOUNCE);
       } else {
-        // поле очистили — возвращаем авто-запрос из артиста и названия
-        this.syncContext();
+        // поле очистили: мгновенно ничего не подставляем — можно спокойно
+        // вписать другой запрос; на форме добавления следующее изменение
+        // артиста/названия снова подставит авто-запрос
+        this.manualEdit = false;
       }
     });
     d.query.addEventListener('keydown', (e) => {

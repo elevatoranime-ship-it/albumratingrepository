@@ -133,10 +133,12 @@ test('форма добавления: авто-поиск показывает 
   await page.locator('#artist-input').fill('Артист');
   await page.locator('#title-input').fill('Новый альбом');
 
-  // авто-поиск: секция раскрывается сама, у каждой платформы по 6 вариантов
+  // авто-поиск: секция раскрывается сама; порядок платформ — сначала Deezer, затем iTunes
   const sections = page.locator('#cover-search-sections .cover-search__section');
   await expect(page.locator('#cover-search')).toHaveClass(/is-open/);
   await expect(sections).toHaveCount(2);
+  await expect(sections.first()).toHaveAttribute('data-provider', 'deezer');
+  await expect(sections.nth(1)).toHaveAttribute('data-provider', 'itunes');
   const itunes = page.locator('#cover-search-sections .cover-search__section[data-provider="itunes"]');
   const deezer = page.locator('#cover-search-sections .cover-search__section[data-provider="deezer"]');
   await expect(itunes.locator('.cover-search__state')).toHaveText('6 вариантов');
@@ -144,7 +146,10 @@ test('форма добавления: авто-поиск показывает 
   await expect(itunes.locator('.cover-search__card')).toHaveCount(6);
   await expect(deezer.locator('.cover-search__card')).toHaveCount(6);
   // точность запроса: артист + название, без лишних пробелов; регион US уже проверен в маршруте
-  await expect.poll(() => queries.at(-1)).toBe('deezer:Артист Новый альбом');
+  await expect.poll(() => queries).toEqual(expect.arrayContaining([
+    'deezer:Артист Новый альбом',
+    'itunes:Артист Новый альбом',
+  ]));
 
   // примечание про зарезервированные платформы
   await expect(page.locator('#cover-search-note')).toContainText('SoundCloud');
@@ -187,7 +192,7 @@ test('форма добавления: запрос можно отредакт�
   await expect.poll(() => queries.filter((q0) => q0.startsWith('itunes:'))).toHaveLength(3);
 });
 
-test('форма добавления: очистка запроса возвращает авто-подстановку, ручной выбор файла сбрасывает выбор варианта', async ({ page }) => {
+test('форма добавления: очистка запроса не восстанавливает текст, ручной выбор файла сбрасывает выбор варианта', async ({ page }) => {
   const { queries } = await baseMocks(page);
   await page.goto('/');
   await login(page);
@@ -207,13 +212,23 @@ test('форма добавления: очистка запроса возвр�
   // поле ссылки очищено выбором файла — как у обычного потока
   await expect(page.locator('#cover-url')).toHaveValue('');
 
-  // очистка запроса возвращает авто-подстановку из артиста и названия
+  // очистка поля: текст не восстанавливается мгновенно и новый поиск не запускается
   await page.locator('#cover-search-query').fill('');
-  await expect(page.locator('#cover-search-query')).toHaveValue('Артист Название');
-  await expect.poll(() => queries.filter((q0) => q0.startsWith('itunes:'))).toHaveLength(2);
+  await expect(page.locator('#cover-search-query')).toHaveValue('');
+  await expect.poll(() => queries.length).toBe(2); // по-прежнему только первый поиск
+
+  // вписали свой запрос — он ищется
+  await page.locator('#cover-search-query').fill('Другой запрос');
+  await expect.poll(() => queries).toEqual(expect.arrayContaining(['itunes:Другой запрос']));
+
+  // после очистки следующее изменение артиста/названия снова подставляет авто-запрос
+  await page.locator('#cover-search-query').fill('');
+  await page.locator('#title-input').fill('Другое название');
+  await expect(page.locator('#cover-search-query')).toHaveValue('Артист Другое название');
+  await expect.poll(() => queries).toEqual(expect.arrayContaining(['itunes:Артист Другое название']));
 });
 
-test('окно обложки: авто-поиск по артисту и названию, выбор обновляет предпросмотр, «сохранить» применяет', async ({ page }) => {
+test('окно обложки: авто-поиск по артисту и названию, запрос можно очистить и переписать, выбор сохраняется', async ({ page }) => {
   const { queries } = await baseMocks(page);
   await seedDemo(page);
   await page.goto('/');
@@ -224,7 +239,19 @@ test('окно обложки: авто-поиск по артисту и наз
   const sections = page.locator('#album-cover-search-sections .cover-search__section');
   await expect(page.locator('#album-cover-search')).toHaveClass(/is-open/);
   await expect(sections).toHaveCount(2);
-  await expect.poll(() => queries.at(-1)).toBe('deezer:Артист Альбом без обложки');
+  await expect(sections.first()).toHaveAttribute('data-provider', 'deezer');
+  await expect.poll(() => queries).toEqual(expect.arrayContaining([
+    'deezer:Артист Альбом без обложки',
+    'itunes:Артист Альбом без обложки',
+  ]));
+
+  // поле запроса можно очистить — мгновенного восстановления нет — и вписать свой
+  const query = page.locator('#album-cover-search-query');
+  await query.fill('');
+  await expect(query).toHaveValue('');
+  await query.fill('Кино Группа крови');
+  await expect.poll(() => queries).toEqual(expect.arrayContaining(['itunes:Кино Группа крови']));
+  await expect(sections).toHaveCount(2); // секции пересобраны под новый запрос
 
   // выбор варианта Deezer: предпросмотр и поле ссылки обновились, «сохранить» доступна
   const deezer = page.locator('#album-cover-search-sections .cover-search__section[data-provider="deezer"]');
@@ -364,7 +391,10 @@ test('облако: выбор из поиска сохраняется ссыл
 
   const itunes = page.locator('#album-cover-search-sections .cover-search__section[data-provider="itunes"]');
   await expect(itunes.locator('.cover-search__card').first()).toBeVisible();
-  await expect.poll(() => queries.at(-1)).toBe('deezer:Артист Альбом без обложки');
+  await expect.poll(() => queries).toEqual(expect.arrayContaining([
+    'deezer:Артист Альбом без обложки',
+    'itunes:Артист Альбом без обложки',
+  ]));
   await itunes.locator('.cover-search__card').first().click();
   await expect(page.locator('#album-cover-save')).toBeEnabled();
   await page.locator('#album-cover-save').click();

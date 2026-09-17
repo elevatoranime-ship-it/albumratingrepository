@@ -24186,6 +24186,29 @@ ${suffix}`;
       document.head.appendChild(script);
     });
   }
+  async function coverFetchJson(url, abort) {
+    const controller = new AbortController();
+    abort.controller = controller;
+    const timer = window.setTimeout(() => controller.abort(), COVER_SEARCH_TIMEOUT);
+    try {
+      const response = await fetch(url, { signal: controller.signal, mode: "cors", credentials: "omit" });
+      if (!response.ok) {
+        throw new CoverSearchError("network", `API \u0432\u0435\u0440\u043D\u0443\u043B HTTP-\u0441\u0442\u0430\u0442\u0443\u0441 ${response.status}`);
+      }
+      return await response.json();
+    } catch (err) {
+      if (err instanceof CoverSearchError) throw err;
+      if (err?.name === "AbortError") {
+        throw new CoverSearchError("timeout", `\u043E\u0442\u0432\u0435\u0442 \u043D\u0435 \u043F\u0440\u0438\u0448\u0451\u043B \u0437\u0430 ${Math.round(COVER_SEARCH_TIMEOUT / 1e3)} \u0441`);
+      }
+      if (err instanceof TypeError) {
+        throw new CoverSearchError("network", "\u0437\u0430\u043F\u0440\u043E\u0441 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D \u2014 \u043D\u0435\u0442 \u0441\u0435\u0442\u0438 \u0438\u043B\u0438 API \u043D\u0435 \u0440\u0430\u0437\u0440\u0435\u0448\u0430\u0435\u0442 \u0437\u0430\u043F\u0440\u043E\u0441\u044B \u0438\u0437 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430 (CORS)");
+      }
+      throw new CoverSearchError("parse", `\u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0440\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C \u043E\u0442\u0432\u0435\u0442: ${messageOf(err)}`);
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
   function coverArtUpscale(url, size) {
     return url.replace(/\/\d+x\d+bb\.([a-z]+)(\?.*)?$/i, `/${size}x${size}bb.$1`);
   }
@@ -24242,40 +24265,74 @@ ${suffix}`;
     }
     return hits;
   }
+  function geniusArtUpscale(url) {
+    return url.replace(/\.(\d+)x(\d+)x1\.jpg$/i, ".1000x1000x1.jpg");
+  }
+  function parseGenius(data) {
+    if (!data || typeof data !== "object") throw new CoverSearchError("parse", "\u043F\u0443\u0441\u0442\u043E\u0439 \u0438\u043B\u0438 \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u043E\u0442\u0432\u0435\u0442");
+    const response = data.response;
+    const hits = response?.hits;
+    if (!Array.isArray(hits)) {
+      const meta = data.meta;
+      if (meta && meta.status !== void 0 && meta.status !== 200) {
+        throw new CoverSearchError("parse", `API \u0432\u0435\u0440\u043D\u0443\u043B \u0441\u0442\u0430\u0442\u0443\u0441 ${String(meta.status)}${typeof meta.message === "string" ? `: ${meta.message}` : ""}`);
+      }
+      throw new CoverSearchError("parse", "\u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u043D\u0435\u0442 \u043C\u0430\u0441\u0441\u0438\u0432\u0430 hits");
+    }
+    const hitsList = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const hit of hits) {
+      if (hit.type !== "song") continue;
+      const result = hit.result;
+      if (!result) continue;
+      const thumb = [result.song_art_image_thumbnail_url, result.song_art_image_url].find((u) => typeof u === "string" && u.startsWith("http"));
+      const big = [result.song_art_image_url, result.song_art_image_thumbnail_url].find((u) => typeof u === "string" && u.startsWith("http"));
+      if (!thumb || !big || seen.has(big)) continue;
+      seen.add(big);
+      const title = typeof result.title === "string" ? result.title : "";
+      const artistName2 = result.primary_artist?.name;
+      hitsList.push({
+        url: geniusArtUpscale(big),
+        thumb,
+        caption: typeof artistName2 === "string" ? `${artistName2} \u2014 ${title}` : title
+      });
+      if (hitsList.length >= COVER_SEARCH_LIMIT) break;
+    }
+    return hitsList;
+  }
   var COVER_PROVIDERS = [
     {
       id: "deezer",
       name: "Deezer",
       enabled: true,
+      transport: "jsonp",
       buildUrl: (q0) => `https://api.deezer.com/search/album?q=${encodeURIComponent(q0)}&limit=${COVER_SEARCH_LIMIT}&output=jsonp`,
       parse: parseDeezer
-    },
-    /* --- зарезервировано: включатся (enabled: true + настоящие buildUrl/parse),
-           когда будут зарегистрированы приложения и получены ключи --- */
-    {
-      id: "soundcloud",
-      name: "SoundCloud",
-      enabled: false,
-      hint: "\u043D\u0443\u0436\u043D\u0430 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u044F (client_id)",
-      buildUrl: (q0) => `https://api.soundcloud.com/tracks?client_id=\u041F\u041E\u041B\u0423\u0427\u0418\u0422\u042C_\u041A\u041B\u042E\u0427&q=${encodeURIComponent(q0)}`,
-      parse: () => []
     },
     {
       id: "genius",
       name: "Genius",
-      enabled: false,
-      hint: "\u043D\u0443\u0436\u0435\u043D access token",
-      buildUrl: (q0) => `https://api.genius.com/search?access_token=\u041F\u041E\u041B\u0423\u0427\u0418\u0422\u042C_\u0422\u041E\u041A\u0415\u041D&q=${encodeURIComponent(q0)}`,
-      parse: () => []
+      enabled: true,
+      transport: "fetch",
+      // Токен клиента Genius — публичные данные только для чтения; передаём
+      // параметром access_token: у Genius не проходит CORS-preflight,
+      // поэтому заголовок Authorization из браузера использовать нельзя.
+      // Если токен перестанет работать — выпустите новый в настройках
+      // приложения Genius API и замените его здесь.
+      buildUrl: (q0) => `https://api.genius.com/search?access_token=0bdmXdOU1UaPikappqvWfrpwrpxkB3HczT2xlouY9vliFGTXSahE6jOVSwAaosGP&per_page=${COVER_SEARCH_LIMIT}&q=${encodeURIComponent(q0)}`,
+      parse: parseGenius
     },
     {
       id: "itunes",
       name: "iTunes",
       enabled: true,
+      transport: "jsonp",
       // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
       buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
       parse: parseItunes
     }
+    /* --- зарезервировано: новая платформа = один объект здесь (enabled: false
+           с подсказкой hint, пока нет ключей) --- */
   ];
   function coverSearchNoteText() {
     const off = COVER_PROVIDERS.filter((p) => !p.enabled);
@@ -24393,7 +24450,10 @@ ${suffix}`;
     /** Сброс: очистить результаты, выбор и флаги (при открытии/закрытии форм). */
     reset() {
       this.seq += 1;
-      for (const a of this.aborts) a.aborted = true;
+      for (const a of this.aborts) {
+        a.aborted = true;
+        a.controller?.abort();
+      }
       this.aborts = [];
       window.clearTimeout(this.timer);
       this.manualEdit = false;
@@ -24419,7 +24479,10 @@ ${suffix}`;
       const q0 = qraw.trim().replace(/\s+/g, " ");
       this.seq += 1;
       const seq = this.seq;
-      for (const a of this.aborts) a.aborted = true;
+      for (const a of this.aborts) {
+        a.aborted = true;
+        a.controller?.abort();
+      }
       this.aborts = [];
       this.selectedUrl = null;
       this.d.sections.innerHTML = "";
@@ -24433,7 +24496,7 @@ ${suffix}`;
         const url = provider.buildUrl(q0);
         const refs = this.buildSection(provider);
         this.d.sections.appendChild(refs.section);
-        coverJsonp(url, abort).then((data) => {
+        (provider.transport === "fetch" ? coverFetchJson(url, abort) : coverJsonp(url, abort)).then((data) => {
           if (abort.aborted || seq !== this.seq) return;
           const hits = provider.parse(data);
           if (seq !== this.seq) return;

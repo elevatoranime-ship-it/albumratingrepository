@@ -33,8 +33,29 @@ const deezerData = {
   })),
 };
 
+const geniusData = {
+  meta: { status: 200 },
+  response: {
+    hits: [
+      // тип artist должен отфильтроваться: берём только арты треков
+      { type: 'artist', result: { id: 42, name: 'Артист', image_url: 'https://cdn.example.test/genius/artist/300x300x1.jpg' } },
+      ...[1, 2, 3, 4, 5, 6].map((i) => ({
+        type: 'song',
+        result: {
+          id: 500 + i,
+          title: `Трек ${i}`,
+          primary_artist: { id: 9, name: 'Артист' },
+          song_art_image_thumbnail_url: `https://cdn.example.test/genius/rel${i}/300x300x1.jpg`,
+          song_art_image_url: `https://cdn.example.test/genius/rel${i}/1000x1000x1.jpg`,
+        },
+      })),
+    ],
+  },
+};
+
 const itunesBig = (i: number) => `https://cdn.example.test/itunes/rel${i}/600x600bb.jpg`;
 const deezerXl = (i: number) => `https://cdn.example.test/deezer/rel${i}/xl.jpg`;
+const geniusBig = (i: number) => `https://cdn.example.test/genius/rel${i}/1000x1000x1.jpg`;
 
 const pageErrors = new WeakMap<Page, string[]>();
 
@@ -81,6 +102,19 @@ async function baseMocks(page: Page, cloud = false): Promise<{ queries: string[]
     const callback = url.searchParams.get('callback') ?? 'noop';
     return route.fulfill({ contentType: 'application/javascript', body: `${callback}(${JSON.stringify(deezerData)});` });
   });
+  // Genius: обычный fetch+JSON; токен — параметром, заголовка Authorization нет (preflight не проходит)
+  await page.route(/api\.genius\.com\/search/, (route) => {
+    const request = route.request();
+    const url = new URL(request.url());
+    queries.push(`genius:${url.searchParams.get('q') ?? ''}`);
+    expect(url.searchParams.get('access_token')).toBeTruthy();
+    expect(request.headers()['authorization']).toBeUndefined();
+    return route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      contentType: 'application/json',
+      body: JSON.stringify(geniusData),
+    });
+  });
   // картинки CDN: и миниатюры, и полные размеры
   await page.route(/cdn\.example\.test/, (route) => route.fulfill({ contentType: 'image/svg+xml', body: svg }));
   return { queries };
@@ -119,7 +153,7 @@ async function openEditor(page: Page): Promise<void> {
   await openCoverEditor(page);
 }
 
-test('форма добавления: авто-поиск показывает обе платформы, выбор подставляет обложку и сохраняется', async ({ page }) => {
+test('форма добавления: авто-поиск показывает все платформы, выбор подставляет обложку и сохраняется', async ({ page }) => {
   const { queries } = await baseMocks(page);
   await page.goto('/');
   await login(page);
@@ -133,27 +167,32 @@ test('форма добавления: авто-поиск показывает 
   await page.locator('#artist-input').fill('Артист');
   await page.locator('#title-input').fill('Новый альбом');
 
-  // авто-поиск: секция раскрывается сама; порядок платформ — сначала Deezer, затем iTunes
+  // авто-поиск: секция раскрывается сама; порядок — Deezer, Genius, iTunes
   const sections = page.locator('#cover-search-sections .cover-search__section');
   await expect(page.locator('#cover-search')).toHaveClass(/is-open/);
-  await expect(sections).toHaveCount(2);
-  await expect(sections.first()).toHaveAttribute('data-provider', 'deezer');
-  await expect(sections.nth(1)).toHaveAttribute('data-provider', 'itunes');
+  await expect(sections).toHaveCount(3);
+  await expect(sections.nth(0)).toHaveAttribute('data-provider', 'deezer');
+  await expect(sections.nth(1)).toHaveAttribute('data-provider', 'genius');
+  await expect(sections.nth(2)).toHaveAttribute('data-provider', 'itunes');
   const itunes = page.locator('#cover-search-sections .cover-search__section[data-provider="itunes"]');
   const deezer = page.locator('#cover-search-sections .cover-search__section[data-provider="deezer"]');
+  const genius = page.locator('#cover-search-sections .cover-search__section[data-provider="genius"]');
   await expect(itunes.locator('.cover-search__state')).toHaveText('6 вариантов');
   await expect(deezer.locator('.cover-search__state')).toHaveText('6 вариантов');
+  await expect(genius.locator('.cover-search__state')).toHaveText('6 вариантов');
   await expect(itunes.locator('.cover-search__card')).toHaveCount(6);
   await expect(deezer.locator('.cover-search__card')).toHaveCount(6);
-  // точность запроса: артист + название, без лишних пробелов; регион US уже проверен в маршруте
+  await expect(genius.locator('.cover-search__card')).toHaveCount(6);
+  // точность запроса: артист + название, без лишних пробелов; регион US и
+  // передача токена параметром уже проверены в маршрутах
   await expect.poll(() => queries).toEqual(expect.arrayContaining([
     'deezer:Артист Новый альбом',
+    'genius:Артист Новый альбом',
     'itunes:Артист Новый альбом',
   ]));
 
-  // примечание про зарезервированные платформы
-  await expect(page.locator('#cover-search-note')).toContainText('SoundCloud');
-  await expect(page.locator('#cover-search-note')).toContainText('Genius');
+  // все платформы подключены — примечание о резерве скрыто
+  await expect(page.locator('#cover-search-note')).toBeHidden();
 
   // выбор первого варианта iTunes: миниатюра и поле ссылки получают полный размер 600x600
   await itunes.locator('.cover-search__card').first().click();
@@ -215,7 +254,7 @@ test('форма добавления: очистка запроса не вос
   // очистка поля: текст не восстанавливается мгновенно и новый поиск не запускается
   await page.locator('#cover-search-query').fill('');
   await expect(page.locator('#cover-search-query')).toHaveValue('');
-  await expect.poll(() => queries.length).toBe(2); // по-прежнему только первый поиск
+  await expect.poll(() => queries.length).toBe(3); // по-прежнему только первый поиск
 
   // вписали свой запрос — он ищется
   await page.locator('#cover-search-query').fill('Другой запрос');
@@ -238,10 +277,12 @@ test('окно обложки: авто-поиск по артисту и наз
   // авто-поиск: запрос из артиста и названия релиза, секция раскрыта
   const sections = page.locator('#album-cover-search-sections .cover-search__section');
   await expect(page.locator('#album-cover-search')).toHaveClass(/is-open/);
-  await expect(sections).toHaveCount(2);
-  await expect(sections.first()).toHaveAttribute('data-provider', 'deezer');
+  await expect(sections).toHaveCount(3);
+  await expect(sections.nth(0)).toHaveAttribute('data-provider', 'deezer');
+  await expect(sections.nth(1)).toHaveAttribute('data-provider', 'genius');
   await expect.poll(() => queries).toEqual(expect.arrayContaining([
     'deezer:Артист Альбом без обложки',
+    'genius:Артист Альбом без обложки',
     'itunes:Артист Альбом без обложки',
   ]));
 
@@ -251,7 +292,7 @@ test('окно обложки: авто-поиск по артисту и наз
   await expect(query).toHaveValue('');
   await query.fill('Кино Группа крови');
   await expect.poll(() => queries).toEqual(expect.arrayContaining(['itunes:Кино Группа крови']));
-  await expect(sections).toHaveCount(2); // секции пересобраны под новый запрос
+  await expect(sections).toHaveCount(3); // секции пересобраны под новый запрос
 
   // выбор варианта Deezer: предпросмотр и поле ссылки обновились, «сохранить» доступна
   const deezer = page.locator('#album-cover-search-sections .cover-search__section[data-provider="deezer"]');
@@ -302,16 +343,19 @@ test('ошибка платформы: статус, детали и копир�
 
   await deezer.locator('.cover-search__fail-toggle').click();
   await expect(report).toBeHidden();
-  // вторая платформа при этом работает как обычно
+  // остальные платформы при этом работают как обычно
   await expect(page.locator('#cover-search-sections .cover-search__section[data-provider="itunes"] .cover-search__state'))
+    .toHaveText('6 вариантов');
+  await expect(page.locator('#cover-search-sections .cover-search__section[data-provider="genius"] .cover-search__state'))
     .toHaveText('6 вариантов');
 });
 
-test('обе платформы недоступны: обе секции с ошибками, выбор файла по-прежнему работает', async ({ page }) => {
+test('все платформы недоступны: секции с ошибками, выбор файла по-прежнему работает', async ({ page }) => {
   await baseMocks(page);
-  // заблокировать и iTunes (перебиваем точечную подмену более поздним обработчиком)
+  // заблокировать все три (перебиваем точечные подмены более поздними обработчиками)
   await page.route(/itunes\.apple\.com\/search/, (route) => route.abort());
   await page.route(/api\.deezer\.com\/search\/album/, (route) => route.abort());
+  await page.route(/api\.genius\.com\/search/, (route) => route.abort());
   await page.goto('/');
   await login(page);
   await page.locator('#albums .album--add').click();
@@ -319,9 +363,10 @@ test('обе платформы недоступны: обе секции с о�
   await page.locator('#title-input').fill('Название');
 
   const sections = page.locator('#cover-search-sections .cover-search__section');
-  await expect(sections).toHaveCount(2);
+  await expect(sections).toHaveCount(3);
   await expect(page.locator('#cover-search-sections .cover-search__section[data-provider="itunes"] .cover-search__state')).toHaveText('ошибка · network', { timeout: 5000 });
   await expect(page.locator('#cover-search-sections .cover-search__section[data-provider="deezer"] .cover-search__state')).toHaveText('ошибка · network');
+  await expect(page.locator('#cover-search-sections .cover-search__section[data-provider="genius"] .cover-search__state')).toHaveText('ошибка · network');
   await expect(page.locator('#cover-search')).not.toHaveClass(/is-open/); // раскрывать нечего
 
   await page.locator('#cover-search-toggle').click();
@@ -393,6 +438,7 @@ test('облако: выбор из поиска сохраняется ссыл
   await expect(itunes.locator('.cover-search__card').first()).toBeVisible();
   await expect.poll(() => queries).toEqual(expect.arrayContaining([
     'deezer:Артист Альбом без обложки',
+    'genius:Артист Альбом без обложки',
     'itunes:Артист Альбом без обложки',
   ]));
   await itunes.locator('.cover-search__card').first().click();

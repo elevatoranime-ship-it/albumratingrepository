@@ -4730,9 +4730,15 @@ class CoverSearchError extends Error {
 
 /* ---------- JSONP: <script> с глобальным колбэком, таймаут и уборка ---------- */
 
+/** Ручка отмены поиска: флаг + контроллер для отмены обычного fetch. */
+interface CoverAbort {
+  aborted: boolean;
+  controller?: AbortController;
+}
+
 let coverJsonpSeq = 0;
 
-function coverJsonp(url: string, abort: { aborted: boolean }): Promise<unknown> {
+function coverJsonp(url: string, abort: CoverAbort): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const callbackName = `__coverSearchCb${Date.now().toString(36)}_${++coverJsonpSeq}`;
     const scope = window as unknown as Record<string, unknown>;
@@ -4759,6 +4765,33 @@ function coverJsonp(url: string, abort: { aborted: boolean }): Promise<unknown> 
     script.src = `${url}${url.includes('?') ? '&' : '?'}callback=${encodeURIComponent(callbackName)}`;
     document.head.appendChild(script);
   });
+}
+
+/** Обычный fetch JSON (для API с CORS, но без JSONP — как Genius).
+    Простой GET без заголовков: у Genius не проходит CORS-preflight,
+    поэтому токен передаётся параметром access_token, а не Authorization. */
+async function coverFetchJson(url: string, abort: CoverAbort): Promise<unknown> {
+  const controller = new AbortController();
+  abort.controller = controller;
+  const timer = window.setTimeout(() => controller.abort(), COVER_SEARCH_TIMEOUT);
+  try {
+    const response = await fetch(url, { signal: controller.signal, mode: 'cors', credentials: 'omit' });
+    if (!response.ok) {
+      throw new CoverSearchError('network', `API вернул HTTP-статус ${response.status}`);
+    }
+    return await response.json();
+  } catch (err) {
+    if (err instanceof CoverSearchError) throw err;
+    if ((err as { name?: string } | null)?.name === 'AbortError') {
+      throw new CoverSearchError('timeout', `ответ не пришёл за ${Math.round(COVER_SEARCH_TIMEOUT / 1000)} с`);
+    }
+    if (err instanceof TypeError) {
+      throw new CoverSearchError('network', 'запрос не выполнен — нет сети или API не разрешает запросы из браузера (CORS)');
+    }
+    throw new CoverSearchError('parse', `не удалось разобрать ответ: ${messageOf(err)}`);
+  } finally {
+    window.clearTimeout(timer);
+  }
 }
 
 /* ---------- Разбор ответов платформ ---------- */
@@ -4824,13 +4857,55 @@ function parseDeezer(data: unknown): CoverHit[] {
 
 /* ---------- Реестр платформ: новая платформа = один объект здесь ---------- */
 
+/** У Genius размер картинки зашит в путь: …/hash.300x300x1.jpg → подставим больший. */
+function geniusArtUpscale(url: string): string {
+  return url.replace(/\.(\d+)x(\d+)x1\.jpg$/i, '.1000x1000x1.jpg');
+}
+
+function parseGenius(data: unknown): CoverHit[] {
+  if (!data || typeof data !== 'object') throw new CoverSearchError('parse', 'пустой или некорректный ответ');
+  const response = (data as { response?: unknown }).response;
+  const hits = (response as { hits?: unknown } | null)?.hits;
+  if (!Array.isArray(hits)) {
+    const meta = (data as { meta?: { status?: unknown; message?: unknown } }).meta;
+    if (meta && meta.status !== undefined && meta.status !== 200) {
+      throw new CoverSearchError('parse', `API вернул статус ${String(meta.status)}${typeof meta.message === 'string' ? `: ${meta.message}` : ''}`);
+    }
+    throw new CoverSearchError('parse', 'в ответе нет массива hits');
+  }
+  const hitsList: CoverHit[] = [];
+  const seen = new Set<string>();
+  for (const hit of hits) {
+    if ((hit as { type?: unknown }).type !== 'song') continue; // берём только треки (арты песен)
+    const result = (hit as { result?: Record<string, unknown> | null }).result;
+    if (!result) continue;
+    const thumb = [result.song_art_image_thumbnail_url, result.song_art_image_url]
+      .find((u): u is string => typeof u === 'string' && u.startsWith('http'));
+    const big = [result.song_art_image_url, result.song_art_image_thumbnail_url]
+      .find((u): u is string => typeof u === 'string' && u.startsWith('http'));
+    if (!thumb || !big || seen.has(big)) continue;
+    seen.add(big);
+    const title = typeof result.title === 'string' ? result.title : '';
+    const artistName = (result.primary_artist as { name?: unknown } | null | undefined)?.name;
+    hitsList.push({
+      url: geniusArtUpscale(big),
+      thumb,
+      caption: typeof artistName === 'string' ? `${artistName} — ${title}` : title,
+    });
+    if (hitsList.length >= COVER_SEARCH_LIMIT) break;
+  }
+  return hitsList;
+}
+
 interface CoverProvider {
   id: string;
   name: string;
   enabled: boolean;
+  /** jsonp — скриптовый JSONP; fetch — обычный GET+JSON (нужен CORS у API). */
+  transport: 'jsonp' | 'fetch';
   /** Почему платформа пока не подключена (для примечания под результатами). */
   hint?: string;
-  /** Собрать URL JSONP-запроса; callback добавит coverJsonp. */
+  /** Собрать URL запроса; JSONP добавит callback, fetch идёт по этому адресу. */
   buildUrl(query: string): string;
   /** Разобрать ответ в варианты (бросает CoverSearchError('parse')). */
   parse(data: unknown): CoverHit[];
@@ -4841,35 +4916,34 @@ const COVER_PROVIDERS: CoverProvider[] = [
     id: 'deezer',
     name: 'Deezer',
     enabled: true,
+    transport: 'jsonp',
     buildUrl: (q0) => `https://api.deezer.com/search/album?q=${encodeURIComponent(q0)}&limit=${COVER_SEARCH_LIMIT}&output=jsonp`,
     parse: parseDeezer,
-  },
-  /* --- зарезервировано: включатся (enabled: true + настоящие buildUrl/parse),
-         когда будут зарегистрированы приложения и получены ключи --- */
-  {
-    id: 'soundcloud',
-    name: 'SoundCloud',
-    enabled: false,
-    hint: 'нужна регистрация приложения (client_id)',
-    buildUrl: (q0) => `https://api.soundcloud.com/tracks?client_id=ПОЛУЧИТЬ_КЛЮЧ&q=${encodeURIComponent(q0)}`,
-    parse: () => [],
   },
   {
     id: 'genius',
     name: 'Genius',
-    enabled: false,
-    hint: 'нужен access token',
-    buildUrl: (q0) => `https://api.genius.com/search?access_token=ПОЛУЧИТЬ_ТОКЕН&q=${encodeURIComponent(q0)}`,
-    parse: () => [],
+    enabled: true,
+    transport: 'fetch',
+    // Токен клиента Genius — публичные данные только для чтения; передаём
+    // параметром access_token: у Genius не проходит CORS-preflight,
+    // поэтому заголовок Authorization из браузера использовать нельзя.
+    // Если токен перестанет работать — выпустите новый в настройках
+    // приложения Genius API и замените его здесь.
+    buildUrl: (q0) => `https://api.genius.com/search?access_token=0bdmXdOU1UaPikappqvWfrpwrpxkB3HczT2xlouY9vliFGTXSahE6jOVSwAaosGP&per_page=${COVER_SEARCH_LIMIT}&q=${encodeURIComponent(q0)}`,
+    parse: parseGenius,
   },
   {
     id: 'itunes',
     name: 'iTunes',
     enabled: true,
+    transport: 'jsonp',
     // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
     buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
     parse: parseItunes,
   },
+  /* --- зарезервировано: новая платформа = один объект здесь (enabled: false
+         с подсказкой hint, пока нет ключей) --- */
 ];
 
 function coverSearchNoteText(): string {
@@ -4967,7 +5041,7 @@ class CoverSearchBox {
   private userToggled = false;     // пользователь сам открывал/закрывал секцию
   private seq = 0;                 // номер поиска: поздние ответы не применяются
   private timer: number | undefined;
-  private aborts: Array<{ aborted: boolean }> = [];
+  private aborts: CoverAbort[] = [];
   private selectedUrl: string | null = null;
 
   constructor(private readonly d: CoverSearchRefs) {
@@ -5031,7 +5105,7 @@ class CoverSearchBox {
   /** Сброс: очистить результаты, выбор и флаги (при открытии/закрытии форм). */
   reset(): void {
     this.seq += 1;
-    for (const a of this.aborts) a.aborted = true;
+    for (const a of this.aborts) { a.aborted = true; a.controller?.abort(); }
     this.aborts = [];
     window.clearTimeout(this.timer);
     this.manualEdit = false;
@@ -5061,7 +5135,7 @@ class CoverSearchBox {
     const q0 = qraw.trim().replace(/\s+/g, ' ');
     this.seq += 1;
     const seq = this.seq;
-    for (const a of this.aborts) a.aborted = true;
+    for (const a of this.aborts) { a.aborted = true; a.controller?.abort(); }
     this.aborts = [];
     this.selectedUrl = null;
     this.d.sections.innerHTML = '';
@@ -5070,12 +5144,12 @@ class CoverSearchBox {
     let pending = enabled.length;
     let anyHits = false;
     for (const provider of enabled) {
-      const abort = { aborted: false };
+      const abort: CoverAbort = { aborted: false };
       this.aborts.push(abort);
       const url = provider.buildUrl(q0);
       const refs = this.buildSection(provider);
       this.d.sections.appendChild(refs.section);
-      coverJsonp(url, abort)
+      (provider.transport === 'fetch' ? coverFetchJson(url, abort) : coverJsonp(url, abort))
         .then((data) => {
           if (abort.aborted || seq !== this.seq) return;
           const hits = provider.parse(data); // может бросить CoverSearchError('parse')

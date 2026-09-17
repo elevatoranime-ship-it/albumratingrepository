@@ -188,7 +188,7 @@ test('форма добавления: запрос можно отредакт�
 });
 
 test('форма добавления: очистка запроса возвращает авто-подстановку, ручной выбор файла сбрасывает выбор варианта', async ({ page }) => {
-  await baseMocks(page);
+  const { queries } = await baseMocks(page);
   await page.goto('/');
   await login(page);
   await page.locator('#albums .album--add').click();

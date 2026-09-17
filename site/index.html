@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>Пространство · альбомы и синглы</title>
-  <link rel="stylesheet" href="styles.css?v=40" />
+  <link rel="stylesheet" href="styles.css?v=41" />
 </head>
 <body>
 
@@ -375,6 +375,22 @@
                        autocomplete="off" spellcheck="false" placeholder="…или вставьте ссылку на обложку" />
                 <p class="form__error" id="cover-url-error" role="alert" aria-live="polite"></p>
               </div>
+              <div class="cover-search" id="cover-search">
+                <button class="cover-search__toggle" id="cover-search-toggle" type="button"
+                        aria-expanded="false" aria-controls="cover-search-body">найти обложку онлайн</button>
+                <div class="cover-search__clip" id="cover-search-clip">
+                  <div class="cover-search__body" id="cover-search-body">
+                    <div class="cover-search__bar">
+                      <input class="field__input field__input--plain cover-search__query" id="cover-search-query" type="text"
+                             autocomplete="off" spellcheck="false" aria-label="Запрос для поиска обложки"
+                             placeholder="артист и название…" />
+                      <button class="btn btn--ghost btn--sm cover-search__run" id="cover-search-run" type="button">искать</button>
+                    </div>
+                    <div class="cover-search__sections" id="cover-search-sections"></div>
+                    <p class="cover-pick__note cover-search__note" id="cover-search-note" hidden></p>
+                  </div>
+                </div>
+              </div>
               <p class="cover-pick__note" id="cover-note">файл или ссылка — обложку можно будет заменить и позже, на странице альбома</p>
             </div>
 
@@ -693,6 +709,22 @@
              placeholder="https://…" autocomplete="off" spellcheck="false" aria-describedby="album-cover-error" />
       <p class="cover-editor__status" id="album-cover-status" role="status" aria-live="polite"></p>
       <p class="form__error" id="album-cover-error" role="alert"></p>
+      <div class="cover-search cover-search--dialog" id="album-cover-search">
+        <button class="cover-search__toggle" id="album-cover-search-toggle" type="button"
+                aria-expanded="false" aria-controls="album-cover-search-body">найти обложку онлайн</button>
+        <div class="cover-search__clip" id="album-cover-search-clip">
+          <div class="cover-search__body" id="album-cover-search-body">
+            <div class="cover-search__bar">
+              <input class="field__input field__input--plain cover-search__query" id="album-cover-search-query" type="text"
+                     autocomplete="off" spellcheck="false" aria-label="Запрос для поиска обложки"
+                     placeholder="артист и название…" />
+              <button class="btn btn--ghost btn--sm cover-search__run" id="album-cover-search-run" type="button">искать</button>
+            </div>
+            <div class="cover-search__sections" id="album-cover-search-sections"></div>
+            <p class="cover-pick__note cover-search__note" id="album-cover-search-note" hidden></p>
+          </div>
+        </div>
+      </div>
       <div class="confirm__actions">
         <button class="btn btn--ghost" id="album-cover-cancel" type="button">отмена</button>
         <button class="btn" id="album-cover-save" type="submit" disabled>
@@ -743,6 +775,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="app.js?v=39"></script>
+  <script src="app.js?v=40"></script>
 </body>
 </html>

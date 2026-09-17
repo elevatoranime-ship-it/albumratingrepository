@@ -21319,6 +21319,7 @@ ${suffix}`;
     albumCoverSave.classList.toggle("is-loading", albumCoverSaving);
     albumCoverSave.setAttribute("aria-busy", String(albumCoverSaving));
     albumCoverStatus.textContent = albumCoverSaving ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C \u043E\u0431\u043B\u043E\u0436\u043A\u0443\u2026" : albumCoverPreparing ? "\u041F\u043E\u0434\u0433\u043E\u0442\u0430\u0432\u043B\u0438\u0432\u0430\u0435\u043C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435\u2026" : "";
+    dlgCoverSearch.setBlocked(blocked);
   }
   function resetAlbumCoverDraft() {
     window.clearTimeout(albumCoverUrlTimer);
@@ -21326,6 +21327,7 @@ ${suffix}`;
     albumCoverDraft = null;
     albumCoverPreparing = false;
     showAlbumCoverError();
+    dlgCoverSearch.clearSelection();
     const al = albums.find((a) => a.id === editingCoverAlbumId);
     if (al) albumCoverPreview.src = coverSrc(al);
     updateAlbumCoverControls();
@@ -21342,6 +21344,8 @@ ${suffix}`;
     albumCoverDialog.showModal();
     void albumCoverDialog.offsetWidth;
     albumCoverDialog.classList.add("is-open");
+    dlgCoverSearch.reset();
+    dlgCoverSearch.syncContext(400);
   }
   function closeAlbumCoverEditor() {
     if (albumCoverSaving || albumCoverClosing || !albumCoverDialog.open) return;
@@ -21359,6 +21363,7 @@ ${suffix}`;
       albumCoverForm.reset();
       albumCoverPreview.removeAttribute("src");
       showAlbumCoverError();
+      dlgCoverSearch.reset();
       updateAlbumCoverControls();
     };
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -24143,6 +24148,466 @@ ${suffix}`;
     avSingles.innerHTML = "";
     for (const s of list) avSingles.appendChild(makeSingleRow(s));
   }
+  var COVER_SEARCH_LIMIT = 6;
+  var COVER_SEARCH_TIMEOUT = 1e4;
+  var COVER_SEARCH_DEBOUNCE = 700;
+  var CoverSearchError = class extends Error {
+    constructor(stage, message) {
+      super(message);
+      this.stage = stage;
+    }
+  };
+  var coverJsonpSeq = 0;
+  function coverJsonp(url, abort) {
+    return new Promise((resolve, reject) => {
+      const callbackName = `__coverSearchCb${Date.now().toString(36)}_${++coverJsonpSeq}`;
+      const scope = window;
+      const script = document.createElement("script");
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        settle(() => reject(new CoverSearchError("timeout", `\u043E\u0442\u0432\u0435\u0442 \u043D\u0435 \u043F\u0440\u0438\u0448\u0451\u043B \u0437\u0430 ${Math.round(COVER_SEARCH_TIMEOUT / 1e3)} \u0441`)));
+      }, COVER_SEARCH_TIMEOUT);
+      const cleanup = () => {
+        window.clearTimeout(timer);
+        delete scope[callbackName];
+        script.remove();
+      };
+      const settle = (fn) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (!abort.aborted) fn();
+      };
+      scope[callbackName] = (data) => settle(() => resolve(data));
+      script.addEventListener("error", () => {
+        settle(() => reject(new CoverSearchError("network", "\u0437\u0430\u043F\u0440\u043E\u0441 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D \u2014 \u043D\u0435\u0442 \u0441\u0435\u0442\u0438, \u043C\u0435\u0448\u0430\u0435\u0442 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0449\u0438\u043A/\u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0435 \u0438\u043B\u0438 API \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D")));
+      });
+      script.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(callbackName)}`;
+      document.head.appendChild(script);
+    });
+  }
+  function coverArtUpscale(url, size) {
+    return url.replace(/\/\d+x\d+bb\.([a-z]+)(\?.*)?$/i, `/${size}x${size}bb.$1`);
+  }
+  function parseItunes(data) {
+    if (!data || typeof data !== "object") throw new CoverSearchError("parse", "\u043F\u0443\u0441\u0442\u043E\u0439 \u0438\u043B\u0438 \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u043E\u0442\u0432\u0435\u0442");
+    const results = data.results;
+    if (!Array.isArray(results)) throw new CoverSearchError("parse", "\u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u043D\u0435\u0442 \u043C\u0430\u0441\u0441\u0438\u0432\u0430 results");
+    const hits = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of results) {
+      const art = item?.artworkUrl100;
+      if (typeof art !== "string" || !art.startsWith("http")) continue;
+      const big = coverArtUpscale(art, 600);
+      if (seen.has(big)) continue;
+      seen.add(big);
+      const name = item.collectionName;
+      const released = item.releaseDate;
+      const year = typeof released === "string" && /^\d{4}/.test(released) ? ` \xB7 ${released.slice(0, 4)}` : "";
+      hits.push({
+        url: big,
+        thumb: coverArtUpscale(art, 300),
+        caption: typeof name === "string" ? `${name}${year}` : ""
+      });
+      if (hits.length >= COVER_SEARCH_LIMIT) break;
+    }
+    return hits;
+  }
+  function parseDeezer(data) {
+    if (!data || typeof data !== "object") throw new CoverSearchError("parse", "\u043F\u0443\u0441\u0442\u043E\u0439 \u0438\u043B\u0438 \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u043E\u0442\u0432\u0435\u0442");
+    const results = data.data;
+    if (!Array.isArray(results)) {
+      const apiError = data.error;
+      if (apiError && typeof apiError === "object") {
+        throw new CoverSearchError("parse", `API \u0432\u0435\u0440\u043D\u0443\u043B \u043E\u0448\u0438\u0431\u043A\u0443: ${typeof apiError.message === "string" ? apiError.message : "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0443\u044E"}`);
+      }
+      throw new CoverSearchError("parse", "\u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u043D\u0435\u0442 \u043C\u0430\u0441\u0441\u0438\u0432\u0430 data");
+    }
+    const hits = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of results) {
+      const rec = item;
+      const big = [rec.cover_xl, rec.cover_big, rec.cover].find((u) => typeof u === "string" && u.startsWith("http"));
+      const mid = [rec.cover_medium, rec.cover_big, rec.cover].find((u) => typeof u === "string" && u.startsWith("http"));
+      if (!big || !mid || seen.has(big)) continue;
+      seen.add(big);
+      const title = typeof rec.title === "string" ? rec.title : "";
+      const artistName2 = typeof rec.artist?.name === "string" ? rec.artist.name : "";
+      hits.push({
+        url: big,
+        thumb: mid,
+        caption: artistName2 ? `${artistName2} \u2014 ${title}` : title
+      });
+      if (hits.length >= COVER_SEARCH_LIMIT) break;
+    }
+    return hits;
+  }
+  var COVER_PROVIDERS = [
+    {
+      id: "itunes",
+      name: "iTunes",
+      enabled: true,
+      // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
+      buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
+      parse: parseItunes
+    },
+    {
+      id: "deezer",
+      name: "Deezer",
+      enabled: true,
+      buildUrl: (q0) => `https://api.deezer.com/search/album?q=${encodeURIComponent(q0)}&limit=${COVER_SEARCH_LIMIT}&output=jsonp`,
+      parse: parseDeezer
+    },
+    /* --- зарезервировано: включатся (enabled: true + настоящие buildUrl/parse),
+           когда будут зарегистрированы приложения и получены ключи --- */
+    {
+      id: "soundcloud",
+      name: "SoundCloud",
+      enabled: false,
+      hint: "\u043D\u0443\u0436\u043D\u0430 \u0440\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044F \u043F\u0440\u0438\u043B\u043E\u0436\u0435\u043D\u0438\u044F (client_id)",
+      buildUrl: (q0) => `https://api.soundcloud.com/tracks?client_id=\u041F\u041E\u041B\u0423\u0427\u0418\u0422\u042C_\u041A\u041B\u042E\u0427&q=${encodeURIComponent(q0)}`,
+      parse: () => []
+    },
+    {
+      id: "genius",
+      name: "Genius",
+      enabled: false,
+      hint: "\u043D\u0443\u0436\u0435\u043D access token",
+      buildUrl: (q0) => `https://api.genius.com/search?access_token=\u041F\u041E\u041B\u0423\u0427\u0418\u0422\u042C_\u0422\u041E\u041A\u0415\u041D&q=${encodeURIComponent(q0)}`,
+      parse: () => []
+    }
+  ];
+  function coverSearchNoteText() {
+    const off = COVER_PROVIDERS.filter((p) => !p.enabled);
+    return off.length ? `\u043F\u043E\u0442\u043E\u043C \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u043C: ${off.map((p) => `${p.name} \u2014 ${p.hint}`).join("; ")}` : "";
+  }
+  var COVER_STAGE_TEXT = {
+    network: "network \u2014 \u0437\u0430\u043F\u0440\u043E\u0441 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D (\u043D\u0435\u0442 \u0441\u0435\u0442\u0438, \u043C\u0435\u0448\u0430\u0435\u0442 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0449\u0438\u043A/\u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0435 \u0438\u043B\u0438 API \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D)",
+    timeout: `timeout \u2014 \u043E\u0442\u0432\u0435\u0442 \u043D\u0435 \u043F\u0440\u0438\u0448\u0451\u043B \u0437\u0430 ${Math.round(COVER_SEARCH_TIMEOUT / 1e3)} \u0441`,
+    parse: "parse \u2014 \u043E\u0442\u0432\u0435\u0442 \u043F\u043E\u043B\u0443\u0447\u0435\u043D, \u043D\u043E \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0440\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C"
+  };
+  function coverSearchReport(providerName, query, url, err) {
+    const build = document.querySelector('script[src*="app.js"]')?.getAttribute("src") ?? "app.js";
+    return [
+      "\u041F\u043E\u0438\u0441\u043A \u043E\u0431\u043B\u043E\u0436\u043A\u0438 \u2014 \u043E\u0442\u0447\u0451\u0442 \u043E\u0431 \u043E\u0448\u0438\u0431\u043A\u0435",
+      `\u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u0430: ${providerName}`,
+      `\u0437\u0430\u043F\u0440\u043E\u0441: \xAB${query}\xBB`,
+      `url \u0437\u0430\u043F\u0440\u043E\u0441\u0430: ${url}`,
+      `\u044D\u0442\u0430\u043F: ${COVER_STAGE_TEXT[err.stage]}`,
+      `\u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435: ${err.message}`,
+      `\u0432\u0440\u0435\u043C\u044F: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      `\u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0430: ${location.href}`,
+      `\u0441\u0431\u043E\u0440\u043A\u0430: ${build}`
+    ].join("\n");
+  }
+  async function copyTextToClipboard(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+  function variantsPlural(n) {
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return "\u0432\u0430\u0440\u0438\u0430\u043D\u0442";
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "\u0432\u0430\u0440\u0438\u0430\u043D\u0442\u0430";
+    return "\u0432\u0430\u0440\u0438\u0430\u043D\u0442\u043E\u0432";
+  }
+  var CoverSearchBox = class {
+    constructor(d) {
+      this.d = d;
+      this.manualEdit = false;
+      // запрос редактировали руками — авто-подстановка выключена
+      this.userToggled = false;
+      // пользователь сам открывал/закрывал секцию
+      this.seq = 0;
+      this.aborts = [];
+      this.selectedUrl = null;
+      d.note.textContent = coverSearchNoteText();
+      d.note.hidden = !d.note.textContent;
+      d.toggle.addEventListener("click", () => {
+        if (d.isBlocked()) return;
+        this.userToggled = true;
+        if (this.isOpen) this.close();
+        else this.open();
+      });
+      d.run.addEventListener("click", () => {
+        if (d.isBlocked()) return;
+        this.launch(d.query.value);
+      });
+      d.query.addEventListener("input", () => {
+        this.manualEdit = d.query.value.trim() !== "";
+        window.clearTimeout(this.timer);
+        if (this.manualEdit) {
+          const q0 = d.query.value;
+          this.timer = window.setTimeout(() => this.launch(q0), COVER_SEARCH_DEBOUNCE);
+        } else {
+          this.syncContext();
+        }
+      });
+      d.query.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        if (!d.isBlocked()) this.launch(d.query.value);
+      });
+    }
+    get isOpen() {
+      return this.d.root.classList.contains("is-open");
+    }
+    /** Синхронизировать запрос с контекстом (артист+название / релиз) и, если он изменился, запустить поиск. */
+    syncContext(delay = COVER_SEARCH_DEBOUNCE) {
+      if (this.manualEdit) return;
+      const q0 = this.d.getContextQuery();
+      window.clearTimeout(this.timer);
+      if (!q0) return;
+      if (this.d.query.value.trim() === q0 && this.d.sections.childElementCount > 0) return;
+      this.d.query.value = q0;
+      this.timer = window.setTimeout(() => this.launch(q0), delay);
+    }
+    open() {
+      this.d.root.classList.add("is-open");
+      this.d.toggle.setAttribute("aria-expanded", "true");
+    }
+    close() {
+      this.d.root.classList.remove("is-open");
+      this.d.toggle.setAttribute("aria-expanded", "false");
+    }
+    /** Сброс: очистить результаты, выбор и флаги (при открытии/закрытии форм). */
+    reset() {
+      this.seq += 1;
+      for (const a of this.aborts) a.aborted = true;
+      this.aborts = [];
+      window.clearTimeout(this.timer);
+      this.manualEdit = false;
+      this.userToggled = false;
+      this.selectedUrl = null;
+      this.d.query.value = "";
+      this.d.sections.innerHTML = "";
+      this.close();
+    }
+    /** Снять подсветку выбранного варианта (выбрали файл/ссылку вручную). */
+    clearSelection() {
+      this.selectedUrl = null;
+      this.d.sections.querySelectorAll(".cover-search__card.is-selected").forEach((c) => c.classList.remove("is-selected"));
+    }
+    /** Заблокировать/разблокировать управление (пока идёт сохранение обложки). */
+    setBlocked(blocked) {
+      this.d.toggle.disabled = blocked;
+      this.d.query.disabled = blocked;
+      this.d.run.disabled = blocked;
+    }
+    launch(qraw) {
+      window.clearTimeout(this.timer);
+      const q0 = qraw.trim().replace(/\s+/g, " ");
+      this.seq += 1;
+      const seq = this.seq;
+      for (const a of this.aborts) a.aborted = true;
+      this.aborts = [];
+      this.selectedUrl = null;
+      this.d.sections.innerHTML = "";
+      if (!q0) return;
+      const enabled = COVER_PROVIDERS.filter((p) => p.enabled);
+      let pending = enabled.length;
+      let anyHits = false;
+      for (const provider of enabled) {
+        const abort = { aborted: false };
+        this.aborts.push(abort);
+        const url = provider.buildUrl(q0);
+        const refs = this.buildSection(provider);
+        this.d.sections.appendChild(refs.section);
+        coverJsonp(url, abort).then((data) => {
+          if (abort.aborted || seq !== this.seq) return;
+          const hits = provider.parse(data);
+          if (seq !== this.seq) return;
+          refs.state.classList.remove("is-searching");
+          if (!hits.length) {
+            refs.state.textContent = "\u043D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E";
+            return;
+          }
+          anyHits = true;
+          refs.state.textContent = `${hits.length} ${variantsPlural(hits.length)}`;
+          refs.grid.hidden = false;
+          for (const hit of hits) refs.grid.appendChild(this.buildCard(provider, hit));
+        }).catch((err) => {
+          if (abort.aborted || seq !== this.seq) return;
+          const searchErr = err instanceof CoverSearchError ? err : new CoverSearchError("network", messageOf(err));
+          refs.state.classList.remove("is-searching");
+          refs.state.classList.add("is-error");
+          refs.state.textContent = `\u043E\u0448\u0438\u0431\u043A\u0430 \xB7 ${searchErr.stage}`;
+          refs.fail.hidden = false;
+          refs.report.textContent = coverSearchReport(provider.name, q0, url, searchErr);
+        }).finally(() => {
+          pending -= 1;
+          if (pending === 0 && seq === this.seq && !this.d.isBlocked() && anyHits && !this.userToggled && !this.isOpen) {
+            this.open();
+          }
+        });
+      }
+    }
+    buildSection(provider) {
+      const section = document.createElement("section");
+      section.className = "cover-search__section";
+      section.dataset.provider = provider.id;
+      const head2 = document.createElement("header");
+      head2.className = "cover-search__head";
+      const name = document.createElement("span");
+      name.className = "cover-search__name";
+      name.textContent = provider.name;
+      const state = document.createElement("span");
+      state.className = "cover-search__state is-searching";
+      state.textContent = "\u0438\u0449\u0435\u043C\u2026";
+      state.setAttribute("role", "status");
+      state.setAttribute("aria-live", "polite");
+      head2.append(name, state);
+      const grid = document.createElement("div");
+      grid.className = "cover-search__grid";
+      grid.hidden = true;
+      const fail = document.createElement("div");
+      fail.className = "cover-search__fail";
+      fail.hidden = true;
+      const failToggle = document.createElement("button");
+      failToggle.type = "button";
+      failToggle.className = "cover-search__fail-toggle";
+      failToggle.textContent = "\u043F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438";
+      const report = document.createElement("pre");
+      report.className = "cover-search__report";
+      report.hidden = true;
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "btn btn--ghost btn--sm cover-search__copy";
+      copy.textContent = "\u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043E\u0442\u0447\u0451\u0442";
+      copy.hidden = true;
+      failToggle.addEventListener("click", () => {
+        const willShow = report.hidden;
+        report.hidden = !willShow;
+        copy.hidden = !willShow;
+        failToggle.textContent = willShow ? "\u0441\u043A\u0440\u044B\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438" : "\u043F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438";
+      });
+      copy.addEventListener("click", () => {
+        const ok = copyTextToClipboard(report.textContent ?? "");
+        void Promise.resolve(ok).then((copied) => toast(copied ? "\u041E\u0442\u0447\u0451\u0442 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D \u2014 \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0435\u0433\u043E \u0432 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435 \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u0443" : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C: \u0432\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0434\u0435\u0442\u0430\u043B\u0435\u0439 \u0438 \u0441\u043A\u043E\u043F\u0438\u0440\u0443\u0439\u0442\u0435 \u0432\u0440\u0443\u0447\u043D\u0443\u044E (Ctrl+C)"));
+      });
+      fail.append(failToggle, report, copy);
+      section.append(head2, grid, fail);
+      return { section, head: head2, state, grid, fail, failToggle, report, copy };
+    }
+    buildCard(provider, hit) {
+      const card2 = document.createElement("button");
+      card2.type = "button";
+      card2.className = "cover-search__card";
+      card2.dataset.provider = provider.id;
+      if (hit.caption) {
+        card2.title = hit.caption;
+        card2.setAttribute("aria-label", `\u041E\u0431\u043B\u043E\u0436\u043A\u0430: ${hit.caption}`);
+      }
+      const img = document.createElement("img");
+      img.src = hit.thumb;
+      img.alt = "";
+      img.loading = "lazy";
+      card2.appendChild(img);
+      card2.addEventListener("click", () => {
+        if (this.d.isBlocked()) return;
+        this.pick(hit, card2, provider);
+      });
+      return card2;
+    }
+    /** Выбор варианта: сразу применяем, затем тихо проверяем полную ссылку. */
+    pick(hit, card2, provider) {
+      this.selectedUrl = hit.url;
+      this.d.sections.querySelectorAll(".cover-search__card.is-selected").forEach((c) => c.classList.remove("is-selected"));
+      card2.classList.add("is-selected");
+      this.d.applyPick(hit);
+      const check = (candidate) => loadImage(candidate).then(
+        () => candidate,
+        () => Promise.reject(new Error("\u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u043D\u0435 \u043E\u0442\u043A\u0440\u044B\u043B\u043E\u0441\u044C"))
+      );
+      void check(hit.url).catch(() => check(hit.thumb)).then((finalUrl) => {
+        if (finalUrl === hit.url) return;
+        hit.url = finalUrl;
+        if (this.selectedUrl === hit.url) this.d.applyPick(hit);
+      }).catch(() => {
+        card2.classList.remove("is-selected");
+        if (this.selectedUrl === hit.url) this.selectedUrl = null;
+        toast(`\u041E\u0431\u043B\u043E\u0436\u043A\u0430 ${provider.name} \u043D\u0435 \u043E\u0442\u043A\u0440\u044B\u043B\u0430\u0441\u044C \u2014 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0440\u0443\u0433\u043E\u0439 \u0432\u0430\u0440\u0438\u0430\u043D\u0442 \u0438\u043B\u0438 \u0444\u0430\u0439\u043B`);
+      });
+    }
+  };
+  var addCoverSearch = new CoverSearchBox({
+    root: q("#cover-search"),
+    toggle: q("#cover-search-toggle"),
+    clip: q("#cover-search-clip"),
+    body: q("#cover-search-body"),
+    query: q("#cover-search-query"),
+    run: q("#cover-search-run"),
+    sections: q("#cover-search-sections"),
+    note: q("#cover-search-note"),
+    getContextQuery: () => {
+      const artist = artistInput.value.trim().replace(/\s+/g, " ");
+      const title = titleInput.value.trim().replace(/\s+/g, " ");
+      return artist && title ? `${artist} ${title}` : null;
+    },
+    applyPick: (hit) => {
+      window.clearTimeout(coverUrlTimer);
+      coverFile.value = "";
+      coverUrl.value = hit.url;
+      clearCoverUrlError();
+      applyCover(hit.url);
+      coverPick.classList.remove("is-fresh-pick");
+      void coverPick.offsetWidth;
+      coverPick.classList.add("is-fresh-pick");
+      window.setTimeout(() => coverPick.classList.remove("is-fresh-pick"), 1300);
+    },
+    isBlocked: () => addPending
+  });
+  var dlgCoverSearch = new CoverSearchBox({
+    root: q("#album-cover-search"),
+    toggle: q("#album-cover-search-toggle"),
+    clip: q("#album-cover-search-clip"),
+    body: q("#album-cover-search-body"),
+    query: q("#album-cover-search-query"),
+    run: q("#album-cover-search-run"),
+    sections: q("#album-cover-search-sections"),
+    note: q("#album-cover-search-note"),
+    getContextQuery: () => {
+      const al = albums.find((a) => a.id === editingCoverAlbumId);
+      if (!al) return null;
+      const title = al.kind === "single" ? singleDisplayTitle(al) : al.title;
+      return `${al.artist} ${title}`.replace(/\s+/g, " ").trim() || null;
+    },
+    applyPick: (hit) => {
+      window.clearTimeout(albumCoverUrlTimer);
+      albumCoverRequest += 1;
+      albumCoverFile.value = "";
+      albumCoverUrl.value = hit.url;
+      albumCoverDraft = hit.url;
+      albumCoverPreparing = false;
+      showAlbumCoverError();
+      albumCoverPreview.src = hit.url;
+      albumCoverPreview.classList.remove("is-swap");
+      void albumCoverPreview.offsetWidth;
+      albumCoverPreview.classList.add("is-swap");
+      updateAlbumCoverControls();
+    },
+    isBlocked: () => albumCoverSaving || albumCoverClosing || !albumCoverDialog.open
+  });
   var addPending = false;
   var pendingCover = null;
   var coverUrlTimer;
@@ -24223,6 +24688,7 @@ ${suffix}`;
     artistList.hidden = true;
     markArtistPicked();
     refreshDupHint();
+    addCoverSearch.syncContext();
     titleInput.focus();
   }
   function markArtistPicked() {
@@ -24256,6 +24722,7 @@ ${suffix}`;
     updateArtistFeatNote();
     clearAddErrors();
     refreshDupHint();
+    addCoverSearch.syncContext();
   });
   artistInput.addEventListener("focus", () => updateArtistList());
   artistInput.addEventListener("blur", () => {
@@ -24269,6 +24736,7 @@ ${suffix}`;
   titleInput.addEventListener("input", () => {
     clearAddErrors();
     refreshDupHint();
+    addCoverSearch.syncContext();
   });
   yearInput.addEventListener("input", () => clearAddErrors());
   function normalizeArtist(raw) {
@@ -24357,6 +24825,7 @@ ${suffix}`;
       applyCover(await prepareCoverFile(file));
       coverUrl.value = "";
       clearCoverUrlError();
+      addCoverSearch.clearSelection();
     } catch (err) {
       toast(messageOf(err));
     }
@@ -24390,6 +24859,7 @@ ${suffix}`;
     coverUrl.value = "";
     clearCoverUrlError();
     window.clearTimeout(coverUrlTimer);
+    addCoverSearch.clearSelection();
   });
   function resetAddForm() {
     addForm.reset();
@@ -24402,6 +24872,7 @@ ${suffix}`;
     window.clearTimeout(coverUrlTimer);
     artistList.hidden = true;
     artistField.classList.remove("is-picked", "pulse");
+    addCoverSearch.reset();
     clearAddErrors();
   }
   var addKind = "album";

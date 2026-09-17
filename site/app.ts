@@ -1573,6 +1573,7 @@ function updateAlbumCoverControls(): void {
   albumCoverSave.setAttribute('aria-busy', String(albumCoverSaving));
   albumCoverStatus.textContent = albumCoverSaving ? 'Сохраняем обложку…'
     : albumCoverPreparing ? 'Подготавливаем изображение…' : '';
+  dlgCoverSearch.setBlocked(blocked);
 }
 
 function resetAlbumCoverDraft(): number {
@@ -1581,6 +1582,7 @@ function resetAlbumCoverDraft(): number {
   albumCoverDraft = null;
   albumCoverPreparing = false;
   showAlbumCoverError();
+  dlgCoverSearch.clearSelection(); // выбрали файл/ссылку руками — подсветка варианта не нужна
   const al = albums.find((a) => a.id === editingCoverAlbumId);
   if (al) albumCoverPreview.src = coverSrc(al);
   updateAlbumCoverControls();
@@ -1601,6 +1603,9 @@ function openAlbumCoverEditor(): void {
   // Фиксируем начальные стили после showModal(), чтобы окно и фон плавно появились.
   void albumCoverDialog.offsetWidth;
   albumCoverDialog.classList.add('is-open');
+  // Поиск обложки онлайн: чистый лист и сразу авто-поиск по артисту и названию.
+  dlgCoverSearch.reset();
+  dlgCoverSearch.syncContext(400);
 }
 
 function closeAlbumCoverEditor(): void {
@@ -1620,6 +1625,7 @@ function closeAlbumCoverEditor(): void {
     albumCoverForm.reset();
     albumCoverPreview.removeAttribute('src');
     showAlbumCoverError();
+    dlgCoverSearch.reset();
     updateAlbumCoverControls();
   };
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -4684,6 +4690,584 @@ function renderAlbumSingles(): void {
 }
 
 /* ==========================================================================
+   ПОИСК ОБЛОЖЕК ОНЛАЙН — iTunes и Deezer
+   Платформы-источники обложек для новых релизов и замены обложек.
+   iTunes и Deezer подключены (бесплатные API без ключей); SoundCloud и
+   Genius зарезервированы — включатся в реестре ниже, когда появятся ключи.
+
+   Транспорт — JSONP: и iTunes (параметр callback), и Deezer
+   (output=jsonp&callback) отдают данные скриптом, поэтому запросы работают
+   прямо из браузера на любом домене (Cloudflare, localhost, превью) без
+   серверного прокси — у Deezer нет CORS-заголовков, а JSONP их не требует.
+   Каждая платформа ищет независимо: своя секция, свой статус и своя ошибка
+   с раскрываемыми деталями и кнопкой «скопировать отчёт».
+   ========================================================================== */
+
+/** Сколько вариантов показывает каждая платформа. */
+const COVER_SEARCH_LIMIT = 6;
+/** Таймаут ожидания ответа платформы. */
+const COVER_SEARCH_TIMEOUT = 10000;
+/** Задержка авто-поиска после изменения артиста/названия или запроса. */
+const COVER_SEARCH_DEBOUNCE = 700;
+
+interface CoverHit {
+  /** Ссылка на изображение в полном размере — она и сохраняется в обложку. */
+  url: string;
+  /** Уменьшенная копия для сетки результатов. */
+  thumb: string;
+  /** Подпись (название релиза, год). */
+  caption: string;
+}
+
+type CoverSearchStage = 'network' | 'timeout' | 'parse';
+
+/** Ошибка поиска с этапом, на котором она произошла, — попадает в отчёт. */
+class CoverSearchError extends Error {
+  constructor(readonly stage: CoverSearchStage, message: string) {
+    super(message);
+  }
+}
+
+/* ---------- JSONP: <script> с глобальным колбэком, таймаут и уборка ---------- */
+
+let coverJsonpSeq = 0;
+
+function coverJsonp(url: string, abort: { aborted: boolean }): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const callbackName = `__coverSearchCb${Date.now().toString(36)}_${++coverJsonpSeq}`;
+    const scope = window as unknown as Record<string, unknown>;
+    const script = document.createElement('script');
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      settle(() => reject(new CoverSearchError('timeout', `ответ не пришёл за ${Math.round(COVER_SEARCH_TIMEOUT / 1000)} с`)));
+    }, COVER_SEARCH_TIMEOUT);
+    const cleanup = (): void => {
+      window.clearTimeout(timer);
+      delete scope[callbackName];
+      script.remove();
+    };
+    const settle = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (!abort.aborted) fn(); // отменённый запрос просто замолкает
+    };
+    scope[callbackName] = (data: unknown) => settle(() => resolve(data));
+    script.addEventListener('error', () => {
+      settle(() => reject(new CoverSearchError('network', 'запрос не выполнен — нет сети, мешает блокировщик/расширение или API недоступен')));
+    });
+    script.src = `${url}${url.includes('?') ? '&' : '?'}callback=${encodeURIComponent(callbackName)}`;
+    document.head.appendChild(script);
+  });
+}
+
+/* ---------- Разбор ответов платформ ---------- */
+
+function coverArtUpscale(url: string, size: number): string {
+  return url.replace(/\/\d+x\d+bb\.([a-z]+)(\?.*)?$/i, `/${size}x${size}bb.$1`);
+}
+
+function parseItunes(data: unknown): CoverHit[] {
+  if (!data || typeof data !== 'object') throw new CoverSearchError('parse', 'пустой или некорректный ответ');
+  const results = (data as { results?: unknown }).results;
+  if (!Array.isArray(results)) throw new CoverSearchError('parse', 'в ответе нет массива results');
+  const hits: CoverHit[] = [];
+  const seen = new Set<string>();
+  for (const item of results) {
+    const art = (item as { artworkUrl100?: unknown } | null)?.artworkUrl100;
+    if (typeof art !== 'string' || !art.startsWith('http')) continue;
+    const big = coverArtUpscale(art, 600);
+    if (seen.has(big)) continue;
+    seen.add(big);
+    const name = (item as { collectionName?: unknown }).collectionName;
+    const released = (item as { releaseDate?: unknown }).releaseDate;
+    const year = typeof released === 'string' && /^\d{4}/.test(released) ? ` · ${released.slice(0, 4)}` : '';
+    hits.push({
+      url: big,
+      thumb: coverArtUpscale(art, 300),
+      caption: typeof name === 'string' ? `${name}${year}` : '',
+    });
+    if (hits.length >= COVER_SEARCH_LIMIT) break;
+  }
+  return hits;
+}
+
+function parseDeezer(data: unknown): CoverHit[] {
+  if (!data || typeof data !== 'object') throw new CoverSearchError('parse', 'пустой или некорректный ответ');
+  const results = (data as { data?: unknown }).data;
+  if (!Array.isArray(results)) {
+    const apiError = (data as { error?: { message?: unknown } }).error;
+    if (apiError && typeof apiError === 'object') {
+      throw new CoverSearchError('parse', `API вернул ошибку: ${typeof apiError.message === 'string' ? apiError.message : 'неизвестную'}`);
+    }
+    throw new CoverSearchError('parse', 'в ответе нет массива data');
+  }
+  const hits: CoverHit[] = [];
+  const seen = new Set<string>();
+  for (const item of results) {
+    const rec = item as { cover_xl?: unknown; cover_big?: unknown; cover_medium?: unknown; cover?: unknown; title?: unknown; artist?: { name?: unknown } };
+    const big = [rec.cover_xl, rec.cover_big, rec.cover].find((u): u is string => typeof u === 'string' && u.startsWith('http'));
+    const mid = [rec.cover_medium, rec.cover_big, rec.cover].find((u): u is string => typeof u === 'string' && u.startsWith('http'));
+    if (!big || !mid || seen.has(big)) continue;
+    seen.add(big);
+    const title = typeof rec.title === 'string' ? rec.title : '';
+    const artistName = typeof rec.artist?.name === 'string' ? rec.artist.name : '';
+    hits.push({
+      url: big,
+      thumb: mid,
+      caption: artistName ? `${artistName} — ${title}` : title,
+    });
+    if (hits.length >= COVER_SEARCH_LIMIT) break;
+  }
+  return hits;
+}
+
+/* ---------- Реестр платформ: новая платформа = один объект здесь ---------- */
+
+interface CoverProvider {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** Почему платформа пока не подключена (для примечания под результатами). */
+  hint?: string;
+  /** Собрать URL JSONP-запроса; callback добавит coverJsonp. */
+  buildUrl(query: string): string;
+  /** Разобрать ответ в варианты (бросает CoverSearchError('parse')). */
+  parse(data: unknown): CoverHit[];
+}
+
+const COVER_PROVIDERS: CoverProvider[] = [
+  {
+    id: 'itunes',
+    name: 'iTunes',
+    enabled: true,
+    // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
+    buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
+    parse: parseItunes,
+  },
+  {
+    id: 'deezer',
+    name: 'Deezer',
+    enabled: true,
+    buildUrl: (q0) => `https://api.deezer.com/search/album?q=${encodeURIComponent(q0)}&limit=${COVER_SEARCH_LIMIT}&output=jsonp`,
+    parse: parseDeezer,
+  },
+  /* --- зарезервировано: включатся (enabled: true + настоящие buildUrl/parse),
+         когда будут зарегистрированы приложения и получены ключи --- */
+  {
+    id: 'soundcloud',
+    name: 'SoundCloud',
+    enabled: false,
+    hint: 'нужна регистрация приложения (client_id)',
+    buildUrl: (q0) => `https://api.soundcloud.com/tracks?client_id=ПОЛУЧИТЬ_КЛЮЧ&q=${encodeURIComponent(q0)}`,
+    parse: () => [],
+  },
+  {
+    id: 'genius',
+    name: 'Genius',
+    enabled: false,
+    hint: 'нужен access token',
+    buildUrl: (q0) => `https://api.genius.com/search?access_token=ПОЛУЧИТЬ_ТОКЕН&q=${encodeURIComponent(q0)}`,
+    parse: () => [],
+  },
+];
+
+function coverSearchNoteText(): string {
+  const off = COVER_PROVIDERS.filter((p) => !p.enabled);
+  return off.length ? `потом подключим: ${off.map((p) => `${p.name} — ${p.hint}`).join('; ')}` : '';
+}
+
+/* ---------- Отчёт об ошибке для доработки ---------- */
+
+const COVER_STAGE_TEXT: Record<CoverSearchStage, string> = {
+  network: 'network — запрос не выполнен (нет сети, мешает блокировщик/расширение или API недоступен)',
+  timeout: `timeout — ответ не пришёл за ${Math.round(COVER_SEARCH_TIMEOUT / 1000)} с`,
+  parse: 'parse — ответ получен, но не удалось разобрать',
+};
+
+function coverSearchReport(providerName: string, query: string, url: string, err: CoverSearchError): string {
+  const build = document.querySelector<HTMLScriptElement>('script[src*="app.js"]')?.getAttribute('src') ?? 'app.js';
+  return [
+    'Поиск обложки — отчёт об ошибке',
+    `платформа: ${providerName}`,
+    `запрос: «${query}»`,
+    `url запроса: ${url}`,
+    `этап: ${COVER_STAGE_TEXT[err.stage]}`,
+    `сообщение: ${err.message}`,
+    `время: ${new Date().toISOString()}`,
+    `страница: ${location.href}`,
+    `сборка: ${build}`,
+  ].join('\n');
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* переходим к резервному способу */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function variantsPlural(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'вариант';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'варианта';
+  return 'вариантов';
+}
+
+/* ---------- Секция поиска: одна на форме добавления, другая в окне обложки ---------- */
+
+interface CoverSearchRefs {
+  root: HTMLElement;
+  toggle: HTMLButtonElement;
+  clip: HTMLElement;
+  body: HTMLElement;
+  query: HTMLInputElement;
+  run: HTMLButtonElement;
+  sections: HTMLElement;
+  note: HTMLElement;
+  /** Авто-запрос из контекста: артист + название (форма) или релиз (окно). */
+  getContextQuery(): string | null;
+  /** Выбор варианта: подставить обложку в форму или окно (штатное сохранение). */
+  applyPick(hit: CoverHit): void;
+  /** Сохранение/закрытие окна — на это время поиск блокируется. */
+  isBlocked(): boolean;
+}
+
+interface CoverSectionRefs {
+  section: HTMLElement;
+  head: HTMLElement;
+  state: HTMLElement;
+  grid: HTMLElement;
+  fail: HTMLElement;
+  failToggle: HTMLButtonElement;
+  report: HTMLElement;
+  copy: HTMLButtonElement;
+}
+
+class CoverSearchBox {
+  private manualEdit = false;      // запрос редактировали руками — авто-подстановка выключена
+  private userToggled = false;     // пользователь сам открывал/закрывал секцию
+  private seq = 0;                 // номер поиска: поздние ответы не применяются
+  private timer: number | undefined;
+  private aborts: Array<{ aborted: boolean }> = [];
+  private selectedUrl: string | null = null;
+
+  constructor(private readonly d: CoverSearchRefs) {
+    d.note.textContent = coverSearchNoteText();
+    d.note.hidden = !d.note.textContent;
+    d.toggle.addEventListener('click', () => {
+      if (d.isBlocked()) return;
+      this.userToggled = true;
+      if (this.isOpen) this.close();
+      else this.open();
+    });
+    d.run.addEventListener('click', () => {
+      if (d.isBlocked()) return;
+      this.launch(d.query.value);
+    });
+    d.query.addEventListener('input', () => {
+      this.manualEdit = d.query.value.trim() !== '';
+      window.clearTimeout(this.timer);
+      if (this.manualEdit) {
+        const q0 = d.query.value;
+        this.timer = window.setTimeout(() => this.launch(q0), COVER_SEARCH_DEBOUNCE);
+      } else {
+        // поле очистили — возвращаем авто-запрос из артиста и названия
+        this.syncContext();
+      }
+    });
+    d.query.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault(); // поле внутри форм: Enter не должен отправлять форму
+      if (!d.isBlocked()) this.launch(d.query.value);
+    });
+  }
+
+  get isOpen(): boolean {
+    return this.d.root.classList.contains('is-open');
+  }
+
+  /** Синхронизировать запрос с контекстом (артист+название / релиз) и, если он изменился, запустить поиск. */
+  syncContext(delay = COVER_SEARCH_DEBOUNCE): void {
+    if (this.manualEdit) return;
+    const q0 = this.d.getContextQuery();
+    window.clearTimeout(this.timer);
+    if (!q0) return;
+    if (this.d.query.value.trim() === q0 && this.d.sections.childElementCount > 0) return; // уже ищем/нашлось
+    this.d.query.value = q0;
+    this.timer = window.setTimeout(() => this.launch(q0), delay);
+  }
+
+  open(): void {
+    this.d.root.classList.add('is-open');
+    this.d.toggle.setAttribute('aria-expanded', 'true');
+  }
+
+  close(): void {
+    this.d.root.classList.remove('is-open');
+    this.d.toggle.setAttribute('aria-expanded', 'false');
+  }
+
+  /** Сброс: очистить результаты, выбор и флаги (при открытии/закрытии форм). */
+  reset(): void {
+    this.seq += 1;
+    for (const a of this.aborts) a.aborted = true;
+    this.aborts = [];
+    window.clearTimeout(this.timer);
+    this.manualEdit = false;
+    this.userToggled = false;
+    this.selectedUrl = null;
+    this.d.query.value = '';
+    this.d.sections.innerHTML = '';
+    this.close();
+  }
+
+  /** Снять подсветку выбранного варианта (выбрали файл/ссылку вручную). */
+  clearSelection(): void {
+    this.selectedUrl = null;
+    this.d.sections.querySelectorAll('.cover-search__card.is-selected')
+      .forEach((c) => c.classList.remove('is-selected'));
+  }
+
+  /** Заблокировать/разблокировать управление (пока идёт сохранение обложки). */
+  setBlocked(blocked: boolean): void {
+    this.d.toggle.disabled = blocked;
+    this.d.query.disabled = blocked;
+    this.d.run.disabled = blocked;
+  }
+
+  private launch(qraw: string): void {
+    window.clearTimeout(this.timer);
+    const q0 = qraw.trim().replace(/\s+/g, ' ');
+    this.seq += 1;
+    const seq = this.seq;
+    for (const a of this.aborts) a.aborted = true;
+    this.aborts = [];
+    this.selectedUrl = null;
+    this.d.sections.innerHTML = '';
+    if (!q0) return;
+    const enabled = COVER_PROVIDERS.filter((p) => p.enabled);
+    let pending = enabled.length;
+    let anyHits = false;
+    for (const provider of enabled) {
+      const abort = { aborted: false };
+      this.aborts.push(abort);
+      const url = provider.buildUrl(q0);
+      const refs = this.buildSection(provider);
+      this.d.sections.appendChild(refs.section);
+      coverJsonp(url, abort)
+        .then((data) => {
+          if (abort.aborted || seq !== this.seq) return;
+          const hits = provider.parse(data); // может бросить CoverSearchError('parse')
+          if (seq !== this.seq) return;
+          refs.state.classList.remove('is-searching');
+          if (!hits.length) {
+            refs.state.textContent = 'ничего не найдено';
+            return;
+          }
+          anyHits = true;
+          refs.state.textContent = `${hits.length} ${variantsPlural(hits.length)}`;
+          refs.grid.hidden = false;
+          for (const hit of hits) refs.grid.appendChild(this.buildCard(provider, hit));
+        })
+        .catch((err) => {
+          if (abort.aborted || seq !== this.seq) return;
+          const searchErr = err instanceof CoverSearchError ? err : new CoverSearchError('network', messageOf(err));
+          refs.state.classList.remove('is-searching');
+          refs.state.classList.add('is-error');
+          refs.state.textContent = `ошибка · ${searchErr.stage}`;
+          refs.fail.hidden = false;
+          refs.report.textContent = coverSearchReport(provider.name, q0, url, searchErr);
+        })
+        .finally(() => {
+          pending -= 1;
+          if (pending === 0 && seq === this.seq && !this.d.isBlocked() && anyHits && !this.userToggled && !this.isOpen) {
+            this.open(); // результаты пришли — раскрываем секцию (если пользователь не распорядился сам)
+          }
+        });
+    }
+  }
+
+  private buildSection(provider: CoverProvider): CoverSectionRefs {
+    const section = document.createElement('section');
+    section.className = 'cover-search__section';
+    section.dataset.provider = provider.id;
+    const head = document.createElement('header');
+    head.className = 'cover-search__head';
+    const name = document.createElement('span');
+    name.className = 'cover-search__name';
+    name.textContent = provider.name;
+    const state = document.createElement('span');
+    state.className = 'cover-search__state is-searching';
+    state.textContent = 'ищем…';
+    state.setAttribute('role', 'status');
+    state.setAttribute('aria-live', 'polite');
+    head.append(name, state);
+    const grid = document.createElement('div');
+    grid.className = 'cover-search__grid';
+    grid.hidden = true;
+    const fail = document.createElement('div');
+    fail.className = 'cover-search__fail';
+    fail.hidden = true;
+    const failToggle = document.createElement('button');
+    failToggle.type = 'button';
+    failToggle.className = 'cover-search__fail-toggle';
+    failToggle.textContent = 'показать детали';
+    const report = document.createElement('pre');
+    report.className = 'cover-search__report';
+    report.hidden = true;
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'btn btn--ghost btn--sm cover-search__copy';
+    copy.textContent = 'скопировать отчёт';
+    copy.hidden = true;
+    failToggle.addEventListener('click', () => {
+      const willShow = report.hidden;
+      report.hidden = !willShow;
+      copy.hidden = !willShow;
+      failToggle.textContent = willShow ? 'скрыть детали' : 'показать детали';
+    });
+    copy.addEventListener('click', () => {
+      const ok = copyTextToClipboard(report.textContent ?? '');
+      void Promise.resolve(ok).then((copied) => toast(copied ? 'Отчёт скопирован — вставьте его в сообщение разработчику' : 'Не удалось скопировать: выделите текст деталей и скопируйте вручную (Ctrl+C)'));
+    });
+    fail.append(failToggle, report, copy);
+    section.append(head, grid, fail);
+    return { section, head, state, grid, fail, failToggle, report, copy };
+  }
+
+  private buildCard(provider: CoverProvider, hit: CoverHit): HTMLButtonElement {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'cover-search__card';
+    card.dataset.provider = provider.id;
+    if (hit.caption) {
+      card.title = hit.caption;
+      card.setAttribute('aria-label', `Обложка: ${hit.caption}`);
+    }
+    const img = document.createElement('img');
+    img.src = hit.thumb;
+    img.alt = '';
+    img.loading = 'lazy';
+    card.appendChild(img);
+    card.addEventListener('click', () => {
+      if (this.d.isBlocked()) return;
+      this.pick(hit, card, provider);
+    });
+    return card;
+  }
+
+  /** Выбор варианта: сразу применяем, затем тихо проверяем полную ссылку. */
+  private pick(hit: CoverHit, card: HTMLButtonElement, provider: CoverProvider): void {
+    this.selectedUrl = hit.url;
+    this.d.sections.querySelectorAll('.cover-search__card.is-selected')
+      .forEach((c) => c.classList.remove('is-selected'));
+    card.classList.add('is-selected');
+    this.d.applyPick(hit);
+    const check = (candidate: string): Promise<string> =>
+      loadImage(candidate).then(
+        () => candidate,
+        () => Promise.reject(new Error('изображение не открылось')),
+      );
+    void check(hit.url)
+      .catch(() => check(hit.thumb)) // полная ссылка не открылась — пробуем уменьшенную
+      .then((finalUrl) => {
+        if (finalUrl === hit.url) return;
+        hit.url = finalUrl;
+        if (this.selectedUrl === hit.url) this.d.applyPick(hit); // подставляем рабочий размер
+      })
+      .catch(() => {
+        card.classList.remove('is-selected');
+        if (this.selectedUrl === hit.url) this.selectedUrl = null;
+        toast(`Обложка ${provider.name} не открылась — выберите другой вариант или файл`);
+      });
+  }
+}
+
+/* ---------- Два экземпляра: форма добавления и окно обложки ---------- */
+
+const addCoverSearch = new CoverSearchBox({
+  root: q<HTMLElement>('#cover-search'),
+  toggle: q<HTMLButtonElement>('#cover-search-toggle'),
+  clip: q<HTMLElement>('#cover-search-clip'),
+  body: q<HTMLElement>('#cover-search-body'),
+  query: q<HTMLInputElement>('#cover-search-query'),
+  run: q<HTMLButtonElement>('#cover-search-run'),
+  sections: q<HTMLElement>('#cover-search-sections'),
+  note: q<HTMLElement>('#cover-search-note'),
+  getContextQuery: () => {
+    const artist = artistInput.value.trim().replace(/\s+/g, ' ');
+    const title = titleInput.value.trim().replace(/\s+/g, ' ');
+    return artist && title ? `${artist} ${title}` : null;
+  },
+  applyPick: (hit) => {
+    window.clearTimeout(coverUrlTimer);
+    coverFile.value = '';
+    coverUrl.value = hit.url;
+    clearCoverUrlError();
+    applyCover(hit.url);
+    // подтверждение выбора: миниатюра мягко вспыхивает лавандовым
+    coverPick.classList.remove('is-fresh-pick');
+    void coverPick.offsetWidth;
+    coverPick.classList.add('is-fresh-pick');
+    window.setTimeout(() => coverPick.classList.remove('is-fresh-pick'), 1300);
+  },
+  isBlocked: () => addPending,
+});
+
+const dlgCoverSearch = new CoverSearchBox({
+  root: q<HTMLElement>('#album-cover-search'),
+  toggle: q<HTMLButtonElement>('#album-cover-search-toggle'),
+  clip: q<HTMLElement>('#album-cover-search-clip'),
+  body: q<HTMLElement>('#album-cover-search-body'),
+  query: q<HTMLInputElement>('#album-cover-search-query'),
+  run: q<HTMLButtonElement>('#album-cover-search-run'),
+  sections: q<HTMLElement>('#album-cover-search-sections'),
+  note: q<HTMLElement>('#album-cover-search-note'),
+  getContextQuery: () => {
+    const al = albums.find((a) => a.id === editingCoverAlbumId);
+    if (!al) return null;
+    // у сингла ищем чистое название без фита-гостя — он и так в артисте
+    const title = al.kind === 'single' ? singleDisplayTitle(al) : al.title;
+    return `${al.artist} ${title}`.replace(/\s+/g, ' ').trim() || null;
+  },
+  applyPick: (hit) => {
+    window.clearTimeout(albumCoverUrlTimer);
+    albumCoverRequest += 1; // поздние превью файла/ссылки больше не применяются
+    albumCoverFile.value = '';
+    albumCoverUrl.value = hit.url;
+    albumCoverDraft = hit.url;
+    albumCoverPreparing = false;
+    showAlbumCoverError();
+    albumCoverPreview.src = hit.url;
+    // мягкая смена предпросмотра: прежняя картинка растворяется в новой
+    albumCoverPreview.classList.remove('is-swap');
+    void albumCoverPreview.offsetWidth;
+    albumCoverPreview.classList.add('is-swap');
+    updateAlbumCoverControls();
+  },
+  isBlocked: () => albumCoverSaving || albumCoverClosing || !albumCoverDialog.open,
+});
+
+/* ==========================================================================
    ДОБАВЛЕНИЕ АЛЬБОМА
    ========================================================================== */
 
@@ -4777,6 +5361,7 @@ function selectArtist(name: string): void {
   artistList.hidden = true;
   markArtistPicked();
   refreshDupHint();
+  addCoverSearch.syncContext(); // значение выбрано из подсказок — обновляем авто-запрос
   titleInput.focus();
 }
 
@@ -4816,6 +5401,7 @@ artistInput.addEventListener('input', () => {
   updateArtistFeatNote();
   clearAddErrors();
   refreshDupHint();
+  addCoverSearch.syncContext(); // артист и название заполнены — авто-поиск обложек
 });
 artistInput.addEventListener('focus', () => updateArtistList());
 artistInput.addEventListener('blur', () => {
@@ -4828,6 +5414,7 @@ document.addEventListener('click', (e) => {
 titleInput.addEventListener('input', () => {
   clearAddErrors();
   refreshDupHint();
+  addCoverSearch.syncContext(); // артист и название заполнены — авто-поиск обложек
 });
 yearInput.addEventListener('input', () => clearAddErrors());
 
@@ -4926,6 +5513,7 @@ async function handleCoverFile(file: File): Promise<void> {
     applyCover(await prepareCoverFile(file));
     coverUrl.value = '';
     clearCoverUrlError();
+    addCoverSearch.clearSelection(); // источником стал файл — подсветка варианта не нужна
   } catch (err) {
     toast(messageOf(err));
   }
@@ -4962,6 +5550,7 @@ coverRemove.addEventListener('click', (e) => {
   coverUrl.value = '';
   clearCoverUrlError();
   window.clearTimeout(coverUrlTimer);
+  addCoverSearch.clearSelection();
 });
 
 function resetAddForm(): void {
@@ -4975,6 +5564,7 @@ function resetAddForm(): void {
   window.clearTimeout(coverUrlTimer);
   artistList.hidden = true;
   artistField.classList.remove('is-picked', 'pulse');
+  addCoverSearch.reset();
   clearAddErrors();
 }
 

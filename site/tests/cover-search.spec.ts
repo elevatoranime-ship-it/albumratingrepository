@@ -388,7 +388,7 @@ test('переоткрытие окна: прошлые результаты и 
   await expect(page.locator('#album-cover-dialog')).not.toBeVisible();
 
   await openCoverEditor(page); // мы по-прежнему на странице альбома
-  await expect(queries.filter((q0) => q0.startsWith('itunes:'))).toHaveLength(2); // поиск запустился снова
+  await expect.poll(() => queries.filter((q0) => q0.startsWith('itunes:'))).toHaveLength(2); // поиск запустился снова
   const dialogSections = page.locator('#album-cover-search-sections .cover-search__section[data-provider="itunes"]');
   await expect(dialogSections.locator('.cover-search__card.is-selected')).toHaveCount(0);
   await expect(page.locator('#album-cover-url')).toHaveValue('');

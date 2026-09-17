@@ -165,6 +165,10 @@ test('cancel and Escape discard the draft and restore focus without leaving the 
   await expect(page.locator('#album-cover-pick')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.locator('#album-cover-url')).toBeFocused();
+  // между ссылкой и кнопками теперь блок поиска обложки онлайн:
+  // свёрнутое тело недоступно для фокуса, следующая остановка — его переключатель
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#album-cover-search-toggle')).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.locator('#album-cover-cancel')).toBeFocused();
   await page.keyboard.press('Escape');

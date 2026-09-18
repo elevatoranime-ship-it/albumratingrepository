@@ -12,6 +12,7 @@ import re
 import socketserver
 import sys
 import urllib.parse
+import urllib.error
 import urllib.request
 from html import unescape
 
@@ -32,13 +33,19 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 
 
 def genius_api(path, params):
+    # Токен передаётся ТОЛЬКО параметром access_token в URL: с заголовком
+    # Authorization Genius отвечает на такой токен ошибкой 400.
     qs = urllib.parse.urlencode({**params, "access_token": GENIUS_TOKEN})
     req = urllib.request.Request(
         f"https://api.genius.com{path}?{qs}",
-        headers={"authorization": f"Bearer {GENIUS_TOKEN}", "user-agent": UA},
+        headers={"user-agent": UA},
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as e:
+        detail = e.read(150).decode("utf-8", "ignore").replace("\n", " ").strip()
+        raise RuntimeError(f"Genius API ответил {e.code}{': ' + detail if detail else ''}") from None
 
 
 def extract_lyrics(html):

@@ -46,14 +46,13 @@ async function cached(request, ttl, produce) {
 
 async function geniusFetch(url) {
   const response = await fetch(url, {
-    headers: {
-      'authorization': `Bearer ${GENIUS_TOKEN_FALLBACK}`,
-      'user-agent': UA,
-      'accept': 'application/json',
-    },
+    // Токен передаётся ТОЛЬКО параметром access_token в URL (см. вызовы ниже):
+    // с заголовком Authorization Genius отвечает на такой токен ошибкой 400.
+    headers: { 'user-agent': UA, 'accept': 'application/json' },
   });
   if (!response.ok) {
-    throw new Error(`Genius API ответил ${response.status}`);
+    const body = (await response.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 150);
+    throw new Error(`Genius API ответил ${response.status}${body ? `: ${body}` : ''}`);
   }
   return response.json();
 }

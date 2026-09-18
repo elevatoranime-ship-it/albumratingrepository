@@ -102,13 +102,10 @@ async function baseMocks(page: Page, cloud = false): Promise<{ queries: string[]
     const callback = url.searchParams.get('callback') ?? 'noop';
     return route.fulfill({ contentType: 'application/javascript', body: `${callback}(${JSON.stringify(deezerData)});` });
   });
-  // Genius: обычный fetch+JSON; токен — параметром, заголовка Authorization нет (preflight не проходит)
-  await page.route(/api\.genius\.com\/search/, (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
+  // Genius через серверный прокси /api/genius/search (токен живёт на сервере)
+  await page.route(/\/api\/genius\/search/, (route) => {
+    const url = new URL(route.request().url());
     queries.push(`genius:${url.searchParams.get('q') ?? ''}`);
-    expect(url.searchParams.get('access_token')).toBeTruthy();
-    expect(request.headers()['authorization']).toBeUndefined();
     return route.fulfill({
       headers: { 'access-control-allow-origin': '*' },
       contentType: 'application/json',
@@ -184,7 +181,7 @@ test('форма добавления: авто-поиск показывает 
   await expect(deezer.locator('.cover-search__card')).toHaveCount(6);
   await expect(genius.locator('.cover-search__card')).toHaveCount(6);
   // точность запроса: артист + название, без лишних пробелов; регион US и
-  // передача токена параметром уже проверены в маршрутах
+  // поход через прокси уже проверены в маршрутах
   await expect.poll(() => queries).toEqual(expect.arrayContaining([
     'deezer:Артист Новый альбом',
     'genius:Артист Новый альбом',
@@ -355,7 +352,7 @@ test('все платформы недоступны: секции с ошибк
   // заблокировать все три (перебиваем точечные подмены более поздними обработчиками)
   await page.route(/itunes\.apple\.com\/search/, (route) => route.abort());
   await page.route(/api\.deezer\.com\/search\/album/, (route) => route.abort());
-  await page.route(/api\.genius\.com\/search/, (route) => route.abort());
+  await page.route(/\/api\/genius\/search/, (route) => route.abort());
   await page.goto('/');
   await login(page);
   await page.locator('#albums .album--add').click();

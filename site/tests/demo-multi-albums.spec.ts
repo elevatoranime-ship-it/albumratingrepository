@@ -8,6 +8,7 @@ test('демо: несколько альбомов, локальное сохр
     if (request.url().includes('.supabase.co')) cloudRequests.push(request.url());
   });
   await page.route('**/*', (route) => new URL(route.request().url()).origin === 'http://127.0.0.1:8080' ? route.continue() : route.abort());
+  await page.route('**/api/genius/**', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"genius off in tests"}' }));
   await page.goto('/?demo=1');
   await page.locator('#email-input').fill('killmiplag@demo.local');
   await page.locator('#password').fill('demo');

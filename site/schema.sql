@@ -29,6 +29,7 @@ create table if not exists public.albums (
   title           text not null,
   year            integer not null,
   cover_url       text,                          -- ссылка на обложку (URL или путь в storage)
+  genius_song_id  bigint,                        -- ID песни Genius для текста сингла (null — не выбран)
   tracks_locked   boolean not null default false, -- количество треков зафиксировано (админ)
   cohesion        smallint,                        -- целостность/концептуальность (1..5, финально)
   album_type      text,                            -- 'album' | 'ep' | 'compilation' (финально)
@@ -141,6 +142,7 @@ create table if not exists public.tracks (
   title       text not null,
   position    integer not null default 0,
   locked      boolean not null default false,   -- название трека зафиксировано (админ)
+  genius_song_id bigint,                        -- ID песни Genius для текста трека (null — не выбран)
   feat_artist text,                             -- артист на фите (ft./feat./&), необязательно
   single_id   uuid references public.albums(id) on delete set null,
                                                 -- трек помечен как сингл → карточка сингла

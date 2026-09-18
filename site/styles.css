@@ -3048,3 +3048,304 @@ body { -webkit-tap-highlight-color: transparent; }
 .parent-list:not([hidden]) { display: inline; }
 .parent-list a { max-width: 100%; overflow-wrap: anywhere; }
 .sv__parent-label { min-width: 0; overflow-wrap: anywhere; }
+
+/* ==========================================================================
+   ТЕКСТЫ ПЕСЕН — GENIUS
+   ========================================================================== */
+
+/* знак Genius: серый кружок с тёмным личиком; активный — фирменный жёлтый */
+.genius-mark__bg { fill: #85858d; transition: fill 0.3s var(--ease-out); }
+.genius-mark__ink { fill: #141418; stroke: #141418; }
+
+/* --- значок в строке трека --- */
+.track__genius { color: var(--text-dim); }
+.track__genius .genius-mark { width: 17px; height: 17px; display: block; }
+.track__genius:hover { color: var(--text); }
+.track__genius:hover .genius-mark__bg { fill: #a9a9b2; }
+.track__genius.is-on .genius-mark__bg,
+.track__genius.is-active .genius-mark__bg { fill: #f2cf5e; }
+.track__genius.is-active { color: var(--accent); }
+
+/* --- панель текста на экране альбома --- */
+.lyrics {
+  margin-top: 14px;
+  padding: 16px 18px 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.32s var(--ease-out), transform 0.38s var(--ease-out);
+}
+.lyrics.is-open { opacity: 1; transform: none; }
+
+.lyrics__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.lyrics__mark { flex: none; display: grid; place-items: center; }
+.lyrics__mark svg { width: 22px; height: 22px; }
+.lyrics__mark .genius-mark__bg { fill: #f2cf5e; }
+.lyrics__song { font-size: 15px; font-weight: 600; }
+.lyrics__artist { font-size: 13px; color: var(--text-dim); }
+.lyrics__tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+.lyrics__link {
+  font-size: 12.5px;
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--accent-line);
+}
+.lyrics__link:hover { color: var(--accent-strong); }
+.lyrics__tool {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text-faint);
+  cursor: pointer;
+  border-bottom: 1px dashed var(--line-strong);
+  transition: color 0.25s var(--ease-out);
+}
+.lyrics__tool:hover { color: var(--text-dim); }
+.lyrics__tool:focus-visible, .lyrics__link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.lyrics__close {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: none;
+  color: var(--text-faint);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.25s var(--ease-out), border-color 0.25s var(--ease-out);
+}
+.lyrics__close:hover { color: var(--text); border-color: var(--line-strong); }
+
+.lyrics__state { min-height: 18px; margin-top: 10px; font-size: 13px; color: var(--text-dim); }
+.lyrics__state.is-searching::before {
+  content: '';
+  display: inline-block;
+  width: 6px; height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: #f2cf5e;
+  animation: genius-pulse 0.9s ease-in-out infinite;
+}
+@keyframes genius-pulse {
+  0%, 100% { opacity: 0.25; transform: scale(0.8); }
+  50% { opacity: 1; transform: none; }
+}
+
+/* сам текст: антиква-читалка */
+.lyrics__text {
+  margin: 12px 0 0;
+  padding: 14px 16px;
+  font-family: var(--serif);
+  font-size: 16px;
+  line-height: 1.75;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+  max-height: 420px;
+  overflow-y: auto;
+  animation: lyrics-reveal 0.45s var(--ease-out);
+}
+@keyframes lyrics-reveal {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+/* бегущий курсор, пока текст печатается */
+.lyrics__text.is-typing::after {
+  content: '▍';
+  color: #f2cf5e;
+  animation: genius-caret 0.85s steps(1) infinite;
+}
+@keyframes genius-caret { 50% { opacity: 0; } }
+
+.lyrics__fail { margin-top: 8px; }
+
+/* форма «не та песня?» */
+.lyrics__fix {
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  animation: lyrics-reveal 0.4s var(--ease-out);
+}
+.lyrics__fix-title { font-size: 13.5px; color: var(--text-dim); }
+.lyrics__cands { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 12px; }
+.lyrics__cand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 9px 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.25s var(--ease-out), background 0.25s var(--ease-out);
+}
+.lyrics__cand:hover { border-color: var(--accent-line); background: var(--accent-soft); }
+.lyrics__cand:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lyrics__cand-title { font-size: 13.5px; font-weight: 600; }
+.lyrics__cand-artist { font-size: 12.5px; color: var(--text-dim); }
+.lyrics__fix-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 12px; }
+
+/* --- сингл: пластинка --- */
+.vinyl {
+  margin-top: 8px;
+  padding: 18px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+.vinyl__stage { display: flex; align-items: center; gap: 18px; }
+
+.vinyl__disc {
+  position: relative;
+  width: 132px;
+  height: 132px;
+  flex: none;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, #111114 0 2px, #17171b 2px 4px);
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, 0.85), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+.vinyl__art {
+  position: absolute;
+  inset: 34%;
+  width: 32%;
+  height: 32%;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.vinyl__grooves {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle at 50% 50%, transparent 0 5px, rgba(255, 255, 255, 0.025) 5px 6px);
+}
+.vinyl__shine {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 210deg, transparent 0 40deg, rgba(255, 255, 255, 0.07) 55deg, transparent 75deg 180deg, rgba(255, 255, 255, 0.05) 200deg, transparent 220deg);
+}
+.vinyl__label {
+  position: absolute;
+  inset: 41.5%;
+  border-radius: 50%;
+  background: #f2cf5e;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.vinyl__hole {
+  position: absolute;
+  inset: 48.5%;
+  border-radius: 50%;
+  background: var(--bg);
+}
+/* поиск: диск крутится (имитация проигрывания) */
+.vinyl__disc.is-searching { animation: vinyl-spin 1.6s linear infinite; }
+@keyframes vinyl-spin { to { transform: rotate(360deg); } }
+
+.vinyl__head { min-width: 0; flex: 1; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.vinyl__pin {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+}
+.vinyl__pin svg { width: 34px; height: 34px; filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.5)); }
+.vinyl__pin:hover .genius-mark__bg { fill: #a9a9b2; }
+.vinyl__pin.is-active .genius-mark__bg { fill: #f2cf5e; }
+.vinyl__pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* стрелочка-подсказка: текст ниже, тяните/кликайте */
+.vinyl__pin-arrow {
+  position: absolute;
+  left: 50%;
+  bottom: -13px;
+  width: 8px;
+  height: 8px;
+  border-right: 1.6px solid var(--accent);
+  border-bottom: 1.6px solid var(--accent);
+  transform: translateX(-50%) rotate(45deg);
+  animation: vinyl-arrow 1.6s var(--ease-inout) infinite;
+}
+@keyframes vinyl-arrow {
+  0%, 100% { transform: translateX(-50%) rotate(45deg) translate(0, 0); opacity: 0.55; }
+  50% { transform: translateX(-50%) rotate(45deg) translate(3px, -3px); opacity: 1; }
+}
+.vinyl__heading { min-width: 0; }
+.vinyl__title {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.vinyl__meta { display: flex; flex-direction: column; margin-top: 3px; font-size: 13.5px; }
+.vinyl__meta span:first-child { font-weight: 600; }
+.vinyl__meta span + span { color: var(--text-dim); font-size: 12.5px; }
+
+/* раскрытие текста под пластинкой */
+.vinyl__clip {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.45s var(--ease-out);
+}
+.vinyl__clip.is-open { grid-template-rows: 1fr; }
+.vinyl__body {
+  overflow: hidden;
+  min-height: 0;
+  opacity: 0;
+  transform: translateY(-6px);
+  visibility: hidden;
+  transition: opacity 0.3s var(--ease-out), transform 0.34s var(--ease-out), visibility 0s 0.45s;
+}
+.vinyl__clip.is-open .vinyl__body {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  transition: opacity 0.34s var(--ease-out), transform 0.4s var(--ease-out), visibility 0s 0s;
+}
+.vinyl__body .lyrics__state { margin-top: 12px; }
+
+/* --- адаптив и уменьшенное движение --- */
+@media (max-width: 700px) {
+  .lyrics { padding: 14px 14px 16px; }
+  .lyrics__text { font-size: 15px; max-height: 340px; }
+  .vinyl { padding: 14px; }
+  .vinyl__stage { gap: 14px; }
+  .vinyl__disc { width: 104px; height: 104px; }
+  .vinyl__pin svg { width: 30px; height: 30px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lyrics, .lyrics__text, .lyrics__fix { animation-duration: 0.01s; }
+  .vinyl__disc.is-searching { animation-duration: 8s; }
+  .vinyl__pin-arrow, .lyrics__state.is-searching::before, .lyrics__text.is-typing::after { animation: none; }
+  .vinyl__clip, .vinyl__body { transition-duration: 0.01s; }
+}

@@ -255,3 +255,17 @@ where table_schema = 'public'
     or table_name = 'single_ratings'
   )
 order by table_name, ordinal_position;
+
+-- 11) Тексты песен Genius: запоминание выбранной песни
+-- ID песни на genius.com (bigint у Genius). Заполняется автоматически, когда
+-- автопоиск уверен в совпадении, или вручную (замена — только администратор).
+-- Права обновления наследуются от существующих политик таблиц tracks/albums.
+alter table public.tracks
+  add column if not exists genius_song_id bigint;
+alter table public.albums
+  add column if not exists genius_song_id bigint;
+
+comment on column public.tracks.genius_song_id is
+  'ID песни Genius для текста трека; null — ещё не выбран';
+comment on column public.albums.genius_song_id is
+  'ID песни Genius для текста сингла; null — ещё не выбран';

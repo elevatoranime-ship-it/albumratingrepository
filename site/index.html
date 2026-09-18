@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>Пространство · альбомы и синглы</title>
-  <link rel="stylesheet" href="styles.css?v=43" />
+  <link rel="stylesheet" href="styles.css?v=44" />
 </head>
 <body>
 
@@ -271,6 +271,46 @@
           </form>
           <p class="av__locked-note" id="tracks-locked-note" hidden>количество треков зафиксировано</p>
           <ol class="tracklist" id="track-list"></ol>
+
+          <!-- текст песни с Genius: раскрывается под списком по клику на значок трека -->
+          <section class="lyrics" id="lyrics-panel" hidden>
+            <header class="lyrics__head">
+              <span class="lyrics__mark" aria-hidden="true">
+                <svg viewBox="0 0 24 24"><circle class="genius-mark__bg" cx="12" cy="12" r="10.4"/><circle class="genius-mark__ink" cx="8.6" cy="9.8" r="1.55"/><circle class="genius-mark__ink" cx="15.4" cy="9.8" r="1.55"/><path class="genius-mark__ink" d="M7.9 13.9c1.35 1.75 2.9 2.55 4.1 2.55s2.75-.8 4.1-2.55" fill="none" stroke-width="1.8" stroke-linecap="round"/></svg>
+              </span>
+              <span class="lyrics__song" id="lyrics-song"></span>
+              <span class="lyrics__artist" id="lyrics-artist"></span>
+              <span class="lyrics__tools">
+                <a class="lyrics__link" id="lyrics-link" href="#" target="_blank" rel="noreferrer noopener" hidden>открыть на Genius</a>
+                <button class="lyrics__tool" id="lyrics-replace-btn" type="button" hidden>не тот текст?</button>
+                <button class="lyrics__close" id="lyrics-close" type="button" aria-label="Скрыть текст">×</button>
+              </span>
+            </header>
+            <p class="lyrics__state" id="lyrics-state" role="status" aria-live="polite"></p>
+            <div class="lyrics__fail" id="lyrics-fail" hidden>
+              <button class="cover-search__fail-toggle" id="lyrics-fail-toggle" type="button">показать детали</button>
+              <pre class="cover-search__report" id="lyrics-report" hidden></pre>
+              <button class="btn btn--ghost btn--sm cover-search__copy" id="lyrics-copy" type="button" hidden>скопировать отчёт</button>
+            </div>
+            <blockquote class="lyrics__text" id="lyrics-text" hidden></blockquote>
+            <form class="lyrics__fix" id="lyrics-fix" hidden novalidate>
+              <p class="lyrics__fix-title">Не та песня? Подставьте нужную:</p>
+              <div class="lyrics__cands" id="lyrics-cands"></div>
+              <div class="cover-url">
+                <input class="field__input field__input--plain" id="lyrics-url" type="url"
+                       autocomplete="off" spellcheck="false" placeholder="…или ссылка на страницу песни genius.com" />
+                <p class="form__error" id="lyrics-url-error" role="alert" aria-live="polite"></p>
+              </div>
+              <div class="lyrics__fix-actions">
+                <button class="btn btn--ghost btn--sm" id="lyrics-fix-cancel" type="button">отмена</button>
+                <button class="btn btn--sm" id="lyrics-fix-save" type="submit">
+                  <span class="btn__label">подставить</span>
+                  <span class="btn__spinner" aria-hidden="true"></span>
+                </button>
+              </div>
+              <p class="cover-pick__note" id="lyrics-fix-note">замену запомнит только админ — остальным подстановка откроется до перезагрузки</p>
+            </form>
+          </section>
         </div>
 
         <div class="av__singles reveal" id="av-singles-section" style="--d:.33s" hidden>
@@ -578,6 +618,62 @@
           <div class="av__chips" id="sv-chips"></div>
         </div>
 
+        <!-- «пластинка» с текстом песни: диск ищет (вращается), текст печатается посимвольно -->
+        <section class="vinyl reveal" id="vinyl-section" style="--d:.3s" hidden>
+          <div class="vinyl__stage">
+            <div class="vinyl__disc" id="vinyl-disc" aria-hidden="true">
+              <img class="vinyl__art" id="vinyl-art" alt="" />
+              <span class="vinyl__grooves"></span>
+              <span class="vinyl__shine"></span>
+              <span class="vinyl__label"></span>
+              <span class="vinyl__hole"></span>
+            </div>
+            <div class="vinyl__head">
+              <button class="vinyl__pin" id="vinyl-pin" type="button" aria-expanded="false"
+                      aria-controls="vinyl-clip" title="Текст песни с Genius">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle class="genius-mark__bg" cx="12" cy="12" r="10.4"/><circle class="genius-mark__ink" cx="8.6" cy="9.8" r="1.55"/><circle class="genius-mark__ink" cx="15.4" cy="9.8" r="1.55"/><path class="genius-mark__ink" d="M7.9 13.9c1.35 1.75 2.9 2.55 4.1 2.55s2.75-.8 4.1-2.55" fill="none" stroke-width="1.8" stroke-linecap="round"/></svg>
+                <span class="vinyl__pin-arrow" aria-hidden="true"></span>
+              </button>
+              <div class="vinyl__heading">
+                <span class="vinyl__title">текст песни</span>
+                <span class="vinyl__meta"><span id="vinyl-song"></span><span id="vinyl-artist"></span></span>
+              </div>
+              <span class="lyrics__tools">
+                <a class="lyrics__link" id="vinyl-link" href="#" target="_blank" rel="noreferrer noopener" hidden>открыть на Genius</a>
+                <button class="lyrics__tool" id="vinyl-replace-btn" type="button" hidden>не тот текст?</button>
+              </span>
+            </div>
+          </div>
+          <div class="vinyl__clip" id="vinyl-clip">
+            <div class="vinyl__body" id="vinyl-body">
+              <p class="lyrics__state" id="vinyl-state" role="status" aria-live="polite"></p>
+              <div class="lyrics__fail" id="vinyl-fail" hidden>
+                <button class="cover-search__fail-toggle" id="vinyl-fail-toggle" type="button">показать детали</button>
+                <pre class="cover-search__report" id="vinyl-report" hidden></pre>
+                <button class="btn btn--ghost btn--sm cover-search__copy" id="vinyl-copy" type="button" hidden>скопировать отчёт</button>
+              </div>
+              <blockquote class="lyrics__text lyrics__text--type" id="vinyl-text" hidden></blockquote>
+              <form class="lyrics__fix" id="vinyl-fix" hidden novalidate>
+                <p class="lyrics__fix-title">Не та песня? Подставьте нужную:</p>
+                <div class="lyrics__cands" id="vinyl-cands"></div>
+                <div class="cover-url">
+                  <input class="field__input field__input--plain" id="vinyl-url" type="url"
+                         autocomplete="off" spellcheck="false" placeholder="…или ссылка на страницу песни genius.com" />
+                  <p class="form__error" id="vinyl-url-error" role="alert" aria-live="polite"></p>
+                </div>
+                <div class="lyrics__fix-actions">
+                  <button class="btn btn--ghost btn--sm" id="vinyl-fix-cancel" type="button">отмена</button>
+                  <button class="btn btn--sm" id="vinyl-fix-save" type="submit">
+                    <span class="btn__label">подставить</span>
+                    <span class="btn__spinner" aria-hidden="true"></span>
+                  </button>
+                </div>
+                <p class="cover-pick__note" id="vinyl-fix-note">замену запомнит только админ — остальным подстановка откроется до перезагрузки</p>
+              </form>
+            </div>
+          </div>
+        </section>
+
         <div class="sv__danger reveal" style="--d:.34s">
           <button class="btn btn--danger" id="single-delete-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
@@ -775,6 +871,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="app.js?v=44"></script>
+  <script src="app.js?v=45"></script>
 </body>
 </html>

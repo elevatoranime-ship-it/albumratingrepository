@@ -5863,7 +5863,7 @@ function toggleTrackGenius(trackId: string): void {
   void lyricsPanel.offsetWidth;
   lyricsPanel.classList.add('is-open');
   trackList.querySelectorAll('.track__genius.is-active').forEach((b) => b.classList.remove('is-active'));
-  const btn = trackList.querySelector<HTMLElement>(`[data-tid="${trackId}"] .track__genius`);
+  const btn = trackList.querySelector<HTMLElement>(`[data-id="${trackId}"] .track__genius`);
   btn?.classList.add('is-active');
   void geniusRun({
     kind: 'track', refId: trackId,

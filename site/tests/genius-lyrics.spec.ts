@@ -29,6 +29,7 @@ const searchFixture = {
     hits: [
       { type: 'song', result: { id: 9001, title: 'Первый трек', url: 'https://genius.com/artist-first-track-lyrics', lyrics_state: 'complete', primary_artist: { name: 'Артист' } } },
       { type: 'song', result: { id: 9002, title: 'Другая песня', url: 'https://genius.com/artist-other-song-lyrics', lyrics_state: 'complete', primary_artist: { name: 'Артист' } } },
+      { type: 'song', result: { id: 9100, title: 'Отдельный сингл', url: 'https://genius.com/other-artist-otdelnyy-singl-9100-lyrics', lyrics_state: 'complete', primary_artist: { name: 'Другой артист' } } },
       { type: 'artist', result: { id: 1, name: 'Артист' } },
     ],
   },
@@ -56,6 +57,7 @@ test.afterEach(async ({ page }) => {
 interface GeniusOptions {
   search?: 'exact' | 'weak';
   lyricsFail?: boolean;
+  searchDelayMs?: number; // держим поиск открытым, чтобы поймать состояние «ищем»
 }
 
 async function base(page: Page, opts: GeniusOptions = {}): Promise<void> {
@@ -77,9 +79,10 @@ async function base(page: Page, opts: GeniusOptions = {}): Promise<void> {
       demoPassword: 'demo',
     })};`,
   }));
-  await page.route('**/api/genius/search**', (route) => {
+  await page.route('**/api/genius/search**', async (route) => {
     const url = new URL(route.request().url());
     q.push(`search:${url.searchParams.get('q') ?? ''}`);
+    if (opts.searchDelayMs) await new Promise((resolve) => setTimeout(resolve, opts.searchDelayMs));
     return route.fulfill({
       contentType: 'application/json',
       body: JSON.stringify(opts.search === 'weak' ? weakSearchFixture : searchFixture),
@@ -130,7 +133,7 @@ test('альбом: значок желтеет, панель с текстом 
   await page.locator('#albums .album__title').filter({ hasText: album.title }).click();
   await expect(page.locator('#view-album')).toHaveClass(/is-visible/);
 
-  const btn = page.locator('[data-tid="track-1"] .track__genius');
+  const btn = page.locator('[data-id="track-1"] .track__genius');
   await expect(btn).not.toHaveClass(/is-on/); // ещё не выбрано
   await btn.click();
 
@@ -171,7 +174,7 @@ test('альбом: запомненная песня открывается с�
   await login(page);
   await page.locator('#albums .album__title').filter({ hasText: album.title }).click();
 
-  const btn = page.locator('[data-tid="track-1"] .track__genius');
+  const btn = page.locator('[data-id="track-1"] .track__genius');
   await expect(btn).toHaveClass(/is-on/); // песня уже выбрана
   await btn.click();
 
@@ -191,7 +194,7 @@ test('альбом: запомненная песня открывается с�
   await page.locator('#lyrics-copy').click();
   await expect(page.locator('.toast')).toContainText('Отчёт скопирован');
   const clipboard = await page.evaluate(() => navigator.clipboard.readText());
-  expect(clipboard).toContain('платформа: Genius');
+  expect(clipboard).toContain('источник: Genius');
   expect(clipboard).toContain('искали: «Артист Первый трек»');
 });
 
@@ -201,7 +204,7 @@ test('альбом: слабые совпадения — форма «не то
   await page.goto('/');
   await login(page);
   await page.locator('#albums .album__title').filter({ hasText: album.title }).click();
-  await page.locator('[data-tid="track-1"] .track__genius').click();
+  await page.locator('[data-id="track-1"] .track__genius').click();
 
   await expect(page.locator('#lyrics-state')).toContainText('не уверены');
   const fix = page.locator('#lyrics-fix');
@@ -220,7 +223,7 @@ test('альбом: слабые совпадения — форма «не то
 });
 
 test('сингл: пластинка ищет при входе, диск вращается, текст печатается, песня запоминается', async ({ page }) => {
-  await base(page);
+  await base(page, { searchDelayMs: 400 });
   await seedDemo(page);
   await page.goto('/');
   await login(page);

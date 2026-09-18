@@ -247,7 +247,7 @@ test('сингл: пластинка ищет при входе, диск вра
   await expect(page.locator('#vinyl-link')).toHaveAttribute('href', 'https://genius.com/song-9100');
 
   // пин погибается в базу (демо — localStorage альбомов)
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('albums_local_v1')!).find((a: { id: string }) => a.id === single.id));
+  const stored = await page.evaluate((sid: string) => (JSON.parse(localStorage.getItem('albums_local_v1')!) as Array<{ id: string; geniusId?: string | null }>).find((a) => a.id === sid), single.id);
   expect(stored.geniusId).toBe('9100');
 
   // повторное открытие — мгновенно из кэша сеанса, без поиска

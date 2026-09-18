@@ -5548,6 +5548,7 @@ const lyricsLink = q<HTMLAnchorElement>('#lyrics-link');
 const lyricsReplaceBtn = q<HTMLButtonElement>('#lyrics-replace-btn');
 const lyricsClose = q<HTMLButtonElement>('#lyrics-close');
 const lyricsState = q<HTMLElement>('#lyrics-state');
+const lyricsSkeleton = q<HTMLElement>('#lyrics-skeleton');
 const lyricsFail = q<HTMLElement>('#lyrics-fail');
 const lyricsFailToggle = q<HTMLButtonElement>('#lyrics-fail-toggle');
 const lyricsReport = q<HTMLElement>('#lyrics-report');
@@ -5571,6 +5572,7 @@ const vinylLink = q<HTMLAnchorElement>('#vinyl-link');
 const vinylReplaceBtn = q<HTMLButtonElement>('#vinyl-replace-btn');
 const vinylClip = q<HTMLElement>('#vinyl-clip');
 const vinylState = q<HTMLElement>('#vinyl-state');
+const vinylSkeleton = q<HTMLElement>('#vinyl-skeleton');
 const vinylFail = q<HTMLElement>('#vinyl-fail');
 const vinylFailToggle = q<HTMLButtonElement>('#vinyl-fail-toggle');
 const vinylReport = q<HTMLElement>('#vinyl-report');
@@ -5590,6 +5592,7 @@ interface GeniusScreenUi {
   link: HTMLAnchorElement;
   replaceBtn: HTMLButtonElement;
   state: HTMLElement;
+  skeleton: HTMLElement;
   fail: HTMLElement;
   failToggle: HTMLButtonElement;
   report: HTMLElement;
@@ -5607,7 +5610,7 @@ interface GeniusScreenUi {
 
 const albumLyricsUi: GeniusScreenUi = {
   song: lyricsSong, artist: lyricsArtist, link: lyricsLink, replaceBtn: lyricsReplaceBtn,
-  state: lyricsState, fail: lyricsFail, failToggle: lyricsFailToggle, report: lyricsReport,
+  state: lyricsState, skeleton: lyricsSkeleton, fail: lyricsFail, failToggle: lyricsFailToggle, report: lyricsReport,
   copy: lyricsCopy, text: lyricsText, fix: lyricsFix, cands: lyricsCands, url: lyricsUrl,
   urlError: lyricsUrlError, fixCancel: lyricsFixCancel, fixSave: lyricsFixSave, fixNote: lyricsFixNote,
   typewriter: false,
@@ -5615,7 +5618,7 @@ const albumLyricsUi: GeniusScreenUi = {
 
 const vinylLyricsUi: GeniusScreenUi = {
   song: vinylSong, artist: vinylArtist, link: vinylLink, replaceBtn: vinylReplaceBtn,
-  state: vinylState, fail: vinylFail, failToggle: vinylFailToggle, report: vinylReport,
+  state: vinylState, skeleton: vinylSkeleton, fail: vinylFail, failToggle: vinylFailToggle, report: vinylReport,
   copy: vinylCopy, text: vinylText, fix: vinylFix, cands: vinylCands, url: vinylUrl,
   urlError: vinylUrlError, fixCancel: vinylFixCancel, fixSave: vinylFixSave, fixNote: vinylFixNote,
   typewriter: true,
@@ -5652,7 +5655,9 @@ function geniusReportText(run: GeniusRun, err: GeniusError, detail: string): str
 
 function geniusSetState(ui: GeniusScreenUi, text: string): void {
   ui.state.textContent = text;
-  ui.state.classList.toggle('is-searching', text === 'ищем текст на Genius…');
+  const searching = text === 'ищем текст на Genius…';
+  ui.state.classList.toggle('is-searching', searching);
+  ui.skeleton.hidden = !searching;
 }
 
 function geniusShowError(ui: GeniusScreenUi, report: string): void {
@@ -5682,6 +5687,11 @@ function geniusResetUi(ui: GeniusScreenUi): void {
   ui.url.value = '';
   ui.urlError.textContent = '';
   ui.replaceBtn.hidden = !isAdmin();
+  ui.skeleton.hidden = true;
+  lyricsPanel.classList.remove('is-searching', 'is-found');
+  vinylSection.classList.remove('is-searching', 'is-found');
+  vinylDisc.classList.remove('is-landing');
+  vinylPin.classList.remove('is-dropping');
 }
 
 /** Печать текста посимвольно (сингл): быстро, с бегущим курсором. */
@@ -5689,8 +5699,22 @@ function geniusTypeText(ui: GeniusScreenUi, text: string): void {
   window.clearInterval(geniusTypeTimer);
   ui.text.hidden = false;
   ui.text.classList.remove('is-typing');
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !ui.typewriter) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     ui.text.textContent = text;
+    return;
+  }
+  if (!ui.typewriter) {
+    // альбом: строки появляются каскадом — подъём с расфокусом, шаг 42 мс
+    const frag = document.createDocumentFragment();
+    text.split('\n').forEach((line, i) => {
+      const el = document.createElement('span');
+      el.className = 'lyrics__line';
+      el.textContent = line.length ? line : '\u00A0';
+      el.style.animationDelay = `${Math.min(i * 42, 1900)}ms`;
+      frag.appendChild(el);
+    });
+    ui.text.textContent = '';
+    ui.text.appendChild(frag);
     return;
   }
   ui.text.textContent = '';
@@ -5716,6 +5740,12 @@ function geniusRenderSong(run: GeniusRun, song: GeniusSongInfo): void {
     ui.link.hidden = false;
   }
   if (song.text) geniusTypeText(ui, song.text);
+  const surface = run.kind === 'single' ? vinylSection : lyricsPanel;
+  surface.classList.add('is-found');
+  if (run.kind === 'single') {
+    vinylDisc.classList.add('is-landing');
+    vinylPin.classList.add('is-dropping');
+  }
 }
 
 /** Список кандидатов в форме «не та песня?». */
@@ -5796,10 +5826,20 @@ async function geniusRun(run: GeniusRun): Promise<void> {
     vinylPin.classList.remove('is-active');
     vinylPin.setAttribute('aria-expanded', 'true');
     vinylClip.classList.add('is-open');
+    vinylSection.classList.add('is-searching');
     vinylDisc.classList.add('is-searching');
+  } else {
+    lyricsPanel.classList.add('is-searching');
   }
   const settle = (): void => {
-    if (run.kind === 'single') vinylDisc.classList.remove('is-searching');
+    if (run.kind === 'single') {
+      vinylSection.classList.remove('is-searching');
+      vinylDisc.classList.remove('is-searching');
+    } else {
+      lyricsPanel.classList.remove('is-searching');
+    }
+    ui.skeleton.hidden = true;
+    ui.state.classList.remove('is-searching');
   };
 
   try {
@@ -5929,7 +5969,10 @@ lyricsFix.addEventListener('submit', (e) => {
 function resetVinyl(): void {
   window.clearInterval(geniusTypeTimer);
   vinylSection.hidden = true;
-  vinylDisc.classList.remove('is-searching');
+  vinylSection.classList.remove('is-searching', 'is-found');
+  vinylDisc.classList.remove('is-searching', 'is-landing');
+  vinylPin.classList.remove('is-dropping');
+  vinylSkeleton.hidden = true;
   vinylPin.classList.remove('is-active', 'is-open');
   vinylPin.setAttribute('aria-expanded', 'false');
   vinylClip.classList.remove('is-open');

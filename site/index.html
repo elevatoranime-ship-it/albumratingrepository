@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>Пространство · альбомы и синглы</title>
-  <link rel="stylesheet" href="styles.css?v=44" />
+  <link rel="stylesheet" href="styles.css?v=45" />
 </head>
 <body>
 
@@ -287,6 +287,7 @@
               </span>
             </header>
             <p class="lyrics__state" id="lyrics-state" role="status" aria-live="polite"></p>
+            <div class="lyrics__skeleton" id="lyrics-skeleton" hidden aria-hidden="true"><i></i><i></i><i></i><i></i></div>
             <div class="lyrics__fail" id="lyrics-fail" hidden>
               <button class="cover-search__fail-toggle" id="lyrics-fail-toggle" type="button">показать детали</button>
               <pre class="cover-search__report" id="lyrics-report" hidden></pre>
@@ -621,12 +622,17 @@
         <!-- «пластинка» с текстом песни: диск ищет (вращается), текст печатается посимвольно -->
         <section class="vinyl reveal" id="vinyl-section" style="--d:.3s" hidden>
           <div class="vinyl__stage">
-            <div class="vinyl__disc" id="vinyl-disc" aria-hidden="true">
-              <img class="vinyl__art" id="vinyl-art" alt="" />
-              <span class="vinyl__grooves"></span>
-              <span class="vinyl__shine"></span>
+            <div class="vinyl__tilt">
+              <span class="vinyl__waves" aria-hidden="true"><i></i><i></i><i></i></span>
+              <div class="vinyl__disc" id="vinyl-disc" aria-hidden="true">
+                <img class="vinyl__art" id="vinyl-art" alt="" />
+                <span class="vinyl__grooves"></span>
+                <span class="vinyl__shine"></span>
+                <span class="vinyl__sweep"></span>
               <span class="vinyl__label"></span>
               <span class="vinyl__hole"></span>
+              </div>
+              <span class="vinyl__shock" aria-hidden="true"></span>
             </div>
             <div class="vinyl__head">
               <button class="vinyl__pin" id="vinyl-pin" type="button" aria-expanded="false"
@@ -647,6 +653,7 @@
           <div class="vinyl__clip" id="vinyl-clip">
             <div class="vinyl__body" id="vinyl-body">
               <p class="lyrics__state" id="vinyl-state" role="status" aria-live="polite"></p>
+              <div class="lyrics__skeleton" id="vinyl-skeleton" hidden aria-hidden="true"><i></i><i></i><i></i><i></i></div>
               <div class="lyrics__fail" id="vinyl-fail" hidden>
                 <button class="cover-search__fail-toggle" id="vinyl-fail-toggle" type="button">показать детали</button>
                 <pre class="cover-search__report" id="vinyl-report" hidden></pre>
@@ -871,6 +878,6 @@
   </div>
 
   <script src="config.js"></script>
-  <script src="app.js?v=47"></script>
+  <script src="app.js?v=48"></script>
 </body>
 </html>

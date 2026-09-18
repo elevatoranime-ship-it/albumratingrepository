@@ -3349,3 +3349,175 @@ body { -webkit-tap-highlight-color: transparent; }
   .vinyl__pin-arrow, .lyrics__state.is-searching::before, .lyrics__text.is-typing::after { animation: none; }
   .vinyl__clip, .vinyl__body { transition-duration: 0.01s; }
 }
+
+/* ==========================================================================
+   ТЕКСТЫ GENIUS — АНИМАЦИИ 2026: стекло, каскады, живая пластинка.
+   Всё только на transform/opacity/filter; уважает prefers-reduced-motion.
+   ========================================================================== */
+:root {
+  --ge-ease: cubic-bezier(.16, 1, .3, 1);
+  --ge-yellow: #f2cf5e;
+  --ge-yellow-deep: #d9ae37;
+}
+
+/* ---------- панель альбома: стекло, жёлтая кромка, свечение ---------- */
+.lyrics { border: 1px solid rgba(255, 255, 255, .08); transform-origin: 50% 0; }
+.lyrics > * { position: relative; z-index: 1; }
+.lyrics::before {
+  /* фирменная кромка: прорисовывается при открытии, бежит во время поиска */
+  content: ''; position: absolute; z-index: 2; inset: 0 0 auto 0; height: 2px;
+  background: linear-gradient(90deg, transparent, var(--ge-yellow) 30%, var(--ge-yellow-deep) 70%, transparent);
+  transform: scaleX(0); transform-origin: 0 50%; pointer-events: none;
+  transition: transform .9s var(--ge-ease) .12s;
+}
+.lyrics.is-open::before { transform: scaleX(1); }
+.lyrics.is-searching::before { animation: ge-edge 1.5s linear infinite; }
+@keyframes ge-edge { from { transform: translateX(-60%) scaleX(.45); } to { transform: translateX(60%) scaleX(.45); } }
+.lyrics::after {
+  /* тёплое свечение из угла — появляется, когда текст найден */
+  content: ''; position: absolute; z-index: 0; right: -90px; top: -130px; width: 340px; height: 340px;
+  border-radius: 50%; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle, rgba(242, 207, 94, .16), transparent 62%);
+  transition: opacity 1.2s var(--ge-ease);
+}
+.lyrics.is-found::after { opacity: 1; }
+.lyrics.is-open { animation: ge-panel .6s var(--ge-ease); }
+@keyframes ge-panel { from { opacity: .35; transform: translateY(-16px); filter: blur(6px); } }
+
+/* шапка: каскад появления + «штамп» знака */
+.lyrics.is-open .lyrics__head > * { animation: ge-rise .55s var(--ge-ease) both; }
+.lyrics.is-open .lyrics__head > :nth-child(1) { animation-delay: .1s; }
+.lyrics.is-open .lyrics__head > :nth-child(2) { animation-delay: .17s; }
+.lyrics.is-open .lyrics__head > :nth-child(3) { animation-delay: .24s; }
+@keyframes ge-rise { from { opacity: 0; transform: translateY(10px); } }
+.lyrics__mark svg { animation: ge-stamp .6s var(--ge-ease) .18s both; }
+@keyframes ge-stamp { 0% { transform: scale(1.55) rotate(-10deg); opacity: 0; } 55% { opacity: 1; } 100% { transform: none; } }
+.lyrics.is-found .lyrics__mark svg { filter: drop-shadow(0 0 10px rgba(242, 207, 94, .45)); }
+.lyrics.is-found .lyrics__song {
+  background: linear-gradient(92deg, #fff 20%, var(--ge-yellow)); -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* состояние: пилюля с живыми точками */
+.lyrics__state.is-searching::after { content: ''; display: inline-block; min-width: 26px; text-align: left; animation: ge-dots 1.3s steps(1) infinite; }
+@keyframes ge-dots { 0% { content: ''; } 25% { content: '·'; } 50% { content: '· ·'; } 75% { content: '· · ·'; } }
+
+/* скелетон: мерцающие полосы на время поиска */
+.lyrics__skeleton { display: grid; gap: 10px; margin: 6px 0 2px; }
+.lyrics__skeleton i {
+  display: block; height: 12px; border-radius: 7px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .05) 30%, rgba(242, 207, 94, .17) 50%, rgba(255, 255, 255, .05) 70%);
+  background-size: 220% 100%; animation: ge-shimmer 1.35s linear infinite;
+}
+.lyrics__skeleton i:nth-child(1) { width: 46%; }
+.lyrics__skeleton i:nth-child(2) { width: 72%; animation-delay: .12s; }
+.lyrics__skeleton i:nth-child(3) { width: 63%; animation-delay: .24s; }
+.lyrics__skeleton i:nth-child(4) { width: 38%; height: 46px; border-radius: 10px; animation-delay: .36s;
+  background: linear-gradient(90deg, rgba(255, 255, 255, .04) 30%, rgba(255, 255, 255, .09) 50%, rgba(255, 255, 255, .04) 70%);
+  background-size: 220% 100%; }
+@keyframes ge-shimmer { from { background-position: 180% 0; } to { background-position: -80% 0; } }
+
+/* текст: строки каскадом + маска «выверенных» краёв + рельса чтения */
+.lyrics__line { display: block; animation: ge-line .55s var(--ge-ease) both; }
+@keyframes ge-line { from { opacity: 0; transform: translateY(12px); filter: blur(7px); } }
+#lyrics-text {
+  padding-left: 20px;
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
+}
+.lyrics__text::before {
+  content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: 2px;
+  background: linear-gradient(180deg, var(--ge-yellow), rgba(242, 207, 94, 0) 85%); opacity: .5;
+}
+.lyrics__text.is-typing::before { opacity: .95; box-shadow: 0 0 12px rgba(242, 207, 94, .35); }
+
+/* кандидаты и формы: мягкий поп-каскад */
+.lyrics__cand { animation: ge-pop .5s var(--ge-ease) both; }
+.lyrics__cand:nth-child(2) { animation-delay: .07s; }
+.lyrics__cand:nth-child(3) { animation-delay: .14s; }
+.lyrics__cand:nth-child(4) { animation-delay: .21s; }
+.lyrics__cand:nth-child(5) { animation-delay: .28s; }
+.lyrics__cand:nth-child(6) { animation-delay: .35s; }
+@keyframes ge-pop { from { opacity: 0; transform: translateY(10px) scale(.96); } }
+.lyrics__fix, .lyrics__fail { animation: ge-rise .5s var(--ge-ease) .05s both; }
+
+/* ---------- сингл: живая пластинка ---------- */
+.vinyl__stage { perspective: 1100px; }
+.vinyl__stage, .vinyl__clip { position: relative; z-index: 1; }
+.vinyl::before, .vinyl::after {
+  /* медленно дрейфующие янтарные пятна — фон не пустует */
+  content: ''; position: absolute; z-index: 0; width: 430px; height: 430px; border-radius: 50%;
+  filter: blur(70px); opacity: .1; pointer-events: none;
+  background: radial-gradient(circle, var(--ge-yellow), transparent 60%);
+}
+.vinyl::before { left: -150px; top: -170px; animation: ge-drift 34s ease-in-out infinite alternate; }
+.vinyl::after { right: -170px; bottom: -190px; animation: ge-drift 27s ease-in-out infinite alternate-reverse; }
+@keyframes ge-drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(60px, 42px) scale(1.16); } }
+
+.vinyl__tilt { position: relative; transition: transform 1s var(--ge-ease); transform-style: preserve-3d; }
+.vinyl.is-searching .vinyl__tilt { transform: rotateX(15deg) translateY(-6px); }
+
+/* сонар: круги по пластинке, пока идёт поиск */
+.vinyl__waves { position: absolute; inset: -7%; pointer-events: none; }
+.vinyl__waves i { position: absolute; inset: 0; border-radius: 50%; border: 1px solid rgba(242, 207, 94, .4); opacity: 0; transform: scale(.72); }
+.vinyl.is-searching .vinyl__waves i { animation: ge-sonar 1.9s var(--ge-ease) infinite; }
+.vinyl.is-searching .vinyl__waves i:nth-child(2) { animation-delay: .63s; }
+.vinyl.is-searching .vinyl__waves i:nth-child(3) { animation-delay: 1.26s; }
+@keyframes ge-sonar { 0% { opacity: 0; transform: scale(.72); } 16% { opacity: .55; } 100% { opacity: 0; transform: scale(1.5); } }
+
+/* радар: янтарный сектор бежит по диску вместе с вращением */
+.vinyl__sweep { position: absolute; inset: 0; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: conic-gradient(from 0deg, rgba(242, 207, 94, 0) 0deg, rgba(242, 207, 94, .2) 48deg, rgba(242, 207, 94, 0) 96deg);
+  mix-blend-mode: screen; transition: opacity .5s; }
+.vinyl.is-searching .vinyl__sweep { opacity: 1; }
+
+/* вращение быстрее прежнего; посадка — мягкое докручивание */
+.vinyl__disc.is-searching { animation: ge-spin 1.15s linear infinite; }
+@keyframes ge-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.vinyl__disc.is-landing { animation: ge-land 1.6s cubic-bezier(.19, 1, .22, 1) forwards; }
+@keyframes ge-land { from { transform: rotate(280deg); } to { transform: rotate(360deg); } }
+
+/* найдено: ярлык вспыхивает, игла опускается, круг от удара */
+.vinyl__label { transition: box-shadow .8s var(--ge-ease); }
+.vinyl.is-found .vinyl__label { box-shadow: 0 0 0 1px rgba(242, 207, 94, .5), 0 0 38px rgba(242, 207, 94, .4); }
+.vinyl__shock { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(242, 207, 94, .55); opacity: 0; pointer-events: none; }
+.vinyl.is-found .vinyl__shock { animation: ge-shock 1.1s var(--ge-ease) .55s both; }
+@keyframes ge-shock { 0% { opacity: .8; transform: scale(.82); } 100% { opacity: 0; transform: scale(1.7); } }
+.vinyl__pin { transform-origin: 85% 15%; }
+.vinyl__pin.is-dropping { animation: ge-needle .9s var(--ge-ease) .5s both; }
+@keyframes ge-needle { 0% { transform: rotate(-12deg) translateY(-8px); } 62% { transform: rotate(2deg) translateY(1px); } 100% { transform: none; } }
+
+/* заголовок: трекинг букв съёживается, мета всплывает */
+.vinyl.is-found .vinyl__title { animation: ge-track .8s var(--ge-ease) both; }
+@keyframes ge-track { from { letter-spacing: .3em; opacity: 0; } }
+.vinyl.is-found #vinyl-song, .vinyl.is-found #vinyl-artist { animation: ge-rise .6s var(--ge-ease) both; }
+.vinyl.is-found #vinyl-artist { animation-delay: .12s; }
+
+/* текст сингла — стеклянная карточка, чтобы пустота собралась в форму */
+.vinyl__body {
+  border: 1px solid rgba(255, 255, 255, .07); border-radius: 16px; padding: 18px 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .045), rgba(255, 255, 255, .012));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05), 0 18px 50px -34px rgba(0, 0, 0, .9);
+}
+
+/* ---------- мобильные ---------- */
+@media (max-width: 700px) {
+  .vinyl.is-searching .vinyl__tilt { transform: rotateX(7deg) translateY(-3px); }
+  .vinyl::before, .vinyl::after { width: 280px; height: 280px; filter: blur(52px); }
+  #lyrics-text {
+    -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+    mask-image: linear-gradient(180deg, transparent 0, #000 18px, #000 calc(100% - 18px), transparent 100%);
+  }
+}
+
+/* ---------- уменьшенное движение ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .lyrics::before, .lyrics.is-open, .lyrics.is-open .lyrics__head > *, .lyrics__mark svg,
+  .lyrics__skeleton i, .lyrics__line, .lyrics__cand, .lyrics__fix, .lyrics__fail,
+  .lyrics__state.is-searching::after,
+  .vinyl::before, .vinyl::after, .vinyl__waves i, .vinyl__sweep,
+  .vinyl__disc.is-searching, .vinyl__disc.is-landing, .vinyl__shock,
+  .vinyl__pin.is-dropping, .vinyl.is-found .vinyl__title,
+  .vinyl.is-found #vinyl-song, .vinyl.is-found #vinyl-artist { animation: none !important; }
+  .vinyl__tilt, .vinyl__label, .lyrics::before, .lyrics::after, .vinyl__sweep { transition: none !important; }
+}

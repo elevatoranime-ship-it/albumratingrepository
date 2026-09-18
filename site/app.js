@@ -24831,6 +24831,7 @@ ${suffix}`;
   var lyricsReplaceBtn = q("#lyrics-replace-btn");
   var lyricsClose = q("#lyrics-close");
   var lyricsState = q("#lyrics-state");
+  var lyricsSkeleton = q("#lyrics-skeleton");
   var lyricsFail = q("#lyrics-fail");
   var lyricsFailToggle = q("#lyrics-fail-toggle");
   var lyricsReport = q("#lyrics-report");
@@ -24853,6 +24854,7 @@ ${suffix}`;
   var vinylReplaceBtn = q("#vinyl-replace-btn");
   var vinylClip = q("#vinyl-clip");
   var vinylState = q("#vinyl-state");
+  var vinylSkeleton = q("#vinyl-skeleton");
   var vinylFail = q("#vinyl-fail");
   var vinylFailToggle = q("#vinyl-fail-toggle");
   var vinylReport = q("#vinyl-report");
@@ -24871,6 +24873,7 @@ ${suffix}`;
     link: lyricsLink,
     replaceBtn: lyricsReplaceBtn,
     state: lyricsState,
+    skeleton: lyricsSkeleton,
     fail: lyricsFail,
     failToggle: lyricsFailToggle,
     report: lyricsReport,
@@ -24891,6 +24894,7 @@ ${suffix}`;
     link: vinylLink,
     replaceBtn: vinylReplaceBtn,
     state: vinylState,
+    skeleton: vinylSkeleton,
     fail: vinylFail,
     failToggle: vinylFailToggle,
     report: vinylReport,
@@ -24924,7 +24928,9 @@ ${suffix}`;
   }
   function geniusSetState(ui, text) {
     ui.state.textContent = text;
-    ui.state.classList.toggle("is-searching", text === "\u0438\u0449\u0435\u043C \u0442\u0435\u043A\u0441\u0442 \u043D\u0430 Genius\u2026");
+    const searching = text === "\u0438\u0449\u0435\u043C \u0442\u0435\u043A\u0441\u0442 \u043D\u0430 Genius\u2026";
+    ui.state.classList.toggle("is-searching", searching);
+    ui.skeleton.hidden = !searching;
   }
   function geniusShowError(ui, report) {
     ui.fail.hidden = false;
@@ -24952,13 +24958,31 @@ ${suffix}`;
     ui.url.value = "";
     ui.urlError.textContent = "";
     ui.replaceBtn.hidden = !isAdmin();
+    ui.skeleton.hidden = true;
+    lyricsPanel.classList.remove("is-searching", "is-found");
+    vinylSection.classList.remove("is-searching", "is-found");
+    vinylDisc.classList.remove("is-landing");
+    vinylPin.classList.remove("is-dropping");
   }
   function geniusTypeText(ui, text) {
     window.clearInterval(geniusTypeTimer);
     ui.text.hidden = false;
     ui.text.classList.remove("is-typing");
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches || !ui.typewriter) {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       ui.text.textContent = text;
+      return;
+    }
+    if (!ui.typewriter) {
+      const frag = document.createDocumentFragment();
+      text.split("\n").forEach((line, i2) => {
+        const el = document.createElement("span");
+        el.className = "lyrics__line";
+        el.textContent = line.length ? line : "\xA0";
+        el.style.animationDelay = `${Math.min(i2 * 42, 1900)}ms`;
+        frag.appendChild(el);
+      });
+      ui.text.textContent = "";
+      ui.text.appendChild(frag);
       return;
     }
     ui.text.textContent = "";
@@ -24983,6 +25007,12 @@ ${suffix}`;
       ui.link.hidden = false;
     }
     if (song.text) geniusTypeText(ui, song.text);
+    const surface = run.kind === "single" ? vinylSection : lyricsPanel;
+    surface.classList.add("is-found");
+    if (run.kind === "single") {
+      vinylDisc.classList.add("is-landing");
+      vinylPin.classList.add("is-dropping");
+    }
   }
   function geniusRenderCandidates(run, candidates) {
     const ui = run.ui;
@@ -25051,10 +25081,20 @@ ${suffix}`;
       vinylPin.classList.remove("is-active");
       vinylPin.setAttribute("aria-expanded", "true");
       vinylClip.classList.add("is-open");
+      vinylSection.classList.add("is-searching");
       vinylDisc.classList.add("is-searching");
+    } else {
+      lyricsPanel.classList.add("is-searching");
     }
     const settle = () => {
-      if (run.kind === "single") vinylDisc.classList.remove("is-searching");
+      if (run.kind === "single") {
+        vinylSection.classList.remove("is-searching");
+        vinylDisc.classList.remove("is-searching");
+      } else {
+        lyricsPanel.classList.remove("is-searching");
+      }
+      ui.skeleton.hidden = true;
+      ui.state.classList.remove("is-searching");
     };
     try {
       const pinned = geniusPinnedId(run.kind, run.refId);
@@ -25178,7 +25218,10 @@ ${suffix}`;
   function resetVinyl() {
     window.clearInterval(geniusTypeTimer);
     vinylSection.hidden = true;
-    vinylDisc.classList.remove("is-searching");
+    vinylSection.classList.remove("is-searching", "is-found");
+    vinylDisc.classList.remove("is-searching", "is-landing");
+    vinylPin.classList.remove("is-dropping");
+    vinylSkeleton.hidden = true;
     vinylPin.classList.remove("is-active", "is-open");
     vinylPin.setAttribute("aria-expanded", "false");
     vinylClip.classList.remove("is-open");

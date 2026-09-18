@@ -4778,8 +4778,8 @@ function coverJsonp(url: string, abort: CoverAbort): Promise<unknown> {
 }
 
 /** Обычный fetch JSON (для API с CORS, но без JSONP — как Genius).
-    Простой GET без заголовков: у Genius не проходит CORS-preflight,
-    поэтому токен передаётся параметром access_token, а не Authorization. */
+    Обычный GET: у Deezer/iTunes используется JSONP (ниже), а Genius ходит
+    через наш прокси /api/genius/* — токен остаётся на сервере. */
 async function coverFetchJson(url: string, abort: CoverAbort): Promise<unknown> {
   const controller = new AbortController();
   abort.controller = controller;
@@ -4943,12 +4943,9 @@ const COVER_PROVIDERS: CoverProvider[] = [
     // фирменный знак Genius («G в Genius», официально public domain:
     // Wikimedia Commons, File:G in Genius.svg) — трассировка оригинала 1:1
     logo: '<path d="M17.58 19.48 16.0 20.4 14.46 20.96 13.28 21.22 11.13 21.42 9.29 21.17 7.34 20.6 5.7 19.79 3.8 18.3 3.8 18.04 4.11 17.94 4.93 18.3 6.93 18.71 8.98 18.76 10.82 18.5 12.61 17.94 14.0 17.28 16.0 15.84 16.97 14.87 18.15 13.28 18.97 11.69 19.43 10.36 19.79 8.57 19.84 6.52 19.58 4.68 19.02 3.04 19.12 2.78 19.38 2.78 20.66 4.32 21.68 6.26 22.24 8.21 22.5 9.8 22.5 10.98 22.09 13.23 21.68 14.46 21.01 15.84 19.63 17.74 18.4 18.91ZM4.42 10.98 4.52 11.95 4.83 12.77 4.73 13.08 4.37 13.02 3.24 12.05 2.63 11.28 2.01 10.16 1.65 9.08 1.5 7.95 1.6 6.21 1.81 5.39 2.47 4.01 3.24 2.99 3.65 2.58 6.37 2.58 6.47 2.78 6.47 5.39 5.5 6.52 4.73 8.11 4.42 9.49ZM9.7 7.75 10.67 7.29 11.39 6.26 11.49 5.8 11.49 2.83 11.64 2.58 13.69 2.58 14.51 3.75 15.12 5.34 15.02 5.85 14.1 5.9 13.95 8.72 13.49 9.54 12.72 10.16 11.9 10.41 11.13 10.41 10.0 9.95 9.23 9.08 8.98 8.31 9.08 7.9Z"/>',
-    // Токен клиента Genius — публичные данные только для чтения; передаём
-    // параметром access_token: у Genius не проходит CORS-preflight,
-    // поэтому заголовок Authorization из браузера использовать нельзя.
-    // Если токен перестанет работать — выпустите новый в настройках
-    // приложения Genius API и замените его здесь.
-    buildUrl: (q0) => `https://api.genius.com/search?access_token=0bdmXdOU1UaPikappqvWfrpwrpxkB3HczT2xlouY9vliFGTXSahE6jOVSwAaosGP&per_page=${COVER_SEARCH_LIMIT}&q=${encodeURIComponent(q0)}`,
+    // Поиск через серверный прокси /api/genius/search (в проде — worker.js,
+    // в превью — server.py): токен Genius хранится на сервере, не в браузере.
+    buildUrl: (q0) => `/api/genius/search?q=${encodeURIComponent(q0)}&per_page=${COVER_SEARCH_LIMIT}`,
     parse: parseGenius,
   },
   {
@@ -5385,7 +5382,9 @@ const dlgCoverSearch = new CoverSearchBox({
    со списком кандидатов и ручной ссылкой.
    ========================================================================== */
 
-const GENIUS_MARK_SVG = '<svg class="genius-mark" viewBox="0 0 24 24" aria-hidden="true"><circle class="genius-mark__bg" cx="12" cy="12" r="10.4"/><circle class="genius-mark__ink" cx="8.6" cy="9.8" r="1.55"/><circle class="genius-mark__ink" cx="15.4" cy="9.8" r="1.55"/><path class="genius-mark__ink" d="M7.9 13.9c1.35 1.75 2.9 2.55 4.1 2.55s2.75-.8 4.1-2.55" fill="none" stroke-width="1.8" stroke-linecap="round"/></svg>';
+/* Фирменный знак Genius в кружке: тот же трассированный глиф «G in Genius»,
+   что и у провайдера обложек (Wikimedia Commons, public domain), на подложке. */
+const GENIUS_MARK_SVG = '<svg class="genius-mark" viewBox="0 0 24 24" aria-hidden="true">' + '<circle class="genius-mark__bg" cx="12" cy="12" r="10.4"/><g class="genius-mark__ink" transform="translate(12 12) scale(0.76) translate(-12 -12)"><path d="M17.58 19.48 16.0 20.4 14.46 20.96 13.28 21.22 11.13 21.42 9.29 21.17 7.34 20.6 5.7 19.79 3.8 18.3 3.8 18.04 4.11 17.94 4.93 18.3 6.93 18.71 8.98 18.76 10.82 18.5 12.61 17.94 14.0 17.28 16.0 15.84 16.97 14.87 18.15 13.28 18.97 11.69 19.43 10.36 19.79 8.57 19.84 6.52 19.58 4.68 19.02 3.04 19.12 2.78 19.38 2.78 20.66 4.32 21.68 6.26 22.24 8.21 22.5 9.8 22.5 10.98 22.09 13.23 21.68 14.46 21.01 15.84 19.63 17.74 18.4 18.91ZM4.42 10.98 4.52 11.95 4.83 12.77 4.73 13.08 4.37 13.02 3.24 12.05 2.63 11.28 2.01 10.16 1.65 9.08 1.5 7.95 1.6 6.21 1.81 5.39 2.47 4.01 3.24 2.99 3.65 2.58 6.37 2.58 6.47 2.78 6.47 5.39 5.5 6.52 4.73 8.11 4.42 9.49ZM9.7 7.75 10.67 7.29 11.39 6.26 11.49 5.8 11.49 2.83 11.64 2.58 13.69 2.58 14.51 3.75 15.12 5.34 15.02 5.85 14.1 5.9 13.95 8.72 13.49 9.54 12.72 10.16 11.9 10.41 11.13 10.41 10.0 9.95 9.23 9.08 8.98 8.31 9.08 7.9Z"/></g>' + '</svg>';
 
 const GENIUS_STAGE_TEXT: Record<string, string> = {
   network: 'network — запрос не выполнен (нет сети, прокси недоступен или Genius не отвечает)',

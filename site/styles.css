@@ -3361,7 +3361,7 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 
 /* ---------- панель альбома: стекло, жёлтая кромка, свечение ---------- */
-.lyrics { border: 1px solid rgba(255, 255, 255, .08); transform-origin: 50% 0; }
+.lyrics { position: relative; border: 1px solid rgba(255, 255, 255, .08); transform-origin: 50% 0; }
 .lyrics > * { position: relative; z-index: 1; }
 .lyrics::before {
   /* фирменная кромка: прорисовывается при открытии, бежит во время поиска */
@@ -3375,7 +3375,7 @@ body { -webkit-tap-highlight-color: transparent; }
 @keyframes ge-edge { from { transform: translateX(-60%) scaleX(.45); } to { transform: translateX(60%) scaleX(.45); } }
 .lyrics::after {
   /* тёплое свечение из угла — появляется, когда текст найден */
-  content: ''; position: absolute; z-index: 0; right: -90px; top: -130px; width: 340px; height: 340px;
+  content: ''; position: absolute; z-index: 0; right: -60px; top: -70px; width: 300px; height: 300px;
   border-radius: 50%; pointer-events: none; opacity: 0;
   background: radial-gradient(circle, rgba(242, 207, 94, .16), transparent 62%);
   transition: opacity 1.2s var(--ge-ease);
@@ -3442,6 +3442,7 @@ body { -webkit-tap-highlight-color: transparent; }
 .lyrics__fix, .lyrics__fail { animation: ge-rise .5s var(--ge-ease) .05s both; }
 
 /* ---------- сингл: живая пластинка ---------- */
+.vinyl { position: relative; overflow: hidden; }
 .vinyl__stage { perspective: 1100px; }
 .vinyl__stage, .vinyl__clip { position: relative; z-index: 1; }
 .vinyl::before, .vinyl::after {

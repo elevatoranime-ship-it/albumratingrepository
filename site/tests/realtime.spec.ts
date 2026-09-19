@@ -53,6 +53,7 @@ function backend() {
       if (new URL(route.request().url()).origin === 'http://127.0.0.1:8080') return route.continue();
       return route.abort();
     });
+        await page.route('**/api/genius/**', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"genius off in tests"}' }));
     await page.route('**/config.js', (route) => route.fulfill({
       contentType: 'application/javascript',
       body: `window.APP_CONFIG = ${JSON.stringify({

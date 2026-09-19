@@ -45,9 +45,10 @@ interface UiAlbum {
   parentIds?: string[];         // все альбомы сингла в порядке выбора
   tracksLocked: boolean;
   cohesion: number | null;      // целостность/концептуальность: 1..5, финально (только альбомы)
+  geniusId?: string | null;     // ID песни Genius с текстом (у синглов)
   albumType: string | null;     // 'album' | 'ep' | 'compilation', финально (только альбомы)
 }
-interface UiTrack { id: string; albumId: string; title: string; position: number; locked: boolean; featArtist: string | null; singleId: string | null; }
+interface UiTrack { id: string; albumId: string; title: string; position: number; locked: boolean; featArtist: string | null; singleId: string | null; geniusId: string | null; }
 interface TrackRating { score: number; confirmed: boolean; }
 type RatingMap = Record<string, Record<string, TrackRating>>;
 interface PendingRating { value: TrackRating | null; savedAfterRead?: number; failed?: boolean; }
@@ -81,9 +82,9 @@ const SEED_SINGLES: UiAlbum[] = [
 /* демо-треки: чтобы в демо-режиме было видно связку «трек с меткой сингла ↔ сам сингл»,
    трек «Nikes» сразу привязан к синглу s-nikes (одинаковая оценка на альбоме и на сингле) */
 const SEED_TRACKS: UiTrack[] = [
-  { id: 'mojo-music', albumId: 'music', title: 'MOJO JOJO', position: 0, locked: false, featArtist: null, singleId: 's-mojo-jojo' },
-  { id: 'mojo-demo', albumId: 'music-demo', title: 'MOJO JOJO', position: 0, locked: false, featArtist: null, singleId: 's-mojo-jojo' },
-  { id: 'nike-track', albumId: 'blonde', title: 'Nikes', position: 0, locked: false, featArtist: null, singleId: 's-nikes' },
+  { id: 'mojo-music', albumId: 'music', title: 'MOJO JOJO', position: 0, locked: false, featArtist: null, singleId: 's-mojo-jojo', geniusId: null },
+  { id: 'mojo-demo', albumId: 'music-demo', title: 'MOJO JOJO', position: 0, locked: false, featArtist: null, singleId: 's-mojo-jojo', geniusId: null },
+  { id: 'nike-track', albumId: 'blonde', title: 'Nikes', position: 0, locked: false, featArtist: null, singleId: 's-nikes', geniusId: null },
 ];
 
 /* демо-оценки синглов: подтверждённые участвуют в рейтинге, неподтверждённые — нет */
@@ -187,6 +188,7 @@ function loadLocalTracks(): UiTrack[] {
           ...t,
           locked: Boolean(t.locked),
           featArtist: t.featArtist ?? null,
+          geniusId: (t as { geniusId?: string | null }).geniusId ?? null,
           singleId: t.singleId ?? null,
         }));
       }
@@ -307,17 +309,17 @@ async function refreshData(signal?: AbortSignal): Promise<void> {
       if (me) currentUser.username = me.username, currentUser.avatarUrl = me.avatarUrl;
     }
 
-    albums = ((aa.data ?? []) as Array<{ id: string; artist: string; title: string; year: number; cover_url: string | null; tracks_locked: boolean | null; cohesion: number | null; album_type: string | null; kind: string | null; parent_album_id: string | null; parent_album_ids?: string[] | null }>)
+    albums = ((aa.data ?? []) as Array<{ id: string; artist: string; title: string; year: number; cover_url: string | null; tracks_locked: boolean | null; cohesion: number | null; album_type: string | null; kind: string | null; parent_album_id: string | null; parent_album_ids?: string[] | null; genius_song_id?: number | null }>)
       .map((x) => normalizeAlbum({
-        id: x.id, artist: x.artist, title: x.title, year: x.year, cover: x.cover_url ?? '',
+        id: x.id, artist: x.artist, title: x.title, year: x.year, cover: x.cover_url ?? '', geniusId: x.genius_song_id != null ? String(x.genius_song_id) : null,
         kind: x.kind === 'single' ? 'single' : 'album',
         parentId: x.parent_album_id ?? null,
         parentIds: x.parent_album_ids ?? undefined,
         tracksLocked: Boolean(x.tracks_locked), cohesion: x.cohesion ?? null, albumType: x.album_type ?? null,
       }));
 
-    tracks = ((ta.data ?? []) as Array<{ id: string; album_id: string; title: string; position: number; locked: boolean | null; feat_artist: string | null; single_id?: string | null }>)
-      .map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null, singleId: t.single_id ?? null }));
+    tracks = ((ta.data ?? []) as Array<{ id: string; album_id: string; title: string; position: number; locked: boolean | null; feat_artist: string | null; single_id?: string | null; genius_song_id?: number | null }>)
+      .map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null, singleId: t.single_id ?? null, geniusId: t.genius_song_id != null ? String(t.genius_song_id) : null }));
 
     const incoming: RatingMap = {};
     for (const r of (ra.data ?? []) as Array<{ track_id: string; profile_id: string; score: number; confirmed: boolean | null }>) {
@@ -1573,6 +1575,7 @@ function updateAlbumCoverControls(): void {
   albumCoverSave.setAttribute('aria-busy', String(albumCoverSaving));
   albumCoverStatus.textContent = albumCoverSaving ? 'Сохраняем обложку…'
     : albumCoverPreparing ? 'Подготавливаем изображение…' : '';
+  dlgCoverSearch.setBlocked(blocked);
 }
 
 function resetAlbumCoverDraft(): number {
@@ -1581,6 +1584,7 @@ function resetAlbumCoverDraft(): number {
   albumCoverDraft = null;
   albumCoverPreparing = false;
   showAlbumCoverError();
+  dlgCoverSearch.clearSelection(); // выбрали файл/ссылку руками — подсветка варианта не нужна
   const al = albums.find((a) => a.id === editingCoverAlbumId);
   if (al) albumCoverPreview.src = coverSrc(al);
   updateAlbumCoverControls();
@@ -1601,6 +1605,9 @@ function openAlbumCoverEditor(): void {
   // Фиксируем начальные стили после showModal(), чтобы окно и фон плавно появились.
   void albumCoverDialog.offsetWidth;
   albumCoverDialog.classList.add('is-open');
+  // Поиск обложки онлайн: чистый лист и сразу авто-поиск по артисту и названию.
+  dlgCoverSearch.reset();
+  dlgCoverSearch.syncContext(400);
 }
 
 function closeAlbumCoverEditor(): void {
@@ -1620,6 +1627,7 @@ function closeAlbumCoverEditor(): void {
     albumCoverForm.reset();
     albumCoverPreview.removeAttribute('src');
     showAlbumCoverError();
+    dlgCoverSearch.reset();
     updateAlbumCoverControls();
   };
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -2345,6 +2353,7 @@ function renderTracks(enterId?: string): void {
       canOrder ? `<button class="track__btn" data-act="up" type="button" aria-label="Выше"${i === 0 ? ' disabled' : ''}>${UP_SVG}</button>` : '',
       canOrder ? `<button class="track__btn" data-act="down" type="button" aria-label="Ниже"${i === list.length - 1 ? ' disabled' : ''}>${DOWN_SVG}</button>` : '',
       `<button class="track__btn${single ? ' is-on' : ''}" data-act="${single ? 'unsingle' : 'single'}" type="button" title="${single ? 'Снять метку «сингл»' : 'Отметить как сингл'}" aria-label="${single ? 'Снять метку «сингл»' : 'Отметить как сингл'}">${single ? UNMARK_SINGLE_SVG : SINGLE_SVG}</button>`,
+      `<button class="track__btn track__genius${t.geniusId ? ' is-on' : ''}" data-act="genius" type="button" title="Текст песни с Genius" aria-label="Текст песни с Genius">${GENIUS_MARK_SVG}</button>`,
       isAdmin() ? `<button class="track__btn" data-act="lock" type="button" aria-label="${t.locked ? 'Снять фиксацию названия' : 'Зафиксировать название'}" title="${t.locked ? 'Снять фиксацию названия' : 'Зафиксировать название'}">${t.locked ? UNLOCK_SVG : LOCK_SVG}</button>` : '',
       canOrder ? `<button class="track__btn track__btn--del" data-act="del" type="button" aria-label="Удалить">${DEL_SVG}</button>` : '',
     ].join('');
@@ -2544,7 +2553,7 @@ async function handleAddTrack(): Promise<void> {
       newId = (data?.[0] as { id: string }).id;
     } else {
       newId = 't' + Date.now().toString(36);
-      tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist, singleId: null });
+      tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist, singleId: null, geniusId: null });
       saveLocalTracks();
     }
     if (CLOUD) await refreshData();
@@ -2744,6 +2753,12 @@ trackList.addEventListener('click', (e) => {
     const row = li?.dataset.id ? tracks.find((t) => t.id === li.dataset.id) : undefined;
     const single = row ? singleOfTrack(row) : undefined;
     if (single) void openSingle(single.id);
+    return;
+  }
+  const geniusBtn = (e.target as HTMLElement).closest<HTMLButtonElement>('.track__genius');
+  if (geniusBtn) {
+    const cli = geniusBtn.closest<HTMLLIElement>('.track');
+    if (cli?.dataset.id) toggleTrackGenius(cli.dataset.id);
     return;
   }
   const confirmBtn = (e.target as HTMLElement).closest<HTMLButtonElement>('.track__confirm-btn');
@@ -4248,6 +4263,7 @@ async function openSingle(id: string): Promise<void> {
   currentAlbumId = null;
   renderSinglePage(s);
   await navigateTo(viewSingle, { view: 'single', singleId: id });
+  startVinylLyrics(s); // пластинка: поиск текста запускается сразу при входе
 }
 
 singleBack.addEventListener('click', () => void goBack());
@@ -4558,7 +4574,7 @@ async function attachSingleTrack(singleId: string, parentId: string): Promise<st
     } else {
       tracks.push({
         id: 't' + crypto.randomUUID(), albumId: parentId, title: fullTitle,
-        position, locked: false, featArtist: feat, singleId,
+        position, locked: false, featArtist: feat, singleId, geniusId: null,
       });
       saveLocalTracks();
     }
@@ -4684,6 +4700,1340 @@ function renderAlbumSingles(): void {
 }
 
 /* ==========================================================================
+   ПОИСК ОБЛОЖЕК ОНЛАЙН — iTunes и Deezer
+   Платформы-источники обложек для новых релизов и замены обложек.
+   iTunes и Deezer подключены (бесплатные API без ключей); SoundCloud и
+   Genius зарезервированы — включатся в реестре ниже, когда появятся ключи.
+
+   Транспорт — JSONP: и iTunes (параметр callback), и Deezer
+   (output=jsonp&callback) отдают данные скриптом, поэтому запросы работают
+   прямо из браузера на любом домене (Cloudflare, localhost, превью) без
+   серверного прокси — у Deezer нет CORS-заголовков, а JSONP их не требует.
+   Каждая платформа ищет независимо: своя секция, свой статус и своя ошибка
+   с раскрываемыми деталями и кнопкой «скопировать отчёт».
+   ========================================================================== */
+
+/** Сколько вариантов показывает каждая платформа. */
+const COVER_SEARCH_LIMIT = 6;
+/** Таймаут ожидания ответа платформы. */
+const COVER_SEARCH_TIMEOUT = 10000;
+/** Задержка авто-поиска после изменения артиста/названия или запроса. */
+const COVER_SEARCH_DEBOUNCE = 700;
+
+interface CoverHit {
+  /** Ссылка на изображение в полном размере — она и сохраняется в обложку. */
+  url: string;
+  /** Уменьшенная копия для сетки результатов. */
+  thumb: string;
+  /** Подпись (название релиза, год). */
+  caption: string;
+}
+
+type CoverSearchStage = 'network' | 'timeout' | 'parse';
+
+/** Ошибка поиска с этапом, на котором она произошла, — попадает в отчёт. */
+class CoverSearchError extends Error {
+  constructor(readonly stage: CoverSearchStage, message: string) {
+    super(message);
+  }
+}
+
+/* ---------- JSONP: <script> с глобальным колбэком, таймаут и уборка ---------- */
+
+/** Ручка отмены поиска: флаг + контроллер для отмены обычного fetch. */
+interface CoverAbort {
+  aborted: boolean;
+  controller?: AbortController;
+}
+
+let coverJsonpSeq = 0;
+
+function coverJsonp(url: string, abort: CoverAbort): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const callbackName = `__coverSearchCb${Date.now().toString(36)}_${++coverJsonpSeq}`;
+    const scope = window as unknown as Record<string, unknown>;
+    const script = document.createElement('script');
+    let settled = false;
+    const timer = window.setTimeout(() => {
+      settle(() => reject(new CoverSearchError('timeout', `ответ не пришёл за ${Math.round(COVER_SEARCH_TIMEOUT / 1000)} с`)));
+    }, COVER_SEARCH_TIMEOUT);
+    const cleanup = (): void => {
+      window.clearTimeout(timer);
+      delete scope[callbackName];
+      script.remove();
+    };
+    const settle = (fn: () => void): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (!abort.aborted) fn(); // отменённый запрос просто замолкает
+    };
+    scope[callbackName] = (data: unknown) => settle(() => resolve(data));
+    script.addEventListener('error', () => {
+      settle(() => reject(new CoverSearchError('network', 'запрос не выполнен — нет сети, мешает блокировщик/расширение или API недоступен')));
+    });
+    script.src = `${url}${url.includes('?') ? '&' : '?'}callback=${encodeURIComponent(callbackName)}`;
+    document.head.appendChild(script);
+  });
+}
+
+/** Обычный fetch JSON (для API с CORS, но без JSONP — как Genius).
+    Обычный GET: у Deezer/iTunes используется JSONP (ниже), а Genius ходит
+    через наш прокси /api/genius/* — токен остаётся на сервере. */
+async function coverFetchJson(url: string, abort: CoverAbort): Promise<unknown> {
+  const controller = new AbortController();
+  abort.controller = controller;
+  const timer = window.setTimeout(() => controller.abort(), COVER_SEARCH_TIMEOUT);
+  try {
+    const response = await fetch(url, { signal: controller.signal, mode: 'cors', credentials: 'omit' });
+    if (!response.ok) {
+      throw new CoverSearchError('network', `API вернул HTTP-статус ${response.status}`);
+    }
+    return await response.json();
+  } catch (err) {
+    if (err instanceof CoverSearchError) throw err;
+    if ((err as { name?: string } | null)?.name === 'AbortError') {
+      throw new CoverSearchError('timeout', `ответ не пришёл за ${Math.round(COVER_SEARCH_TIMEOUT / 1000)} с`);
+    }
+    if (err instanceof TypeError) {
+      throw new CoverSearchError('network', 'запрос не выполнен — нет сети или API не разрешает запросы из браузера (CORS)');
+    }
+    throw new CoverSearchError('parse', `не удалось разобрать ответ: ${messageOf(err)}`);
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+/* ---------- Разбор ответов платформ ---------- */
+
+function coverArtUpscale(url: string, size: number): string {
+  return url.replace(/\/\d+x\d+bb\.([a-z]+)(\?.*)?$/i, `/${size}x${size}bb.$1`);
+}
+
+function parseItunes(data: unknown): CoverHit[] {
+  if (!data || typeof data !== 'object') throw new CoverSearchError('parse', 'пустой или некорректный ответ');
+  const results = (data as { results?: unknown }).results;
+  if (!Array.isArray(results)) throw new CoverSearchError('parse', 'в ответе нет массива results');
+  const hits: CoverHit[] = [];
+  const seen = new Set<string>();
+  for (const item of results) {
+    const art = (item as { artworkUrl100?: unknown } | null)?.artworkUrl100;
+    if (typeof art !== 'string' || !art.startsWith('http')) continue;
+    const big = coverArtUpscale(art, 600);
+    if (seen.has(big)) continue;
+    seen.add(big);
+    const name = (item as { collectionName?: unknown }).collectionName;
+    const released = (item as { releaseDate?: unknown }).releaseDate;
+    const year = typeof released === 'string' && /^\d{4}/.test(released) ? ` · ${released.slice(0, 4)}` : '';
+    hits.push({
+      url: big,
+      thumb: coverArtUpscale(art, 300),
+      caption: typeof name === 'string' ? `${name}${year}` : '',
+    });
+    if (hits.length >= COVER_SEARCH_LIMIT) break;
+  }
+  return hits;
+}
+
+function parseDeezer(data: unknown): CoverHit[] {
+  if (!data || typeof data !== 'object') throw new CoverSearchError('parse', 'пустой или некорректный ответ');
+  const results = (data as { data?: unknown }).data;
+  if (!Array.isArray(results)) {
+    const apiError = (data as { error?: { message?: unknown } }).error;
+    if (apiError && typeof apiError === 'object') {
+      throw new CoverSearchError('parse', `API вернул ошибку: ${typeof apiError.message === 'string' ? apiError.message : 'неизвестную'}`);
+    }
+    throw new CoverSearchError('parse', 'в ответе нет массива data');
+  }
+  const hits: CoverHit[] = [];
+  const seen = new Set<string>();
+  for (const item of results) {
+    const rec = item as { cover_xl?: unknown; cover_big?: unknown; cover_medium?: unknown; cover?: unknown; title?: unknown; artist?: { name?: unknown } };
+    const big = [rec.cover_xl, rec.cover_big, rec.cover].find((u): u is string => typeof u === 'string' && u.startsWith('http'));
+    const mid = [rec.cover_medium, rec.cover_big, rec.cover].find((u): u is string => typeof u === 'string' && u.startsWith('http'));
+    if (!big || !mid || seen.has(big)) continue;
+    seen.add(big);
+    const title = typeof rec.title === 'string' ? rec.title : '';
+    const artistName = typeof rec.artist?.name === 'string' ? rec.artist.name : '';
+    hits.push({
+      url: big,
+      thumb: mid,
+      caption: artistName ? `${artistName} — ${title}` : title,
+    });
+    if (hits.length >= COVER_SEARCH_LIMIT) break;
+  }
+  return hits;
+}
+
+/* ---------- Реестр платформ: новая платформа = один объект здесь ---------- */
+
+/** У Genius размер картинки зашит в путь: …/hash.300x300x1.jpg → подставим больший. */
+function geniusArtUpscale(url: string): string {
+  return url.replace(/\.(\d+)x(\d+)x1\.jpg$/i, '.1000x1000x1.jpg');
+}
+
+function parseGenius(data: unknown): CoverHit[] {
+  if (!data || typeof data !== 'object') throw new CoverSearchError('parse', 'пустой или некорректный ответ');
+  const response = (data as { response?: unknown }).response;
+  const hits = (response as { hits?: unknown } | null)?.hits;
+  if (!Array.isArray(hits)) {
+    const meta = (data as { meta?: { status?: unknown; message?: unknown } }).meta;
+    if (meta && meta.status !== undefined && meta.status !== 200) {
+      throw new CoverSearchError('parse', `API вернул статус ${String(meta.status)}${typeof meta.message === 'string' ? `: ${meta.message}` : ''}`);
+    }
+    throw new CoverSearchError('parse', 'в ответе нет массива hits');
+  }
+  const hitsList: CoverHit[] = [];
+  const seen = new Set<string>();
+  for (const hit of hits) {
+    if ((hit as { type?: unknown }).type !== 'song') continue; // берём только треки (арты песен)
+    const result = (hit as { result?: Record<string, unknown> | null }).result;
+    if (!result) continue;
+    const thumb = [result.song_art_image_thumbnail_url, result.song_art_image_url]
+      .find((u): u is string => typeof u === 'string' && u.startsWith('http'));
+    const big = [result.song_art_image_url, result.song_art_image_thumbnail_url]
+      .find((u): u is string => typeof u === 'string' && u.startsWith('http'));
+    if (!thumb || !big || seen.has(big)) continue;
+    seen.add(big);
+    const title = typeof result.title === 'string' ? result.title : '';
+    const artistName = (result.primary_artist as { name?: unknown } | null | undefined)?.name;
+    hitsList.push({
+      url: geniusArtUpscale(big),
+      thumb,
+      caption: typeof artistName === 'string' ? `${artistName} — ${title}` : title,
+    });
+    if (hitsList.length >= COVER_SEARCH_LIMIT) break;
+  }
+  return hitsList;
+}
+
+interface CoverProvider {
+  id: string;
+  name: string;
+  enabled: boolean;
+  /** jsonp — скриптовый JSONP; fetch — обычный GET+JSON (нужен CORS у API). */
+  transport: 'jsonp' | 'fetch';
+  /** Знак платформы: внутренняя разметка SVG 24×24 в currentColor. */
+  logo: string;
+  /** Почему платформа пока не подключена (для примечания под результатами). */
+  hint?: string;
+  /** Собрать URL запроса; JSONP добавит callback, fetch идёт по этому адресу. */
+  buildUrl(query: string): string;
+  /** Разобрать ответ в варианты (бросает CoverSearchError('parse')). */
+  parse(data: unknown): CoverHit[];
+}
+
+const COVER_PROVIDERS: CoverProvider[] = [
+  {
+    id: 'deezer',
+    name: 'Deezer',
+    enabled: true,
+    transport: 'jsonp',
+    // фирменный эквалайзер Deezer: четыре колонки ступенчатых полос
+    logo: '<path d="M18.81 4.16v3.03H24V4.16h-5.19zM6.27 8.38v3.027h5.189V8.38h-5.19zm12.54 0v3.027H24V8.38h-5.19zM0 12.595v3.027h5.19v-3.027H0zm6.27 0v3.027h5.189v-3.027h-5.19zm12.54 0v3.027H24v-3.027h-5.19zM0 16.81v3.029h5.19v-3.03H0zm6.27 0v3.029h5.189v-3.03h-5.19zm6.27 0v3.029h5.19v-3.03h-5.19zm6.27 0v3.029H24v-3.03h-5.19z"/>',
+    buildUrl: (q0) => `https://api.deezer.com/search/album?q=${encodeURIComponent(q0)}&limit=${COVER_SEARCH_LIMIT}&output=jsonp`,
+    parse: parseDeezer,
+  },
+  {
+    id: 'genius',
+    name: 'Genius',
+    enabled: true,
+    transport: 'fetch',
+    // знак Genius — жёлтый улыбающийся кругляшек (в тон заглушке-обложке сайта)
+    // фирменный знак Genius («G в Genius», официально public domain:
+    // Wikimedia Commons, File:G in Genius.svg) — трассировка оригинала 1:1
+    logo: '<path d="M17.58 19.48 16.0 20.4 14.46 20.96 13.28 21.22 11.13 21.42 9.29 21.17 7.34 20.6 5.7 19.79 3.8 18.3 3.8 18.04 4.11 17.94 4.93 18.3 6.93 18.71 8.98 18.76 10.82 18.5 12.61 17.94 14.0 17.28 16.0 15.84 16.97 14.87 18.15 13.28 18.97 11.69 19.43 10.36 19.79 8.57 19.84 6.52 19.58 4.68 19.02 3.04 19.12 2.78 19.38 2.78 20.66 4.32 21.68 6.26 22.24 8.21 22.5 9.8 22.5 10.98 22.09 13.23 21.68 14.46 21.01 15.84 19.63 17.74 18.4 18.91ZM4.42 10.98 4.52 11.95 4.83 12.77 4.73 13.08 4.37 13.02 3.24 12.05 2.63 11.28 2.01 10.16 1.65 9.08 1.5 7.95 1.6 6.21 1.81 5.39 2.47 4.01 3.24 2.99 3.65 2.58 6.37 2.58 6.47 2.78 6.47 5.39 5.5 6.52 4.73 8.11 4.42 9.49ZM9.7 7.75 10.67 7.29 11.39 6.26 11.49 5.8 11.49 2.83 11.64 2.58 13.69 2.58 14.51 3.75 15.12 5.34 15.02 5.85 14.1 5.9 13.95 8.72 13.49 9.54 12.72 10.16 11.9 10.41 11.13 10.41 10.0 9.95 9.23 9.08 8.98 8.31 9.08 7.9Z"/>',
+    // Поиск через серверный прокси /api/genius/search (в проде — worker.js,
+    // в превью — server.py): токен Genius хранится на сервере, не в браузере.
+    buildUrl: (q0) => `/api/genius/search?q=${encodeURIComponent(q0)}&per_page=${COVER_SEARCH_LIMIT}`,
+    parse: parseGenius,
+  },
+  {
+    id: 'itunes',
+    name: 'iTunes',
+    enabled: true,
+    transport: 'jsonp',
+    // яблоко — знак iTunes Store / Apple Music
+    logo: '<path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/>',
+    // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
+    buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
+    parse: parseItunes,
+  },
+  /* --- зарезервировано: новая платформа = один объект здесь (enabled: false
+         с подсказкой hint, пока нет ключей) --- */
+];
+
+function coverSearchNoteText(): string {
+  const off = COVER_PROVIDERS.filter((p) => !p.enabled);
+  return off.length ? `потом подключим: ${off.map((p) => `${p.name} — ${p.hint}`).join('; ')}` : '';
+}
+
+/* ---------- Отчёт об ошибке для доработки ---------- */
+
+const COVER_STAGE_TEXT: Record<CoverSearchStage, string> = {
+  network: 'network — запрос не выполнен (нет сети, мешает блокировщик/расширение или API недоступен)',
+  timeout: `timeout — ответ не пришёл за ${Math.round(COVER_SEARCH_TIMEOUT / 1000)} с`,
+  parse: 'parse — ответ получен, но не удалось разобрать',
+};
+
+function coverSearchReport(providerName: string, query: string, url: string, err: CoverSearchError): string {
+  const build = document.querySelector<HTMLScriptElement>('script[src*="app.js"]')?.getAttribute('src') ?? 'app.js';
+  return [
+    'Поиск обложки — отчёт об ошибке',
+    `платформа: ${providerName}`,
+    `запрос: «${query}»`,
+    `url запроса: ${url}`,
+    `этап: ${COVER_STAGE_TEXT[err.stage]}`,
+    `сообщение: ${err.message}`,
+    `время: ${new Date().toISOString()}`,
+    `страница: ${location.href}`,
+    `сборка: ${build}`,
+  ].join('\n');
+}
+
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch { /* переходим к резервному способу */ }
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, text.length);
+    const ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+function variantsPlural(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return 'вариант';
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 'варианта';
+  return 'вариантов';
+}
+
+/* ---------- Секция поиска: одна на форме добавления, другая в окне обложки ---------- */
+
+interface CoverSearchRefs {
+  root: HTMLElement;
+  toggle: HTMLButtonElement;
+  clip: HTMLElement;
+  body: HTMLElement;
+  query: HTMLInputElement;
+  run: HTMLButtonElement;
+  sections: HTMLElement;
+  note: HTMLElement;
+  /** Авто-запрос из контекста: артист + название (форма) или релиз (окно). */
+  getContextQuery(): string | null;
+  /** Выбор варианта: подставить обложку в форму или окно (штатное сохранение). */
+  applyPick(hit: CoverHit): void;
+  /** Сохранение/закрытие окна — на это время поиск блокируется. */
+  isBlocked(): boolean;
+}
+
+interface CoverSectionRefs {
+  section: HTMLElement;
+  head: HTMLElement;
+  state: HTMLElement;
+  grid: HTMLElement;
+  fail: HTMLElement;
+  failToggle: HTMLButtonElement;
+  report: HTMLElement;
+  copy: HTMLButtonElement;
+}
+
+class CoverSearchBox {
+  private manualEdit = false;      // запрос редактировали руками — авто-подстановка выключена
+  private userToggled = false;     // пользователь сам открывал/закрывал секцию
+  private seq = 0;                 // номер поиска: поздние ответы не применяются
+  private timer: number | undefined;
+  private aborts: CoverAbort[] = [];
+  private selectedUrl: string | null = null;
+
+  constructor(private readonly d: CoverSearchRefs) {
+    d.note.textContent = coverSearchNoteText();
+    d.note.hidden = !d.note.textContent;
+    d.toggle.addEventListener('click', () => {
+      if (d.isBlocked()) return;
+      this.userToggled = true;
+      if (this.isOpen) this.close();
+      else this.open();
+    });
+    d.run.addEventListener('click', () => {
+      if (d.isBlocked()) return;
+      this.launch(d.query.value);
+    });
+    d.query.addEventListener('input', () => {
+      window.clearTimeout(this.timer);
+      if (d.query.value.trim() !== '') {
+        this.manualEdit = true; // правим свой запрос — авто-подстановка подождёт
+        const q0 = d.query.value;
+        this.timer = window.setTimeout(() => this.launch(q0), COVER_SEARCH_DEBOUNCE);
+      } else {
+        // поле очистили: мгновенно ничего не подставляем — можно спокойно
+        // вписать другой запрос; на форме добавления следующее изменение
+        // артиста/названия снова подставит авто-запрос
+        this.manualEdit = false;
+      }
+    });
+    d.query.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault(); // поле внутри форм: Enter не должен отправлять форму
+      if (!d.isBlocked()) this.launch(d.query.value);
+    });
+  }
+
+  get isOpen(): boolean {
+    return this.d.root.classList.contains('is-open');
+  }
+
+  /** Синхронизировать запрос с контекстом (артист+название / релиз) и, если он изменился, запустить поиск. */
+  syncContext(delay = COVER_SEARCH_DEBOUNCE): void {
+    if (this.manualEdit) return;
+    const q0 = this.d.getContextQuery();
+    window.clearTimeout(this.timer);
+    if (!q0) return;
+    if (this.d.query.value.trim() === q0 && this.d.sections.childElementCount > 0) return; // уже ищем/нашлось
+    this.d.query.value = q0;
+    this.timer = window.setTimeout(() => this.launch(q0), delay);
+  }
+
+  open(): void {
+    this.d.root.classList.add('is-open');
+    this.d.toggle.setAttribute('aria-expanded', 'true');
+  }
+
+  close(): void {
+    this.d.root.classList.remove('is-open');
+    this.d.toggle.setAttribute('aria-expanded', 'false');
+  }
+
+  /** Сброс: очистить результаты, выбор и флаги (при открытии/закрытии форм). */
+  reset(): void {
+    this.seq += 1;
+    for (const a of this.aborts) { a.aborted = true; a.controller?.abort(); }
+    this.aborts = [];
+    window.clearTimeout(this.timer);
+    this.manualEdit = false;
+    this.userToggled = false;
+    this.selectedUrl = null;
+    this.d.query.value = '';
+    this.d.sections.innerHTML = '';
+    this.close();
+  }
+
+  /** Снять подсветку выбранного варианта (выбрали файл/ссылку вручную). */
+  clearSelection(): void {
+    this.selectedUrl = null;
+    this.d.sections.querySelectorAll('.cover-search__card.is-selected')
+      .forEach((c) => c.classList.remove('is-selected'));
+  }
+
+  /** Заблокировать/разблокировать управление (пока идёт сохранение обложки). */
+  setBlocked(blocked: boolean): void {
+    this.d.toggle.disabled = blocked;
+    this.d.query.disabled = blocked;
+    this.d.run.disabled = blocked;
+  }
+
+  private launch(qraw: string): void {
+    window.clearTimeout(this.timer);
+    const q0 = qraw.trim().replace(/\s+/g, ' ');
+    this.seq += 1;
+    const seq = this.seq;
+    for (const a of this.aborts) { a.aborted = true; a.controller?.abort(); }
+    this.aborts = [];
+    this.selectedUrl = null;
+    this.d.sections.innerHTML = '';
+    if (!q0) return;
+    const enabled = COVER_PROVIDERS.filter((p) => p.enabled);
+    let pending = enabled.length;
+    let anyHits = false;
+    for (const provider of enabled) {
+      const abort: CoverAbort = { aborted: false };
+      this.aborts.push(abort);
+      const url = provider.buildUrl(q0);
+      const refs = this.buildSection(provider);
+      this.d.sections.appendChild(refs.section);
+      (provider.transport === 'fetch' ? coverFetchJson(url, abort) : coverJsonp(url, abort))
+        .then((data) => {
+          if (abort.aborted || seq !== this.seq) return;
+          const hits = provider.parse(data); // может бросить CoverSearchError('parse')
+          if (seq !== this.seq) return;
+          refs.state.classList.remove('is-searching');
+          if (!hits.length) {
+            refs.state.textContent = 'ничего не найдено';
+            return;
+          }
+          anyHits = true;
+          refs.state.textContent = `${hits.length} ${variantsPlural(hits.length)}`;
+          refs.grid.hidden = false;
+          for (const hit of hits) refs.grid.appendChild(this.buildCard(provider, hit));
+        })
+        .catch((err) => {
+          if (abort.aborted || seq !== this.seq) return;
+          const searchErr = err instanceof CoverSearchError ? err : new CoverSearchError('network', messageOf(err));
+          refs.state.classList.remove('is-searching');
+          refs.state.classList.add('is-error');
+          refs.state.textContent = `ошибка · ${searchErr.stage}`;
+          refs.fail.hidden = false;
+          refs.report.textContent = coverSearchReport(provider.name, q0, url, searchErr);
+        })
+        .finally(() => {
+          pending -= 1;
+          if (pending === 0 && seq === this.seq && !this.d.isBlocked() && anyHits && !this.userToggled && !this.isOpen) {
+            this.open(); // результаты пришли — раскрываем секцию (если пользователь не распорядился сам)
+          }
+        });
+    }
+  }
+
+  private buildSection(provider: CoverProvider): CoverSectionRefs {
+    const section = document.createElement('section');
+    section.className = 'cover-search__section';
+    section.dataset.provider = provider.id;
+    const head = document.createElement('header');
+    head.className = 'cover-search__head';
+    const name = document.createElement('span');
+    name.className = 'cover-search__name';
+    name.innerHTML = `${esc(provider.name)}<svg class="cover-search__logo" viewBox="0 0 24 24" aria-hidden="true">${provider.logo}</svg>`;
+    const state = document.createElement('span');
+    state.className = 'cover-search__state is-searching';
+    state.textContent = 'ищем…';
+    state.setAttribute('role', 'status');
+    state.setAttribute('aria-live', 'polite');
+    head.append(name, state);
+    const grid = document.createElement('div');
+    grid.className = 'cover-search__grid';
+    grid.hidden = true;
+    const fail = document.createElement('div');
+    fail.className = 'cover-search__fail';
+    fail.hidden = true;
+    const failToggle = document.createElement('button');
+    failToggle.type = 'button';
+    failToggle.className = 'cover-search__fail-toggle';
+    failToggle.textContent = 'показать детали';
+    const report = document.createElement('pre');
+    report.className = 'cover-search__report';
+    report.hidden = true;
+    const copy = document.createElement('button');
+    copy.type = 'button';
+    copy.className = 'btn btn--ghost btn--sm cover-search__copy';
+    copy.textContent = 'скопировать отчёт';
+    copy.hidden = true;
+    failToggle.addEventListener('click', () => {
+      const willShow = report.hidden;
+      report.hidden = !willShow;
+      copy.hidden = !willShow;
+      failToggle.textContent = willShow ? 'скрыть детали' : 'показать детали';
+    });
+    copy.addEventListener('click', () => {
+      const ok = copyTextToClipboard(report.textContent ?? '');
+      void Promise.resolve(ok).then((copied) => toast(copied ? 'Отчёт скопирован — вставьте его в сообщение разработчику' : 'Не удалось скопировать: выделите текст деталей и скопируйте вручную (Ctrl+C)'));
+    });
+    fail.append(failToggle, report, copy);
+    section.append(head, grid, fail);
+    return { section, head, state, grid, fail, failToggle, report, copy };
+  }
+
+  private buildCard(provider: CoverProvider, hit: CoverHit): HTMLButtonElement {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'cover-search__card';
+    card.dataset.provider = provider.id;
+    if (hit.caption) {
+      card.title = hit.caption;
+      card.setAttribute('aria-label', `Обложка: ${hit.caption}`);
+    }
+    const img = document.createElement('img');
+    img.src = hit.thumb;
+    img.alt = '';
+    img.loading = 'lazy';
+    card.appendChild(img);
+    card.addEventListener('click', () => {
+      if (this.d.isBlocked()) return;
+      this.pick(hit, card, provider);
+    });
+    return card;
+  }
+
+  /** Выбор варианта: сразу применяем, затем тихо проверяем полную ссылку. */
+  private pick(hit: CoverHit, card: HTMLButtonElement, provider: CoverProvider): void {
+    this.selectedUrl = hit.url;
+    this.d.sections.querySelectorAll('.cover-search__card.is-selected')
+      .forEach((c) => c.classList.remove('is-selected'));
+    card.classList.add('is-selected');
+    this.d.applyPick(hit);
+    const check = (candidate: string): Promise<string> =>
+      loadImage(candidate).then(
+        () => candidate,
+        () => Promise.reject(new Error('изображение не открылось')),
+      );
+    void check(hit.url)
+      .catch(() => check(hit.thumb)) // полная ссылка не открылась — пробуем уменьшенную
+      .then((finalUrl) => {
+        if (finalUrl === hit.url) return;
+        hit.url = finalUrl;
+        if (this.selectedUrl === hit.url) this.d.applyPick(hit); // подставляем рабочий размер
+      })
+      .catch(() => {
+        card.classList.remove('is-selected');
+        if (this.selectedUrl === hit.url) this.selectedUrl = null;
+        toast(`Обложка ${provider.name} не открылась — выберите другой вариант или файл`);
+      });
+  }
+}
+
+/* ---------- Два экземпляра: форма добавления и окно обложки ---------- */
+
+const addCoverSearch = new CoverSearchBox({
+  root: q<HTMLElement>('#cover-search'),
+  toggle: q<HTMLButtonElement>('#cover-search-toggle'),
+  clip: q<HTMLElement>('#cover-search-clip'),
+  body: q<HTMLElement>('#cover-search-body'),
+  query: q<HTMLInputElement>('#cover-search-query'),
+  run: q<HTMLButtonElement>('#cover-search-run'),
+  sections: q<HTMLElement>('#cover-search-sections'),
+  note: q<HTMLElement>('#cover-search-note'),
+  getContextQuery: () => {
+    const artist = artistInput.value.trim().replace(/\s+/g, ' ');
+    const title = titleInput.value.trim().replace(/\s+/g, ' ');
+    return artist && title ? `${artist} ${title}` : null;
+  },
+  applyPick: (hit) => {
+    window.clearTimeout(coverUrlTimer);
+    coverFile.value = '';
+    coverUrl.value = hit.url;
+    clearCoverUrlError();
+    applyCover(hit.url);
+    // подтверждение выбора: миниатюра мягко вспыхивает лавандовым
+    coverPick.classList.remove('is-fresh-pick');
+    void coverPick.offsetWidth;
+    coverPick.classList.add('is-fresh-pick');
+    window.setTimeout(() => coverPick.classList.remove('is-fresh-pick'), 1300);
+  },
+  isBlocked: () => addPending,
+});
+
+const dlgCoverSearch = new CoverSearchBox({
+  root: q<HTMLElement>('#album-cover-search'),
+  toggle: q<HTMLButtonElement>('#album-cover-search-toggle'),
+  clip: q<HTMLElement>('#album-cover-search-clip'),
+  body: q<HTMLElement>('#album-cover-search-body'),
+  query: q<HTMLInputElement>('#album-cover-search-query'),
+  run: q<HTMLButtonElement>('#album-cover-search-run'),
+  sections: q<HTMLElement>('#album-cover-search-sections'),
+  note: q<HTMLElement>('#album-cover-search-note'),
+  getContextQuery: () => {
+    const al = albums.find((a) => a.id === editingCoverAlbumId);
+    if (!al) return null;
+    // у сингла ищем чистое название без фита-гостя — он и так в артисте
+    const title = al.kind === 'single' ? singleDisplayTitle(al) : al.title;
+    return `${al.artist} ${title}`.replace(/\s+/g, ' ').trim() || null;
+  },
+  applyPick: (hit) => {
+    window.clearTimeout(albumCoverUrlTimer);
+    albumCoverRequest += 1; // поздние превью файла/ссылки больше не применяются
+    albumCoverFile.value = '';
+    albumCoverUrl.value = hit.url;
+    albumCoverDraft = hit.url;
+    albumCoverPreparing = false;
+    showAlbumCoverError();
+    albumCoverPreview.src = hit.url;
+    // мягкая смена предпросмотра: прежняя картинка растворяется в новой
+    albumCoverPreview.classList.remove('is-swap');
+    void albumCoverPreview.offsetWidth;
+    albumCoverPreview.classList.add('is-swap');
+    updateAlbumCoverControls();
+  },
+  isBlocked: () => albumCoverSaving || albumCoverClosing || !albumCoverDialog.open,
+});
+
+
+/* ==========================================================================
+   ТЕКСТЫ ПЕСЕН — GENIUS
+   Альбом: значок у каждого трека (серый → жёлтый), текст раскрывается
+   в секции под списком треков. Сингл: «пластинка» — диск вращается, пока
+   идёт поиск, текст печатается посимвольно; поиск запускается при входе.
+   Найденная песня запоминается в базе (tracks.genius_song_id /
+   albums.genius_song_id): автопоиск пинит уверенное совпадение от любого
+   участника, ручная замена — только админ.
+
+   Текст песни получают через /api/genius/*: в проде это worker.js
+   (Cloudflare), в превью — server.py. Прокси ищет через официальный API
+   и достаёт текст со страницы genius.com (браузеру она недоступна из-за
+   CORS), а токен Genius хранит на сервере.
+
+   Точный подбор: название трека чистится от фитов и скобок («(feat. …)»,
+   «- Remake 2019»), артист берётся до первого разделителя совместки;
+   кандидаты скорятся по вхождению нормализованных названий и артиста;
+   «уверено» = совпали обе части. Не уверены — форма «не та песня?»
+   со списком кандидатов и ручной ссылкой.
+   ========================================================================== */
+
+/* Фирменный знак Genius в кружке: тот же трассированный глиф «G in Genius»,
+   что и у провайдера обложек (Wikimedia Commons, public domain), на подложке. */
+const GENIUS_MARK_SVG = '<svg class="genius-mark" viewBox="0 0 24 24" aria-hidden="true">' + '<circle class="genius-mark__bg" cx="12" cy="12" r="10.4"/><g class="genius-mark__ink" transform="translate(12 12) scale(0.76) translate(-12 -12)"><path d="M17.58 19.48 16.0 20.4 14.46 20.96 13.28 21.22 11.13 21.42 9.29 21.17 7.34 20.6 5.7 19.79 3.8 18.3 3.8 18.04 4.11 17.94 4.93 18.3 6.93 18.71 8.98 18.76 10.82 18.5 12.61 17.94 14.0 17.28 16.0 15.84 16.97 14.87 18.15 13.28 18.97 11.69 19.43 10.36 19.79 8.57 19.84 6.52 19.58 4.68 19.02 3.04 19.12 2.78 19.38 2.78 20.66 4.32 21.68 6.26 22.24 8.21 22.5 9.8 22.5 10.98 22.09 13.23 21.68 14.46 21.01 15.84 19.63 17.74 18.4 18.91ZM4.42 10.98 4.52 11.95 4.83 12.77 4.73 13.08 4.37 13.02 3.24 12.05 2.63 11.28 2.01 10.16 1.65 9.08 1.5 7.95 1.6 6.21 1.81 5.39 2.47 4.01 3.24 2.99 3.65 2.58 6.37 2.58 6.47 2.78 6.47 5.39 5.5 6.52 4.73 8.11 4.42 9.49ZM9.7 7.75 10.67 7.29 11.39 6.26 11.49 5.8 11.49 2.83 11.64 2.58 13.69 2.58 14.51 3.75 15.12 5.34 15.02 5.85 14.1 5.9 13.95 8.72 13.49 9.54 12.72 10.16 11.9 10.41 11.13 10.41 10.0 9.95 9.23 9.08 8.98 8.31 9.08 7.9Z"/></g>' + '</svg>';
+
+const GENIUS_STAGE_TEXT: Record<string, string> = {
+  network: 'network — запрос не выполнен (нет сети, прокси недоступен или Genius не отвечает)',
+  timeout: 'timeout — ответ не пришёл за 20 с',
+  parse: 'parse — ответ получен, но текст в нём не найден',
+};
+
+class GeniusError extends Error {
+  constructor(readonly stage: 'network' | 'timeout' | 'parse', message: string) {
+    super(message);
+  }
+}
+
+interface GeniusSongInfo {
+  id: string; title: string; artist: string; url: string;
+  lyricsState: string | null; text: string;
+}
+
+const geniusSearchCache = new Map<string, Array<{ id: string; title: string; artist: string; url: string; lyricsState: string | null }>>();
+const geniusLyricsCache = new Map<string, GeniusSongInfo>();
+
+async function geniusApi<T>(path: string, params: Record<string, string>): Promise<T> {
+  const qs = new URLSearchParams(params).toString();
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(`/api/genius/${path}?${qs}`, { signal: controller.signal, headers: { accept: 'application/json' } });
+    const data = (await response.json().catch(() => null)) as { error?: string } | null;
+    if (!response.ok) {
+      throw new GeniusError('network', (data as { error?: string } | null)?.error || `прокси ответил ${response.status}`);
+    }
+    return data as T;
+  } catch (err) {
+    if (err instanceof GeniusError) throw err;
+    if ((err as { name?: string } | null)?.name === 'AbortError') {
+      throw new GeniusError('timeout', 'ответ не пришёл за 20 с');
+    }
+    throw new GeniusError('network', messageOf(err));
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+async function geniusSearchSongs(query: string): Promise<Array<{ id: string; title: string; artist: string; url: string; lyricsState: string | null }>> {
+  const cachedHits = geniusSearchCache.get(query);
+  if (cachedHits) return cachedHits;
+  const data = await geniusApi<{ response?: { hits?: Array<{ type?: string; result?: Record<string, unknown> }> } }>('search', { q: query });
+  const hits = (data.response?.hits ?? [])
+    .filter((h) => h.type === 'song' && h.result)
+    .map((h) => {
+      const r = h.result as Record<string, unknown>;
+      return {
+        id: String(r.id),
+        title: typeof r.title === 'string' ? r.title : '',
+        artist: (r.primary_artist as { name?: unknown } | null)?.name as string | undefined ?? '',
+        url: typeof r.url === 'string' ? r.url : '',
+        lyricsState: typeof r.lyrics_state === 'string' ? r.lyrics_state : null,
+      };
+    });
+  geniusSearchCache.set(query, hits);
+  return hits;
+}
+
+async function geniusFetchSong(id: string): Promise<GeniusSongInfo> {
+  const cachedSong = geniusLyricsCache.get(id);
+  if (cachedSong) return cachedSong;
+  const data = await geniusApi<{ song?: Record<string, unknown> }>('lyrics', { id });
+  const song = data.song;
+  if (!song) throw new GeniusError('parse', 'песня не найдена');
+  const parsed = {
+    id: String(song.id),
+    title: typeof song.title === 'string' ? song.title : '',
+    artist: typeof song.artist === 'string' ? song.artist : '',
+    url: typeof song.url === 'string' ? song.url : '',
+    lyricsState: typeof song.lyrics_state === 'string' ? song.lyrics_state : null,
+    text: typeof song.text === 'string' ? song.text : '',
+  };
+  geniusLyricsCache.set(id, parsed);
+  return parsed;
+}
+
+/* --- точный подбор запроса --- */
+
+const GENIUS_BRACKETS_RE = /[(\[{][^)\]}]*[)\]}]/g;
+
+function geniusCleanTitle(raw: string): string {
+  let t = raw.replace(GENIUS_BRACKETS_RE, ' ');
+  t = t.replace(/\s*\b(?:feat|ft)\b\.?\s+.*$/i, ' ');
+  t = t.replace(/\s*-\s*(?:remake|remaster(?:ed)?|version|edit|demo|mix)\b.*$/i, ' ');
+  return t.replace(/\s+/g, ' ').trim();
+}
+
+function geniusMainArtist(raw: string): string {
+  return raw.split(/\s*,\s*|\s+&\s+|\s+(?:feat|ft)\.?\s+/i)[0].trim();
+}
+
+function geniusNorm(s: string): string {
+  return s.toLowerCase().replace(/ё/g, 'е').replace(/[^\p{L}\p{N}]+/gu, '');
+}
+
+/** Оценка кандидата: совпало нормализованное название (полностью/частично)
+    и артист. «Уверенно» = есть и то и другое. */
+function geniusScore(song: { title: string; artist: string }, artistQuery: string, titleQuery: string): { total: number; titleOk: boolean; artistOk: boolean } {
+  const tN = geniusNorm(song.title);
+  const aN = geniusNorm(song.artist);
+  const tQ = geniusNorm(titleQuery);
+  const aQ = geniusNorm(artistQuery);
+  let titleOk = false;
+  let artistOk = false;
+  let total = 0;
+  if (tQ && tN) {
+    if (tN === tQ) { titleOk = true; total += 0.6; }
+    else if (tN.includes(tQ) || tQ.includes(tN)) { titleOk = true; total += 0.45; }
+    else if (tQ.length >= 4 && (tN.includes(tQ.slice(0, Math.ceil(tQ.length * 0.6))) || tQ.includes(tN.slice(0, Math.ceil(tN.length * 0.6))))) { titleOk = true; total += 0.25; }
+  }
+  if (aQ && aN) {
+    if (aN === aQ) { artistOk = true; total += 0.4; }
+    else if (aN.includes(aQ) || aQ.includes(aN)) { artistOk = true; total += 0.3; }
+  }
+  if (titleOk && artistOk && tN === tQ && aN === aQ) total += 0.1;
+  return { total, titleOk, artistOk };
+}
+
+/* --- запоминание выбранной песни --- */
+
+/** Локальные подстановки до перезагрузки (участники без прав админа). */
+const geniusLocalOverride = new Map<string, string>();
+
+function geniusPinnedId(kind: 'track' | 'single', refId: string): string | null {
+  const override = geniusLocalOverride.get(`${kind}:${refId}`);
+  if (override) return override;
+  const row = kind === 'track' ? tracks.find((t) => t.id === refId) : albums.find((a) => a.id === refId);
+  return row ? ((row as UiTrack).geniusId ?? (row as UiAlbum).geniusId ?? null) : null;
+}
+
+async function geniusPin(kind: 'track' | 'single', refId: string, songId: string | null): Promise<void> {
+  if (CLOUD) {
+    const table = kind === 'track' ? 'tracks' : 'albums';
+    const { error } = await getSB().from(table)
+      .update({ genius_song_id: songId ? Number(songId) : null })
+      .eq('id', refId);
+    if (error) throw error;
+    await refreshData();
+    return;
+  }
+  if (kind === 'track') {
+    tracks = tracks.map((t) => (t.id === refId ? { ...t, geniusId: songId } : t));
+    saveLocalTracks();
+  } else {
+    albums = albums.map((a) => (a.id === refId ? { ...a, geniusId: songId } : a));
+    saveLocalAlbums();
+  }
+}
+
+/* ---------- DOM: панель альбома и пластинка сингла ---------- */
+
+const lyricsPanel = q<HTMLElement>('#lyrics-panel');
+const lyricsSong = q<HTMLElement>('#lyrics-song');
+const lyricsArtist = q<HTMLElement>('#lyrics-artist');
+const lyricsLink = q<HTMLAnchorElement>('#lyrics-link');
+const lyricsReplaceBtn = q<HTMLButtonElement>('#lyrics-replace-btn');
+const lyricsClose = q<HTMLButtonElement>('#lyrics-close');
+const lyricsState = q<HTMLElement>('#lyrics-state');
+const lyricsSkeleton = q<HTMLElement>('#lyrics-skeleton');
+const lyricsFail = q<HTMLElement>('#lyrics-fail');
+const lyricsFailToggle = q<HTMLButtonElement>('#lyrics-fail-toggle');
+const lyricsReport = q<HTMLElement>('#lyrics-report');
+const lyricsCopy = q<HTMLButtonElement>('#lyrics-copy');
+const lyricsText = q<HTMLElement>('#lyrics-text');
+const lyricsFix = q<HTMLFormElement>('#lyrics-fix');
+const lyricsCands = q<HTMLElement>('#lyrics-cands');
+const lyricsUrl = q<HTMLInputElement>('#lyrics-url');
+const lyricsUrlError = q<HTMLElement>('#lyrics-url-error');
+const lyricsFixCancel = q<HTMLButtonElement>('#lyrics-fix-cancel');
+const lyricsFixSave = q<HTMLButtonElement>('#lyrics-fix-save');
+const lyricsFixNote = q<HTMLElement>('#lyrics-fix-note');
+
+const vinylSection = q<HTMLElement>('#vinyl-section');
+const vinylDisc = q<HTMLElement>('#vinyl-disc');
+const vinylArt = q<HTMLImageElement>('#vinyl-art');
+const vinylPin = q<HTMLButtonElement>('#vinyl-pin');
+const vinylSong = q<HTMLElement>('#vinyl-song');
+const vinylArtist = q<HTMLElement>('#vinyl-artist');
+const vinylLink = q<HTMLAnchorElement>('#vinyl-link');
+const vinylReplaceBtn = q<HTMLButtonElement>('#vinyl-replace-btn');
+const vinylClip = q<HTMLElement>('#vinyl-clip');
+const vinylState = q<HTMLElement>('#vinyl-state');
+const vinylSkeleton = q<HTMLElement>('#vinyl-skeleton');
+const vinylFail = q<HTMLElement>('#vinyl-fail');
+const vinylFailToggle = q<HTMLButtonElement>('#vinyl-fail-toggle');
+const vinylReport = q<HTMLElement>('#vinyl-report');
+const vinylCopy = q<HTMLButtonElement>('#vinyl-copy');
+const vinylText = q<HTMLElement>('#vinyl-text');
+const vinylFix = q<HTMLFormElement>('#vinyl-fix');
+const vinylCands = q<HTMLElement>('#vinyl-cands');
+const vinylUrl = q<HTMLInputElement>('#vinyl-url');
+const vinylUrlError = q<HTMLElement>('#vinyl-url-error');
+const vinylFixCancel = q<HTMLButtonElement>('#vinyl-fix-cancel');
+const vinylFixSave = q<HTMLButtonElement>('#vinyl-fix-save');
+const vinylFixNote = q<HTMLElement>('#vinyl-fix-note');
+
+interface GeniusScreenUi {
+  song: HTMLElement;
+  artist: HTMLElement;
+  link: HTMLAnchorElement;
+  replaceBtn: HTMLButtonElement;
+  state: HTMLElement;
+  skeleton: HTMLElement;
+  fail: HTMLElement;
+  failToggle: HTMLButtonElement;
+  report: HTMLElement;
+  copy: HTMLButtonElement;
+  text: HTMLElement;
+  fix: HTMLFormElement;
+  cands: HTMLElement;
+  url: HTMLInputElement;
+  urlError: HTMLElement;
+  fixCancel: HTMLButtonElement;
+  fixSave: HTMLButtonElement;
+  fixNote: HTMLElement;
+  typewriter: boolean;
+}
+
+const albumLyricsUi: GeniusScreenUi = {
+  song: lyricsSong, artist: lyricsArtist, link: lyricsLink, replaceBtn: lyricsReplaceBtn,
+  state: lyricsState, skeleton: lyricsSkeleton, fail: lyricsFail, failToggle: lyricsFailToggle, report: lyricsReport,
+  copy: lyricsCopy, text: lyricsText, fix: lyricsFix, cands: lyricsCands, url: lyricsUrl,
+  urlError: lyricsUrlError, fixCancel: lyricsFixCancel, fixSave: lyricsFixSave, fixNote: lyricsFixNote,
+  typewriter: false,
+};
+
+const vinylLyricsUi: GeniusScreenUi = {
+  song: vinylSong, artist: vinylArtist, link: vinylLink, replaceBtn: vinylReplaceBtn,
+  state: vinylState, skeleton: vinylSkeleton, fail: vinylFail, failToggle: vinylFailToggle, report: vinylReport,
+  copy: vinylCopy, text: vinylText, fix: vinylFix, cands: vinylCands, url: vinylUrl,
+  urlError: vinylUrlError, fixCancel: vinylFixCancel, fixSave: vinylFixSave, fixNote: vinylFixNote,
+  typewriter: true,
+};
+
+/* ---------- общий движок ---------- */
+
+interface GeniusRun {
+  kind: 'track' | 'single';
+  refId: string;
+  artist: string;
+  title: string;
+  ui: GeniusScreenUi;
+}
+
+let geniusSeq = 0;
+let geniusActiveKey: string | null = null;
+let geniusTypeTimer: number | undefined;
+
+function geniusReportText(run: GeniusRun, err: GeniusError, detail: string): string {
+  const build = document.querySelector<HTMLScriptElement>('script[src*="app.js"]')?.getAttribute('src') ?? 'app.js';
+  return [
+    'Текст песни — отчёт об ошибке',
+    `источник: Genius (${run.kind === 'track' ? 'трек' : 'сингл'})`,
+    `искали: «${run.artist} ${run.title}»`,
+    `этап: ${GENIUS_STAGE_TEXT[err.stage]}`,
+    `сообщение: ${err.message}`,
+    detail ? `детали: ${detail}` : '',
+    `время: ${new Date().toISOString()}`,
+    `страница: ${location.href}`,
+    `сборка: ${build}`,
+  ].filter(Boolean).join('\n');
+}
+
+function geniusSetState(ui: GeniusScreenUi, text: string): void {
+  ui.state.textContent = text;
+  const searching = text === 'ищем текст на Genius…';
+  ui.state.classList.toggle('is-searching', searching);
+  ui.skeleton.hidden = !searching;
+}
+
+function geniusShowError(ui: GeniusScreenUi, report: string): void {
+  ui.fail.hidden = false;
+  ui.report.textContent = report;
+  ui.report.hidden = true;
+  ui.copy.hidden = true;
+  ui.failToggle.textContent = 'показать детали';
+}
+
+function geniusResetUi(ui: GeniusScreenUi): void {
+  window.clearInterval(geniusTypeTimer);
+  ui.song.textContent = '';
+  ui.artist.textContent = '';
+  ui.link.hidden = true;
+  ui.link.removeAttribute('href');
+  ui.state.textContent = '';
+  ui.fail.hidden = true;
+  ui.report.textContent = '';
+  ui.report.hidden = true;
+  ui.copy.hidden = true;
+  ui.text.hidden = true;
+  ui.text.textContent = '';
+  ui.text.classList.remove('is-typing');
+  ui.fix.hidden = true;
+  ui.cands.innerHTML = '';
+  ui.url.value = '';
+  ui.urlError.textContent = '';
+  ui.replaceBtn.hidden = !isAdmin();
+  ui.skeleton.hidden = true;
+  lyricsPanel.classList.remove('is-searching', 'is-found');
+  vinylSection.classList.remove('is-searching', 'is-found');
+  vinylDisc.classList.remove('is-landing');
+  vinylPin.classList.remove('is-dropping');
+}
+
+/** Печать текста посимвольно (сингл): быстро, с бегущим курсором. */
+function geniusTypeText(ui: GeniusScreenUi, text: string): void {
+  window.clearInterval(geniusTypeTimer);
+  ui.text.hidden = false;
+  ui.text.classList.remove('is-typing');
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    ui.text.textContent = text;
+    return;
+  }
+  if (!ui.typewriter) {
+    // альбом: строки появляются каскадом — подъём с расфокусом, шаг 42 мс
+    const frag = document.createDocumentFragment();
+    text.split('\n').forEach((line, i) => {
+      const el = document.createElement('span');
+      el.className = 'lyrics__line';
+      el.textContent = line.length ? line : '\u00A0';
+      el.style.animationDelay = `${Math.min(i * 42, 1900)}ms`;
+      frag.appendChild(el);
+    });
+    ui.text.textContent = '';
+    ui.text.appendChild(frag);
+    return;
+  }
+  ui.text.textContent = '';
+  ui.text.classList.add('is-typing');
+  let i = 0;
+  geniusTypeTimer = window.setInterval(() => {
+    i = Math.min(text.length, i + 22);
+    ui.text.textContent = text.slice(0, i);
+    if (i >= text.length) {
+      window.clearInterval(geniusTypeTimer);
+      ui.text.classList.remove('is-typing');
+    }
+  }, 16);
+}
+
+function geniusRenderSong(run: GeniusRun, song: GeniusSongInfo): void {
+  const ui = run.ui;
+  geniusSetState(ui, song.text ? '' : 'на Genius текст этой песни пока не заполнен');
+  ui.song.textContent = song.title;
+  ui.artist.textContent = song.artist;
+  if (song.url) {
+    ui.link.href = song.url;
+    ui.link.hidden = false;
+  }
+  if (song.text) geniusTypeText(ui, song.text);
+  const surface = run.kind === 'single' ? vinylSection : lyricsPanel;
+  surface.classList.add('is-found');
+  if (run.kind === 'single') {
+    vinylDisc.classList.add('is-landing');
+    vinylPin.classList.add('is-dropping');
+  }
+}
+
+/** Список кандидатов в форме «не та песня?». */
+function geniusRenderCandidates(run: GeniusRun, candidates: Array<{ id: string; title: string; artist: string }>): void {
+  const ui = run.ui;
+  ui.cands.innerHTML = '';
+  for (const song of candidates.slice(0, 6)) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'lyrics__cand';
+    chip.innerHTML = `<span class="lyrics__cand-title">${esc(song.title)}</span><span class="lyrics__cand-artist">${esc(song.artist)}</span>`;
+    chip.addEventListener('click', () => {
+      void geniusApplySong(run, song.id, song);
+    });
+    ui.cands.appendChild(chip);
+  }
+  if (!candidates.length) ui.cands.innerHTML = '<p class="cover-pick__note">кандидатов не нашлось — вставьте ссылку на страницу песни</p>';
+}
+
+function geniusOpenFix(run: GeniusRun, candidates: Array<{ id: string; title: string; artist: string }>): void {
+  const ui = run.ui;
+  geniusRenderCandidates(run, candidates);
+  ui.fix.hidden = false;
+  ui.fixNote.textContent = isAdmin()
+    ? 'подставленная песня запомнится в базе для всех'
+    : 'замену запомнит только админ — остальным подстановка откроется до перезагрузки';
+}
+
+function geniusIdFromUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw.trim());
+    if (!/(^|\.)genius\.com$/i.test(url.hostname)) return null;
+    const m = url.pathname.match(/(\d+)(?!.*\d)/); // последнее число в пути (…-9100-lyrics)
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Подставить выбранную песню: сразу показать текст; админ — запоминает в базе. */
+async function geniusApplySong(run: GeniusRun, songId: string, hint?: { title: string; artist: string }): Promise<void> {
+  const ui = run.ui;
+  ui.fixSave.classList.add('is-loading');
+  geniusSetState(ui, 'проверяем песню…');
+  try {
+    const song = await geniusFetchSong(songId);
+    geniusLocalOverride.set(`${run.kind}:${run.refId}`, song.id);
+    if (isAdmin()) {
+      try {
+        await geniusPin(run.kind, run.refId, song.id);
+      } catch (err) {
+        toast(messageOf(err)); // текст всё равно показан; запоминание можно повторить
+      }
+    }
+    geniusRenderSong(run, song);
+    ui.fix.hidden = true;
+    toast(run.kind === 'track' ? 'Текст подставлен' : 'Текст подставлен на пластинку');
+  } catch (err) {
+    geniusSetState(ui, '');
+    ui.urlError.textContent = err instanceof GeniusError ? err.message : messageOf(err);
+  } finally {
+    ui.fixSave.classList.remove('is-loading');
+    void hint;
+  }
+}
+
+/** Основной сценарий: закреплённая песня → мгновенно; иначе поиск → скоринг →
+    уверенное совпадение пинится и открывается; иначе — форма «не та песня?». */
+async function geniusRun(run: GeniusRun): Promise<void> {
+  const ui = run.ui;
+  geniusSeq += 1;
+  const seq = geniusSeq;
+  geniusActiveKey = `${run.kind}:${run.refId}`;
+  geniusResetUi(ui);
+  geniusSetState(ui, 'ищем текст на Genius…');
+  if (run.kind === 'single') {
+    vinylSection.hidden = false;
+    vinylPin.classList.remove('is-active');
+    vinylPin.setAttribute('aria-expanded', 'true');
+    vinylClip.classList.add('is-open');
+    vinylSection.classList.add('is-searching');
+    vinylDisc.classList.add('is-searching');
+  } else {
+    lyricsPanel.classList.add('is-searching');
+  }
+  const settle = (): void => {
+    if (run.kind === 'single') {
+      vinylSection.classList.remove('is-searching');
+      vinylDisc.classList.remove('is-searching');
+    } else {
+      lyricsPanel.classList.remove('is-searching');
+    }
+    ui.skeleton.hidden = true;
+    ui.state.classList.remove('is-searching');
+  };
+
+  try {
+    const pinned = geniusPinnedId(run.kind, run.refId);
+    if (pinned) {
+      const song = await geniusFetchSong(pinned);
+      if (seq !== geniusSeq) return;
+      settle();
+      geniusRenderSong(run, song);
+      if (run.kind === 'single') vinylPin.classList.add('is-active');
+      return;
+    }
+
+    const query = `${geniusMainArtist(run.artist)} ${geniusCleanTitle(run.title)}`.trim();
+    const hits = await geniusSearchSongs(query);
+    if (seq !== geniusSeq) return;
+    const scored = hits
+      .map((song) => ({ song, ...geniusScore(song, run.artist, run.title) }))
+      .sort((a, b) => b.total - a.total);
+    const best = scored[0];
+    if (best && best.titleOk && best.artistOk) {
+      const songId = best.song.id;
+      try {
+        await geniusPin(run.kind, run.refId, songId); // уверенное совпадение — помним для всех
+        if (seq !== geniusSeq) return;
+      } catch { /* не запомнилось — текст всё равно откроем */ }
+      const song = await geniusFetchSong(songId);
+      if (seq !== geniusSeq) return;
+      settle();
+      geniusRenderSong(run, song);
+      if (run.kind === 'single') vinylPin.classList.add('is-active');
+      return;
+    }
+    settle();
+    geniusSetState(ui, 'не уверены, что нашли именно эту песню — проверьте варианты');
+    geniusOpenFix(run, scored.map((s) => s.song));
+  } catch (err) {
+    if (seq !== geniusSeq) return;
+    settle();
+    const searchErr = err instanceof GeniusError ? err : new GeniusError('network', messageOf(err));
+    geniusSetState(ui, `не получилось: ${searchErr.message}`);
+    geniusShowError(ui, geniusReportText(run, searchErr, `эндпоинт: /api/genius/`));
+  }
+}
+
+/* ---------- альбом: значок у трека + панель под списком ---------- */
+
+function toggleTrackGenius(trackId: string): void {
+  const track = tracks.find((t) => t.id === trackId);
+  if (!track || !currentAlbumId) return;
+  const key = `track:${trackId}`;
+  if (geniusActiveKey === key && !lyricsPanel.hidden) {
+    closeLyricsPanel();
+    return;
+  }
+  const album = currentAlbum()!;
+  geniusResetUi(albumLyricsUi);
+  lyricsPanel.hidden = false;
+  lyricsPanel.classList.remove('is-open');
+  void lyricsPanel.offsetWidth;
+  lyricsPanel.classList.add('is-open');
+  trackList.querySelectorAll('.track__genius.is-active').forEach((b) => b.classList.remove('is-active'));
+  const btn = trackList.querySelector<HTMLElement>(`[data-id="${trackId}"] .track__genius`);
+  btn?.classList.add('is-active');
+  void geniusRun({
+    kind: 'track', refId: trackId,
+    artist: album.artist, title: track.title,
+    ui: albumLyricsUi,
+  });
+  window.setTimeout(() => lyricsPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 120);
+}
+
+function closeLyricsPanel(): void {
+  lyricsPanel.hidden = true;
+  lyricsPanel.classList.remove('is-open');
+  geniusActiveKey = null;
+  window.clearInterval(geniusTypeTimer);
+  trackList.querySelectorAll('.track__genius.is-active').forEach((b) => b.classList.remove('is-active'));
+}
+
+lyricsClose.addEventListener('click', closeLyricsPanel);
+lyricsReplaceBtn.addEventListener('click', () => {
+  const activeKey = geniusActiveKey;
+  if (activeKey?.startsWith('track:')) {
+    const track = tracks.find((t) => t.id === activeKey.slice(6));
+    const album = currentAlbum();
+    if (track && album) {
+      geniusSetState(albumLyricsUi, 'ищем варианты…');
+      void (async () => {
+        try {
+          const query = `${geniusMainArtist(album.artist)} ${geniusCleanTitle(track.title)}`.trim();
+          const hits = await geniusSearchSongs(query);
+          geniusSetState(albumLyricsUi, 'выберите правильную песню:');
+          geniusOpenFix({ kind: 'track', refId: track.id, artist: album.artist, title: track.title, ui: albumLyricsUi }, hits);
+        } catch (err) {
+          geniusSetState(albumLyricsUi, messageOf(err));
+        }
+      })();
+    }
+  }
+});
+lyricsFailToggle.addEventListener('click', () => {
+  const willShow = lyricsReport.hidden;
+  lyricsReport.hidden = !willShow;
+  lyricsCopy.hidden = !willShow;
+  lyricsFailToggle.textContent = willShow ? 'скрыть детали' : 'показать детали';
+});
+lyricsCopy.addEventListener('click', () => {
+  const ok = copyTextToClipboard(lyricsReport.textContent ?? '');
+  void Promise.resolve(ok).then((copied) => toast(copied ? 'Отчёт скопирован — вставьте его в сообщение разработчику' : 'Не удалось скопировать: выделите текст деталей и скопируйте вручную (Ctrl+C)'));
+});
+lyricsFixCancel.addEventListener('click', () => { lyricsFix.hidden = true; lyricsUrlError.textContent = ''; });
+lyricsFix.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const fromUrl = geniusIdFromUrl(lyricsUrl.value);
+  if (!fromUrl) {
+    lyricsUrlError.textContent = 'нужна ссылка на страницу песни вида https://genius.com/…';
+    return;
+  }
+  const track = tracks.find((t) => t.id === geniusActiveKey?.slice(6));
+  const album = currentAlbum();
+  if (track && album) void geniusApplySong({ kind: 'track', refId: track.id, artist: album.artist, title: track.title, ui: albumLyricsUi }, fromUrl);
+});
+
+/* ---------- сингл: пластинка с вращением и посимвольным текстом ---------- */
+
+function resetVinyl(): void {
+  window.clearInterval(geniusTypeTimer);
+  vinylSection.hidden = true;
+  vinylSection.classList.remove('is-searching', 'is-found');
+  vinylDisc.classList.remove('is-searching', 'is-landing');
+  vinylPin.classList.remove('is-dropping');
+  vinylSkeleton.hidden = true;
+  vinylPin.classList.remove('is-active', 'is-open');
+  vinylPin.setAttribute('aria-expanded', 'false');
+  vinylClip.classList.remove('is-open');
+}
+
+vinylPin.addEventListener('click', () => {
+  const isOpen = vinylClip.classList.toggle('is-open');
+  vinylPin.setAttribute('aria-expanded', String(isOpen));
+});
+
+vinylFailToggle.addEventListener('click', () => {
+  const willShow = vinylReport.hidden;
+  vinylReport.hidden = !willShow;
+  vinylCopy.hidden = !willShow;
+  vinylFailToggle.textContent = willShow ? 'скрыть детали' : 'показать детали';
+});
+vinylCopy.addEventListener('click', () => {
+  const ok = copyTextToClipboard(vinylReport.textContent ?? '');
+  void Promise.resolve(ok).then((copied) => toast(copied ? 'Отчёт скопирован — вставьте его в сообщение разработчику' : 'Не удалось скопировать: выделите текст деталей и скопируйте вручную (Ctrl+C)'));
+});
+vinylReplaceBtn.addEventListener('click', () => {
+  const s = currentSingle();
+  if (!s) return;
+  geniusSetState(vinylLyricsUi, 'ищем варианты…');
+  void (async () => {
+    try {
+      const query = `${geniusMainArtist(s.artist)} ${geniusCleanTitle(singleDisplayTitle(s))}`.trim();
+      const hits = await geniusSearchSongs(query);
+      geniusSetState(vinylLyricsUi, 'выберите правильную песню:');
+      geniusOpenFix({ kind: 'single', refId: s.id, artist: s.artist, title: singleDisplayTitle(s), ui: vinylLyricsUi }, hits);
+    } catch (err) {
+      geniusSetState(vinylLyricsUi, messageOf(err));
+    }
+  })();
+});
+vinylFixCancel.addEventListener('click', () => { vinylFix.hidden = true; vinylUrlError.textContent = ''; });
+vinylFix.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const fromUrl = geniusIdFromUrl(vinylUrl.value);
+  if (!fromUrl) {
+    vinylUrlError.textContent = 'нужна ссылка на страницу песни вида https://genius.com/…';
+    return;
+  }
+  const s = currentSingle();
+  if (s) void geniusApplySong({ kind: 'single', refId: s.id, artist: s.artist, title: singleDisplayTitle(s), ui: vinylLyricsUi }, fromUrl);
+});
+
+/** Поиск текста запускается сразу при входе на сингл. */
+function startVinylLyrics(single: UiAlbum): void {
+  resetVinyl();
+  vinylSection.hidden = false;
+  const cover = coverSrc(single);
+  if (cover && !cover.startsWith('data:image/svg')) vinylArt.src = cover;
+  void geniusRun({
+    kind: 'single', refId: single.id,
+    artist: single.artist, title: singleDisplayTitle(single),
+    ui: vinylLyricsUi,
+  });
+}
+
+/* ==========================================================================
    ДОБАВЛЕНИЕ АЛЬБОМА
    ========================================================================== */
 
@@ -4777,6 +6127,7 @@ function selectArtist(name: string): void {
   artistList.hidden = true;
   markArtistPicked();
   refreshDupHint();
+  addCoverSearch.syncContext(); // значение выбрано из подсказок — обновляем авто-запрос
   titleInput.focus();
 }
 
@@ -4816,6 +6167,7 @@ artistInput.addEventListener('input', () => {
   updateArtistFeatNote();
   clearAddErrors();
   refreshDupHint();
+  addCoverSearch.syncContext(); // артист и название заполнены — авто-поиск обложек
 });
 artistInput.addEventListener('focus', () => updateArtistList());
 artistInput.addEventListener('blur', () => {
@@ -4828,6 +6180,7 @@ document.addEventListener('click', (e) => {
 titleInput.addEventListener('input', () => {
   clearAddErrors();
   refreshDupHint();
+  addCoverSearch.syncContext(); // артист и название заполнены — авто-поиск обложек
 });
 yearInput.addEventListener('input', () => clearAddErrors());
 
@@ -4926,6 +6279,7 @@ async function handleCoverFile(file: File): Promise<void> {
     applyCover(await prepareCoverFile(file));
     coverUrl.value = '';
     clearCoverUrlError();
+    addCoverSearch.clearSelection(); // источником стал файл — подсветка варианта не нужна
   } catch (err) {
     toast(messageOf(err));
   }
@@ -4962,6 +6316,7 @@ coverRemove.addEventListener('click', (e) => {
   coverUrl.value = '';
   clearCoverUrlError();
   window.clearTimeout(coverUrlTimer);
+  addCoverSearch.clearSelection();
 });
 
 function resetAddForm(): void {
@@ -4975,6 +6330,7 @@ function resetAddForm(): void {
   window.clearTimeout(coverUrlTimer);
   artistList.hidden = true;
   artistField.classList.remove('is-picked', 'pulse');
+  addCoverSearch.reset();
   clearAddErrors();
 }
 
@@ -5098,6 +6454,7 @@ async function addAlbum(input: AddInput): Promise<string | null> {
     tracksLocked: false,
     cohesion: null,
     albumType: null,
+    geniusId: null,
   });
   saveLocalAlbums();
   return id;

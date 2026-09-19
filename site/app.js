@@ -20029,9 +20029,9 @@ ${suffix}`;
     { id: "s-not-like-us", title: "Not Like Us", artist: "Kendrick Lamar", year: 2024, cover: "covers/not-like-us.jpg", kind: "single", parentId: null, tracksLocked: false, cohesion: null, albumType: null }
   ];
   var SEED_TRACKS = [
-    { id: "mojo-music", albumId: "music", title: "MOJO JOJO", position: 0, locked: false, featArtist: null, singleId: "s-mojo-jojo" },
-    { id: "mojo-demo", albumId: "music-demo", title: "MOJO JOJO", position: 0, locked: false, featArtist: null, singleId: "s-mojo-jojo" },
-    { id: "nike-track", albumId: "blonde", title: "Nikes", position: 0, locked: false, featArtist: null, singleId: "s-nikes" }
+    { id: "mojo-music", albumId: "music", title: "MOJO JOJO", position: 0, locked: false, featArtist: null, singleId: "s-mojo-jojo", geniusId: null },
+    { id: "mojo-demo", albumId: "music-demo", title: "MOJO JOJO", position: 0, locked: false, featArtist: null, singleId: "s-mojo-jojo", geniusId: null },
+    { id: "nike-track", albumId: "blonde", title: "Nikes", position: 0, locked: false, featArtist: null, singleId: "s-nikes", geniusId: null }
   ];
   var SEED_SINGLE_RATINGS = {
     "s-nikes": {
@@ -20115,6 +20115,7 @@ ${suffix}`;
             ...t,
             locked: Boolean(t.locked),
             featArtist: t.featArtist ?? null,
+            geniusId: t.geniusId ?? null,
             singleId: t.singleId ?? null
           }));
         }
@@ -20244,6 +20245,7 @@ ${suffix}`;
         title: x.title,
         year: x.year,
         cover: x.cover_url ?? "",
+        geniusId: x.genius_song_id != null ? String(x.genius_song_id) : null,
         kind: x.kind === "single" ? "single" : "album",
         parentId: x.parent_album_id ?? null,
         parentIds: x.parent_album_ids ?? void 0,
@@ -20251,7 +20253,7 @@ ${suffix}`;
         cohesion: x.cohesion ?? null,
         albumType: x.album_type ?? null
       }));
-      tracks = (ta.data ?? []).map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null, singleId: t.single_id ?? null }));
+      tracks = (ta.data ?? []).map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null, singleId: t.single_id ?? null, geniusId: t.genius_song_id != null ? String(t.genius_song_id) : null }));
       const incoming = {};
       for (const r of ra.data ?? []) {
         (incoming[_a = r.track_id] ?? (incoming[_a] = {}))[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
@@ -21319,6 +21321,7 @@ ${suffix}`;
     albumCoverSave.classList.toggle("is-loading", albumCoverSaving);
     albumCoverSave.setAttribute("aria-busy", String(albumCoverSaving));
     albumCoverStatus.textContent = albumCoverSaving ? "\u0421\u043E\u0445\u0440\u0430\u043D\u044F\u0435\u043C \u043E\u0431\u043B\u043E\u0436\u043A\u0443\u2026" : albumCoverPreparing ? "\u041F\u043E\u0434\u0433\u043E\u0442\u0430\u0432\u043B\u0438\u0432\u0430\u0435\u043C \u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435\u2026" : "";
+    dlgCoverSearch.setBlocked(blocked);
   }
   function resetAlbumCoverDraft() {
     window.clearTimeout(albumCoverUrlTimer);
@@ -21326,6 +21329,7 @@ ${suffix}`;
     albumCoverDraft = null;
     albumCoverPreparing = false;
     showAlbumCoverError();
+    dlgCoverSearch.clearSelection();
     const al = albums.find((a) => a.id === editingCoverAlbumId);
     if (al) albumCoverPreview.src = coverSrc(al);
     updateAlbumCoverControls();
@@ -21342,6 +21346,8 @@ ${suffix}`;
     albumCoverDialog.showModal();
     void albumCoverDialog.offsetWidth;
     albumCoverDialog.classList.add("is-open");
+    dlgCoverSearch.reset();
+    dlgCoverSearch.syncContext(400);
   }
   function closeAlbumCoverEditor() {
     if (albumCoverSaving || albumCoverClosing || !albumCoverDialog.open) return;
@@ -21359,6 +21365,7 @@ ${suffix}`;
       albumCoverForm.reset();
       albumCoverPreview.removeAttribute("src");
       showAlbumCoverError();
+      dlgCoverSearch.reset();
       updateAlbumCoverControls();
     };
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
@@ -21991,6 +21998,7 @@ ${suffix}`;
         canOrder ? `<button class="track__btn" data-act="up" type="button" aria-label="\u0412\u044B\u0448\u0435"${i === 0 ? " disabled" : ""}>${UP_SVG}</button>` : "",
         canOrder ? `<button class="track__btn" data-act="down" type="button" aria-label="\u041D\u0438\u0436\u0435"${i === list.length - 1 ? " disabled" : ""}>${DOWN_SVG}</button>` : "",
         `<button class="track__btn${single ? " is-on" : ""}" data-act="${single ? "unsingle" : "single"}" type="button" title="${single ? "\u0421\u043D\u044F\u0442\u044C \u043C\u0435\u0442\u043A\u0443 \xAB\u0441\u0438\u043D\u0433\u043B\xBB" : "\u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B"}" aria-label="${single ? "\u0421\u043D\u044F\u0442\u044C \u043C\u0435\u0442\u043A\u0443 \xAB\u0441\u0438\u043D\u0433\u043B\xBB" : "\u041E\u0442\u043C\u0435\u0442\u0438\u0442\u044C \u043A\u0430\u043A \u0441\u0438\u043D\u0433\u043B"}">${single ? UNMARK_SINGLE_SVG : SINGLE_SVG}</button>`,
+        `<button class="track__btn track__genius${t.geniusId ? " is-on" : ""}" data-act="genius" type="button" title="\u0422\u0435\u043A\u0441\u0442 \u043F\u0435\u0441\u043D\u0438 \u0441 Genius" aria-label="\u0422\u0435\u043A\u0441\u0442 \u043F\u0435\u0441\u043D\u0438 \u0441 Genius">${GENIUS_MARK_SVG}</button>`,
         isAdmin() ? `<button class="track__btn" data-act="lock" type="button" aria-label="${t.locked ? "\u0421\u043D\u044F\u0442\u044C \u0444\u0438\u043A\u0441\u0430\u0446\u0438\u044E \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F" : "\u0417\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435"}" title="${t.locked ? "\u0421\u043D\u044F\u0442\u044C \u0444\u0438\u043A\u0441\u0430\u0446\u0438\u044E \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u044F" : "\u0417\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043D\u0430\u0437\u0432\u0430\u043D\u0438\u0435"}">${t.locked ? UNLOCK_SVG : LOCK_SVG}</button>` : "",
         canOrder ? `<button class="track__btn track__btn--del" data-act="del" type="button" aria-label="\u0423\u0434\u0430\u043B\u0438\u0442\u044C">${DEL_SVG}</button>` : ""
       ].join("");
@@ -22180,7 +22188,7 @@ ${suffix}`;
         newId = (data?.[0]).id;
       } else {
         newId = "t" + Date.now().toString(36);
-        tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist, singleId: null });
+        tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist, singleId: null, geniusId: null });
         saveLocalTracks();
       }
       if (CLOUD) await refreshData();
@@ -22359,6 +22367,12 @@ ${suffix}`;
       const row = li2?.dataset.id ? tracks.find((t) => t.id === li2.dataset.id) : void 0;
       const single = row ? singleOfTrack(row) : void 0;
       if (single) void openSingle(single.id);
+      return;
+    }
+    const geniusBtn = e.target.closest(".track__genius");
+    if (geniusBtn) {
+      const cli = geniusBtn.closest(".track");
+      if (cli?.dataset.id) toggleTrackGenius(cli.dataset.id);
       return;
     }
     const confirmBtn = e.target.closest(".track__confirm-btn");
@@ -23730,6 +23744,7 @@ ${suffix}`;
     currentAlbumId = null;
     renderSinglePage(s);
     await navigateTo(viewSingle, { view: "single", singleId: id });
+    startVinylLyrics(s);
   }
   singleBack.addEventListener("click", () => void goBack());
   async function handleDeleteSingle() {
@@ -24022,7 +24037,8 @@ ${suffix}`;
           position,
           locked: false,
           featArtist: feat,
-          singleId
+          singleId,
+          geniusId: null
         });
         saveLocalTracks();
       }
@@ -24143,6 +24159,1129 @@ ${suffix}`;
     avSingles.innerHTML = "";
     for (const s of list) avSingles.appendChild(makeSingleRow(s));
   }
+  var COVER_SEARCH_LIMIT = 6;
+  var COVER_SEARCH_TIMEOUT = 1e4;
+  var COVER_SEARCH_DEBOUNCE = 700;
+  var CoverSearchError = class extends Error {
+    constructor(stage, message) {
+      super(message);
+      this.stage = stage;
+    }
+  };
+  var coverJsonpSeq = 0;
+  function coverJsonp(url, abort) {
+    return new Promise((resolve, reject) => {
+      const callbackName = `__coverSearchCb${Date.now().toString(36)}_${++coverJsonpSeq}`;
+      const scope = window;
+      const script = document.createElement("script");
+      let settled = false;
+      const timer = window.setTimeout(() => {
+        settle(() => reject(new CoverSearchError("timeout", `\u043E\u0442\u0432\u0435\u0442 \u043D\u0435 \u043F\u0440\u0438\u0448\u0451\u043B \u0437\u0430 ${Math.round(COVER_SEARCH_TIMEOUT / 1e3)} \u0441`)));
+      }, COVER_SEARCH_TIMEOUT);
+      const cleanup = () => {
+        window.clearTimeout(timer);
+        delete scope[callbackName];
+        script.remove();
+      };
+      const settle = (fn) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        if (!abort.aborted) fn();
+      };
+      scope[callbackName] = (data) => settle(() => resolve(data));
+      script.addEventListener("error", () => {
+        settle(() => reject(new CoverSearchError("network", "\u0437\u0430\u043F\u0440\u043E\u0441 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D \u2014 \u043D\u0435\u0442 \u0441\u0435\u0442\u0438, \u043C\u0435\u0448\u0430\u0435\u0442 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0449\u0438\u043A/\u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0435 \u0438\u043B\u0438 API \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D")));
+      });
+      script.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(callbackName)}`;
+      document.head.appendChild(script);
+    });
+  }
+  async function coverFetchJson(url, abort) {
+    const controller = new AbortController();
+    abort.controller = controller;
+    const timer = window.setTimeout(() => controller.abort(), COVER_SEARCH_TIMEOUT);
+    try {
+      const response = await fetch(url, { signal: controller.signal, mode: "cors", credentials: "omit" });
+      if (!response.ok) {
+        throw new CoverSearchError("network", `API \u0432\u0435\u0440\u043D\u0443\u043B HTTP-\u0441\u0442\u0430\u0442\u0443\u0441 ${response.status}`);
+      }
+      return await response.json();
+    } catch (err) {
+      if (err instanceof CoverSearchError) throw err;
+      if (err?.name === "AbortError") {
+        throw new CoverSearchError("timeout", `\u043E\u0442\u0432\u0435\u0442 \u043D\u0435 \u043F\u0440\u0438\u0448\u0451\u043B \u0437\u0430 ${Math.round(COVER_SEARCH_TIMEOUT / 1e3)} \u0441`);
+      }
+      if (err instanceof TypeError) {
+        throw new CoverSearchError("network", "\u0437\u0430\u043F\u0440\u043E\u0441 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D \u2014 \u043D\u0435\u0442 \u0441\u0435\u0442\u0438 \u0438\u043B\u0438 API \u043D\u0435 \u0440\u0430\u0437\u0440\u0435\u0448\u0430\u0435\u0442 \u0437\u0430\u043F\u0440\u043E\u0441\u044B \u0438\u0437 \u0431\u0440\u0430\u0443\u0437\u0435\u0440\u0430 (CORS)");
+      }
+      throw new CoverSearchError("parse", `\u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0440\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C \u043E\u0442\u0432\u0435\u0442: ${messageOf(err)}`);
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  function coverArtUpscale(url, size) {
+    return url.replace(/\/\d+x\d+bb\.([a-z]+)(\?.*)?$/i, `/${size}x${size}bb.$1`);
+  }
+  function parseItunes(data) {
+    if (!data || typeof data !== "object") throw new CoverSearchError("parse", "\u043F\u0443\u0441\u0442\u043E\u0439 \u0438\u043B\u0438 \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u043E\u0442\u0432\u0435\u0442");
+    const results = data.results;
+    if (!Array.isArray(results)) throw new CoverSearchError("parse", "\u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u043D\u0435\u0442 \u043C\u0430\u0441\u0441\u0438\u0432\u0430 results");
+    const hits = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of results) {
+      const art = item?.artworkUrl100;
+      if (typeof art !== "string" || !art.startsWith("http")) continue;
+      const big = coverArtUpscale(art, 600);
+      if (seen.has(big)) continue;
+      seen.add(big);
+      const name = item.collectionName;
+      const released = item.releaseDate;
+      const year = typeof released === "string" && /^\d{4}/.test(released) ? ` \xB7 ${released.slice(0, 4)}` : "";
+      hits.push({
+        url: big,
+        thumb: coverArtUpscale(art, 300),
+        caption: typeof name === "string" ? `${name}${year}` : ""
+      });
+      if (hits.length >= COVER_SEARCH_LIMIT) break;
+    }
+    return hits;
+  }
+  function parseDeezer(data) {
+    if (!data || typeof data !== "object") throw new CoverSearchError("parse", "\u043F\u0443\u0441\u0442\u043E\u0439 \u0438\u043B\u0438 \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u043E\u0442\u0432\u0435\u0442");
+    const results = data.data;
+    if (!Array.isArray(results)) {
+      const apiError = data.error;
+      if (apiError && typeof apiError === "object") {
+        throw new CoverSearchError("parse", `API \u0432\u0435\u0440\u043D\u0443\u043B \u043E\u0448\u0438\u0431\u043A\u0443: ${typeof apiError.message === "string" ? apiError.message : "\u043D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u0443\u044E"}`);
+      }
+      throw new CoverSearchError("parse", "\u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u043D\u0435\u0442 \u043C\u0430\u0441\u0441\u0438\u0432\u0430 data");
+    }
+    const hits = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of results) {
+      const rec = item;
+      const big = [rec.cover_xl, rec.cover_big, rec.cover].find((u) => typeof u === "string" && u.startsWith("http"));
+      const mid = [rec.cover_medium, rec.cover_big, rec.cover].find((u) => typeof u === "string" && u.startsWith("http"));
+      if (!big || !mid || seen.has(big)) continue;
+      seen.add(big);
+      const title = typeof rec.title === "string" ? rec.title : "";
+      const artistName2 = typeof rec.artist?.name === "string" ? rec.artist.name : "";
+      hits.push({
+        url: big,
+        thumb: mid,
+        caption: artistName2 ? `${artistName2} \u2014 ${title}` : title
+      });
+      if (hits.length >= COVER_SEARCH_LIMIT) break;
+    }
+    return hits;
+  }
+  function geniusArtUpscale(url) {
+    return url.replace(/\.(\d+)x(\d+)x1\.jpg$/i, ".1000x1000x1.jpg");
+  }
+  function parseGenius(data) {
+    if (!data || typeof data !== "object") throw new CoverSearchError("parse", "\u043F\u0443\u0441\u0442\u043E\u0439 \u0438\u043B\u0438 \u043D\u0435\u043A\u043E\u0440\u0440\u0435\u043A\u0442\u043D\u044B\u0439 \u043E\u0442\u0432\u0435\u0442");
+    const response = data.response;
+    const hits = response?.hits;
+    if (!Array.isArray(hits)) {
+      const meta = data.meta;
+      if (meta && meta.status !== void 0 && meta.status !== 200) {
+        throw new CoverSearchError("parse", `API \u0432\u0435\u0440\u043D\u0443\u043B \u0441\u0442\u0430\u0442\u0443\u0441 ${String(meta.status)}${typeof meta.message === "string" ? `: ${meta.message}` : ""}`);
+      }
+      throw new CoverSearchError("parse", "\u0432 \u043E\u0442\u0432\u0435\u0442\u0435 \u043D\u0435\u0442 \u043C\u0430\u0441\u0441\u0438\u0432\u0430 hits");
+    }
+    const hitsList = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const hit of hits) {
+      if (hit.type !== "song") continue;
+      const result = hit.result;
+      if (!result) continue;
+      const thumb = [result.song_art_image_thumbnail_url, result.song_art_image_url].find((u) => typeof u === "string" && u.startsWith("http"));
+      const big = [result.song_art_image_url, result.song_art_image_thumbnail_url].find((u) => typeof u === "string" && u.startsWith("http"));
+      if (!thumb || !big || seen.has(big)) continue;
+      seen.add(big);
+      const title = typeof result.title === "string" ? result.title : "";
+      const artistName2 = result.primary_artist?.name;
+      hitsList.push({
+        url: geniusArtUpscale(big),
+        thumb,
+        caption: typeof artistName2 === "string" ? `${artistName2} \u2014 ${title}` : title
+      });
+      if (hitsList.length >= COVER_SEARCH_LIMIT) break;
+    }
+    return hitsList;
+  }
+  var COVER_PROVIDERS = [
+    {
+      id: "deezer",
+      name: "Deezer",
+      enabled: true,
+      transport: "jsonp",
+      // фирменный эквалайзер Deezer: четыре колонки ступенчатых полос
+      logo: '<path d="M18.81 4.16v3.03H24V4.16h-5.19zM6.27 8.38v3.027h5.189V8.38h-5.19zm12.54 0v3.027H24V8.38h-5.19zM0 12.595v3.027h5.19v-3.027H0zm6.27 0v3.027h5.189v-3.027h-5.19zm12.54 0v3.027H24v-3.027h-5.19zM0 16.81v3.029h5.19v-3.03H0zm6.27 0v3.029h5.189v-3.03h-5.19zm6.27 0v3.029h5.19v-3.03h-5.19zm6.27 0v3.029H24v-3.03h-5.19z"/>',
+      buildUrl: (q0) => `https://api.deezer.com/search/album?q=${encodeURIComponent(q0)}&limit=${COVER_SEARCH_LIMIT}&output=jsonp`,
+      parse: parseDeezer
+    },
+    {
+      id: "genius",
+      name: "Genius",
+      enabled: true,
+      transport: "fetch",
+      // знак Genius — жёлтый улыбающийся кругляшек (в тон заглушке-обложке сайта)
+      // фирменный знак Genius («G в Genius», официально public domain:
+      // Wikimedia Commons, File:G in Genius.svg) — трассировка оригинала 1:1
+      logo: '<path d="M17.58 19.48 16.0 20.4 14.46 20.96 13.28 21.22 11.13 21.42 9.29 21.17 7.34 20.6 5.7 19.79 3.8 18.3 3.8 18.04 4.11 17.94 4.93 18.3 6.93 18.71 8.98 18.76 10.82 18.5 12.61 17.94 14.0 17.28 16.0 15.84 16.97 14.87 18.15 13.28 18.97 11.69 19.43 10.36 19.79 8.57 19.84 6.52 19.58 4.68 19.02 3.04 19.12 2.78 19.38 2.78 20.66 4.32 21.68 6.26 22.24 8.21 22.5 9.8 22.5 10.98 22.09 13.23 21.68 14.46 21.01 15.84 19.63 17.74 18.4 18.91ZM4.42 10.98 4.52 11.95 4.83 12.77 4.73 13.08 4.37 13.02 3.24 12.05 2.63 11.28 2.01 10.16 1.65 9.08 1.5 7.95 1.6 6.21 1.81 5.39 2.47 4.01 3.24 2.99 3.65 2.58 6.37 2.58 6.47 2.78 6.47 5.39 5.5 6.52 4.73 8.11 4.42 9.49ZM9.7 7.75 10.67 7.29 11.39 6.26 11.49 5.8 11.49 2.83 11.64 2.58 13.69 2.58 14.51 3.75 15.12 5.34 15.02 5.85 14.1 5.9 13.95 8.72 13.49 9.54 12.72 10.16 11.9 10.41 11.13 10.41 10.0 9.95 9.23 9.08 8.98 8.31 9.08 7.9Z"/>',
+      // Поиск через серверный прокси /api/genius/search (в проде — worker.js,
+      // в превью — server.py): токен Genius хранится на сервере, не в браузере.
+      buildUrl: (q0) => `/api/genius/search?q=${encodeURIComponent(q0)}&per_page=${COVER_SEARCH_LIMIT}`,
+      parse: parseGenius
+    },
+    {
+      id: "itunes",
+      name: "iTunes",
+      enabled: true,
+      transport: "jsonp",
+      // яблоко — знак iTunes Store / Apple Music
+      logo: '<path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701"/>',
+      // country=US: самый полный каталог iTunes Store (RU-магазин с 2022 года закрыт).
+      buildUrl: (q0) => `https://itunes.apple.com/search?media=music&entity=album&limit=${COVER_SEARCH_LIMIT}&country=US&term=${encodeURIComponent(q0)}`,
+      parse: parseItunes
+    }
+    /* --- зарезервировано: новая платформа = один объект здесь (enabled: false
+           с подсказкой hint, пока нет ключей) --- */
+  ];
+  function coverSearchNoteText() {
+    const off = COVER_PROVIDERS.filter((p) => !p.enabled);
+    return off.length ? `\u043F\u043E\u0442\u043E\u043C \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0438\u043C: ${off.map((p) => `${p.name} \u2014 ${p.hint}`).join("; ")}` : "";
+  }
+  var COVER_STAGE_TEXT = {
+    network: "network \u2014 \u0437\u0430\u043F\u0440\u043E\u0441 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D (\u043D\u0435\u0442 \u0441\u0435\u0442\u0438, \u043C\u0435\u0448\u0430\u0435\u0442 \u0431\u043B\u043E\u043A\u0438\u0440\u043E\u0432\u0449\u0438\u043A/\u0440\u0430\u0441\u0448\u0438\u0440\u0435\u043D\u0438\u0435 \u0438\u043B\u0438 API \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D)",
+    timeout: `timeout \u2014 \u043E\u0442\u0432\u0435\u0442 \u043D\u0435 \u043F\u0440\u0438\u0448\u0451\u043B \u0437\u0430 ${Math.round(COVER_SEARCH_TIMEOUT / 1e3)} \u0441`,
+    parse: "parse \u2014 \u043E\u0442\u0432\u0435\u0442 \u043F\u043E\u043B\u0443\u0447\u0435\u043D, \u043D\u043E \u043D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0440\u0430\u0437\u043E\u0431\u0440\u0430\u0442\u044C"
+  };
+  function coverSearchReport(providerName, query, url, err) {
+    const build = document.querySelector('script[src*="app.js"]')?.getAttribute("src") ?? "app.js";
+    return [
+      "\u041F\u043E\u0438\u0441\u043A \u043E\u0431\u043B\u043E\u0436\u043A\u0438 \u2014 \u043E\u0442\u0447\u0451\u0442 \u043E\u0431 \u043E\u0448\u0438\u0431\u043A\u0435",
+      `\u043F\u043B\u0430\u0442\u0444\u043E\u0440\u043C\u0430: ${providerName}`,
+      `\u0437\u0430\u043F\u0440\u043E\u0441: \xAB${query}\xBB`,
+      `url \u0437\u0430\u043F\u0440\u043E\u0441\u0430: ${url}`,
+      `\u044D\u0442\u0430\u043F: ${COVER_STAGE_TEXT[err.stage]}`,
+      `\u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435: ${err.message}`,
+      `\u0432\u0440\u0435\u043C\u044F: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      `\u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0430: ${location.href}`,
+      `\u0441\u0431\u043E\u0440\u043A\u0430: ${build}`
+    ].join("\n");
+  }
+  async function copyTextToClipboard(text) {
+    try {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+  function variantsPlural(n) {
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    if (mod10 === 1 && mod100 !== 11) return "\u0432\u0430\u0440\u0438\u0430\u043D\u0442";
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return "\u0432\u0430\u0440\u0438\u0430\u043D\u0442\u0430";
+    return "\u0432\u0430\u0440\u0438\u0430\u043D\u0442\u043E\u0432";
+  }
+  var CoverSearchBox = class {
+    constructor(d) {
+      this.d = d;
+      this.manualEdit = false;
+      // запрос редактировали руками — авто-подстановка выключена
+      this.userToggled = false;
+      // пользователь сам открывал/закрывал секцию
+      this.seq = 0;
+      this.aborts = [];
+      this.selectedUrl = null;
+      d.note.textContent = coverSearchNoteText();
+      d.note.hidden = !d.note.textContent;
+      d.toggle.addEventListener("click", () => {
+        if (d.isBlocked()) return;
+        this.userToggled = true;
+        if (this.isOpen) this.close();
+        else this.open();
+      });
+      d.run.addEventListener("click", () => {
+        if (d.isBlocked()) return;
+        this.launch(d.query.value);
+      });
+      d.query.addEventListener("input", () => {
+        window.clearTimeout(this.timer);
+        if (d.query.value.trim() !== "") {
+          this.manualEdit = true;
+          const q0 = d.query.value;
+          this.timer = window.setTimeout(() => this.launch(q0), COVER_SEARCH_DEBOUNCE);
+        } else {
+          this.manualEdit = false;
+        }
+      });
+      d.query.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter") return;
+        e.preventDefault();
+        if (!d.isBlocked()) this.launch(d.query.value);
+      });
+    }
+    get isOpen() {
+      return this.d.root.classList.contains("is-open");
+    }
+    /** Синхронизировать запрос с контекстом (артист+название / релиз) и, если он изменился, запустить поиск. */
+    syncContext(delay = COVER_SEARCH_DEBOUNCE) {
+      if (this.manualEdit) return;
+      const q0 = this.d.getContextQuery();
+      window.clearTimeout(this.timer);
+      if (!q0) return;
+      if (this.d.query.value.trim() === q0 && this.d.sections.childElementCount > 0) return;
+      this.d.query.value = q0;
+      this.timer = window.setTimeout(() => this.launch(q0), delay);
+    }
+    open() {
+      this.d.root.classList.add("is-open");
+      this.d.toggle.setAttribute("aria-expanded", "true");
+    }
+    close() {
+      this.d.root.classList.remove("is-open");
+      this.d.toggle.setAttribute("aria-expanded", "false");
+    }
+    /** Сброс: очистить результаты, выбор и флаги (при открытии/закрытии форм). */
+    reset() {
+      this.seq += 1;
+      for (const a of this.aborts) {
+        a.aborted = true;
+        a.controller?.abort();
+      }
+      this.aborts = [];
+      window.clearTimeout(this.timer);
+      this.manualEdit = false;
+      this.userToggled = false;
+      this.selectedUrl = null;
+      this.d.query.value = "";
+      this.d.sections.innerHTML = "";
+      this.close();
+    }
+    /** Снять подсветку выбранного варианта (выбрали файл/ссылку вручную). */
+    clearSelection() {
+      this.selectedUrl = null;
+      this.d.sections.querySelectorAll(".cover-search__card.is-selected").forEach((c) => c.classList.remove("is-selected"));
+    }
+    /** Заблокировать/разблокировать управление (пока идёт сохранение обложки). */
+    setBlocked(blocked) {
+      this.d.toggle.disabled = blocked;
+      this.d.query.disabled = blocked;
+      this.d.run.disabled = blocked;
+    }
+    launch(qraw) {
+      window.clearTimeout(this.timer);
+      const q0 = qraw.trim().replace(/\s+/g, " ");
+      this.seq += 1;
+      const seq = this.seq;
+      for (const a of this.aborts) {
+        a.aborted = true;
+        a.controller?.abort();
+      }
+      this.aborts = [];
+      this.selectedUrl = null;
+      this.d.sections.innerHTML = "";
+      if (!q0) return;
+      const enabled = COVER_PROVIDERS.filter((p) => p.enabled);
+      let pending = enabled.length;
+      let anyHits = false;
+      for (const provider of enabled) {
+        const abort = { aborted: false };
+        this.aborts.push(abort);
+        const url = provider.buildUrl(q0);
+        const refs = this.buildSection(provider);
+        this.d.sections.appendChild(refs.section);
+        (provider.transport === "fetch" ? coverFetchJson(url, abort) : coverJsonp(url, abort)).then((data) => {
+          if (abort.aborted || seq !== this.seq) return;
+          const hits = provider.parse(data);
+          if (seq !== this.seq) return;
+          refs.state.classList.remove("is-searching");
+          if (!hits.length) {
+            refs.state.textContent = "\u043D\u0438\u0447\u0435\u0433\u043E \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E";
+            return;
+          }
+          anyHits = true;
+          refs.state.textContent = `${hits.length} ${variantsPlural(hits.length)}`;
+          refs.grid.hidden = false;
+          for (const hit of hits) refs.grid.appendChild(this.buildCard(provider, hit));
+        }).catch((err) => {
+          if (abort.aborted || seq !== this.seq) return;
+          const searchErr = err instanceof CoverSearchError ? err : new CoverSearchError("network", messageOf(err));
+          refs.state.classList.remove("is-searching");
+          refs.state.classList.add("is-error");
+          refs.state.textContent = `\u043E\u0448\u0438\u0431\u043A\u0430 \xB7 ${searchErr.stage}`;
+          refs.fail.hidden = false;
+          refs.report.textContent = coverSearchReport(provider.name, q0, url, searchErr);
+        }).finally(() => {
+          pending -= 1;
+          if (pending === 0 && seq === this.seq && !this.d.isBlocked() && anyHits && !this.userToggled && !this.isOpen) {
+            this.open();
+          }
+        });
+      }
+    }
+    buildSection(provider) {
+      const section = document.createElement("section");
+      section.className = "cover-search__section";
+      section.dataset.provider = provider.id;
+      const head2 = document.createElement("header");
+      head2.className = "cover-search__head";
+      const name = document.createElement("span");
+      name.className = "cover-search__name";
+      name.innerHTML = `${esc(provider.name)}<svg class="cover-search__logo" viewBox="0 0 24 24" aria-hidden="true">${provider.logo}</svg>`;
+      const state = document.createElement("span");
+      state.className = "cover-search__state is-searching";
+      state.textContent = "\u0438\u0449\u0435\u043C\u2026";
+      state.setAttribute("role", "status");
+      state.setAttribute("aria-live", "polite");
+      head2.append(name, state);
+      const grid = document.createElement("div");
+      grid.className = "cover-search__grid";
+      grid.hidden = true;
+      const fail = document.createElement("div");
+      fail.className = "cover-search__fail";
+      fail.hidden = true;
+      const failToggle = document.createElement("button");
+      failToggle.type = "button";
+      failToggle.className = "cover-search__fail-toggle";
+      failToggle.textContent = "\u043F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438";
+      const report = document.createElement("pre");
+      report.className = "cover-search__report";
+      report.hidden = true;
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "btn btn--ghost btn--sm cover-search__copy";
+      copy.textContent = "\u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C \u043E\u0442\u0447\u0451\u0442";
+      copy.hidden = true;
+      failToggle.addEventListener("click", () => {
+        const willShow = report.hidden;
+        report.hidden = !willShow;
+        copy.hidden = !willShow;
+        failToggle.textContent = willShow ? "\u0441\u043A\u0440\u044B\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438" : "\u043F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438";
+      });
+      copy.addEventListener("click", () => {
+        const ok = copyTextToClipboard(report.textContent ?? "");
+        void Promise.resolve(ok).then((copied) => toast(copied ? "\u041E\u0442\u0447\u0451\u0442 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D \u2014 \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0435\u0433\u043E \u0432 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435 \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u0443" : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C: \u0432\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0434\u0435\u0442\u0430\u043B\u0435\u0439 \u0438 \u0441\u043A\u043E\u043F\u0438\u0440\u0443\u0439\u0442\u0435 \u0432\u0440\u0443\u0447\u043D\u0443\u044E (Ctrl+C)"));
+      });
+      fail.append(failToggle, report, copy);
+      section.append(head2, grid, fail);
+      return { section, head: head2, state, grid, fail, failToggle, report, copy };
+    }
+    buildCard(provider, hit) {
+      const card2 = document.createElement("button");
+      card2.type = "button";
+      card2.className = "cover-search__card";
+      card2.dataset.provider = provider.id;
+      if (hit.caption) {
+        card2.title = hit.caption;
+        card2.setAttribute("aria-label", `\u041E\u0431\u043B\u043E\u0436\u043A\u0430: ${hit.caption}`);
+      }
+      const img = document.createElement("img");
+      img.src = hit.thumb;
+      img.alt = "";
+      img.loading = "lazy";
+      card2.appendChild(img);
+      card2.addEventListener("click", () => {
+        if (this.d.isBlocked()) return;
+        this.pick(hit, card2, provider);
+      });
+      return card2;
+    }
+    /** Выбор варианта: сразу применяем, затем тихо проверяем полную ссылку. */
+    pick(hit, card2, provider) {
+      this.selectedUrl = hit.url;
+      this.d.sections.querySelectorAll(".cover-search__card.is-selected").forEach((c) => c.classList.remove("is-selected"));
+      card2.classList.add("is-selected");
+      this.d.applyPick(hit);
+      const check = (candidate) => loadImage(candidate).then(
+        () => candidate,
+        () => Promise.reject(new Error("\u0438\u0437\u043E\u0431\u0440\u0430\u0436\u0435\u043D\u0438\u0435 \u043D\u0435 \u043E\u0442\u043A\u0440\u044B\u043B\u043E\u0441\u044C"))
+      );
+      void check(hit.url).catch(() => check(hit.thumb)).then((finalUrl) => {
+        if (finalUrl === hit.url) return;
+        hit.url = finalUrl;
+        if (this.selectedUrl === hit.url) this.d.applyPick(hit);
+      }).catch(() => {
+        card2.classList.remove("is-selected");
+        if (this.selectedUrl === hit.url) this.selectedUrl = null;
+        toast(`\u041E\u0431\u043B\u043E\u0436\u043A\u0430 ${provider.name} \u043D\u0435 \u043E\u0442\u043A\u0440\u044B\u043B\u0430\u0441\u044C \u2014 \u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0440\u0443\u0433\u043E\u0439 \u0432\u0430\u0440\u0438\u0430\u043D\u0442 \u0438\u043B\u0438 \u0444\u0430\u0439\u043B`);
+      });
+    }
+  };
+  var addCoverSearch = new CoverSearchBox({
+    root: q("#cover-search"),
+    toggle: q("#cover-search-toggle"),
+    clip: q("#cover-search-clip"),
+    body: q("#cover-search-body"),
+    query: q("#cover-search-query"),
+    run: q("#cover-search-run"),
+    sections: q("#cover-search-sections"),
+    note: q("#cover-search-note"),
+    getContextQuery: () => {
+      const artist = artistInput.value.trim().replace(/\s+/g, " ");
+      const title = titleInput.value.trim().replace(/\s+/g, " ");
+      return artist && title ? `${artist} ${title}` : null;
+    },
+    applyPick: (hit) => {
+      window.clearTimeout(coverUrlTimer);
+      coverFile.value = "";
+      coverUrl.value = hit.url;
+      clearCoverUrlError();
+      applyCover(hit.url);
+      coverPick.classList.remove("is-fresh-pick");
+      void coverPick.offsetWidth;
+      coverPick.classList.add("is-fresh-pick");
+      window.setTimeout(() => coverPick.classList.remove("is-fresh-pick"), 1300);
+    },
+    isBlocked: () => addPending
+  });
+  var dlgCoverSearch = new CoverSearchBox({
+    root: q("#album-cover-search"),
+    toggle: q("#album-cover-search-toggle"),
+    clip: q("#album-cover-search-clip"),
+    body: q("#album-cover-search-body"),
+    query: q("#album-cover-search-query"),
+    run: q("#album-cover-search-run"),
+    sections: q("#album-cover-search-sections"),
+    note: q("#album-cover-search-note"),
+    getContextQuery: () => {
+      const al = albums.find((a) => a.id === editingCoverAlbumId);
+      if (!al) return null;
+      const title = al.kind === "single" ? singleDisplayTitle(al) : al.title;
+      return `${al.artist} ${title}`.replace(/\s+/g, " ").trim() || null;
+    },
+    applyPick: (hit) => {
+      window.clearTimeout(albumCoverUrlTimer);
+      albumCoverRequest += 1;
+      albumCoverFile.value = "";
+      albumCoverUrl.value = hit.url;
+      albumCoverDraft = hit.url;
+      albumCoverPreparing = false;
+      showAlbumCoverError();
+      albumCoverPreview.src = hit.url;
+      albumCoverPreview.classList.remove("is-swap");
+      void albumCoverPreview.offsetWidth;
+      albumCoverPreview.classList.add("is-swap");
+      updateAlbumCoverControls();
+    },
+    isBlocked: () => albumCoverSaving || albumCoverClosing || !albumCoverDialog.open
+  });
+  var GENIUS_MARK_SVG = '<svg class="genius-mark" viewBox="0 0 24 24" aria-hidden="true"><circle class="genius-mark__bg" cx="12" cy="12" r="10.4"/><g class="genius-mark__ink" transform="translate(12 12) scale(0.76) translate(-12 -12)"><path d="M17.58 19.48 16.0 20.4 14.46 20.96 13.28 21.22 11.13 21.42 9.29 21.17 7.34 20.6 5.7 19.79 3.8 18.3 3.8 18.04 4.11 17.94 4.93 18.3 6.93 18.71 8.98 18.76 10.82 18.5 12.61 17.94 14.0 17.28 16.0 15.84 16.97 14.87 18.15 13.28 18.97 11.69 19.43 10.36 19.79 8.57 19.84 6.52 19.58 4.68 19.02 3.04 19.12 2.78 19.38 2.78 20.66 4.32 21.68 6.26 22.24 8.21 22.5 9.8 22.5 10.98 22.09 13.23 21.68 14.46 21.01 15.84 19.63 17.74 18.4 18.91ZM4.42 10.98 4.52 11.95 4.83 12.77 4.73 13.08 4.37 13.02 3.24 12.05 2.63 11.28 2.01 10.16 1.65 9.08 1.5 7.95 1.6 6.21 1.81 5.39 2.47 4.01 3.24 2.99 3.65 2.58 6.37 2.58 6.47 2.78 6.47 5.39 5.5 6.52 4.73 8.11 4.42 9.49ZM9.7 7.75 10.67 7.29 11.39 6.26 11.49 5.8 11.49 2.83 11.64 2.58 13.69 2.58 14.51 3.75 15.12 5.34 15.02 5.85 14.1 5.9 13.95 8.72 13.49 9.54 12.72 10.16 11.9 10.41 11.13 10.41 10.0 9.95 9.23 9.08 8.98 8.31 9.08 7.9Z"/></g></svg>';
+  var GENIUS_STAGE_TEXT = {
+    network: "network \u2014 \u0437\u0430\u043F\u0440\u043E\u0441 \u043D\u0435 \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D (\u043D\u0435\u0442 \u0441\u0435\u0442\u0438, \u043F\u0440\u043E\u043A\u0441\u0438 \u043D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u0435\u043D \u0438\u043B\u0438 Genius \u043D\u0435 \u043E\u0442\u0432\u0435\u0447\u0430\u0435\u0442)",
+    timeout: "timeout \u2014 \u043E\u0442\u0432\u0435\u0442 \u043D\u0435 \u043F\u0440\u0438\u0448\u0451\u043B \u0437\u0430 20 \u0441",
+    parse: "parse \u2014 \u043E\u0442\u0432\u0435\u0442 \u043F\u043E\u043B\u0443\u0447\u0435\u043D, \u043D\u043E \u0442\u0435\u043A\u0441\u0442 \u0432 \u043D\u0451\u043C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D"
+  };
+  var GeniusError = class extends Error {
+    constructor(stage, message) {
+      super(message);
+      this.stage = stage;
+    }
+  };
+  var geniusSearchCache = /* @__PURE__ */ new Map();
+  var geniusLyricsCache = /* @__PURE__ */ new Map();
+  async function geniusApi(path, params) {
+    const qs = new URLSearchParams(params).toString();
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 2e4);
+    try {
+      const response = await fetch(`/api/genius/${path}?${qs}`, { signal: controller.signal, headers: { accept: "application/json" } });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new GeniusError("network", data?.error || `\u043F\u0440\u043E\u043A\u0441\u0438 \u043E\u0442\u0432\u0435\u0442\u0438\u043B ${response.status}`);
+      }
+      return data;
+    } catch (err) {
+      if (err instanceof GeniusError) throw err;
+      if (err?.name === "AbortError") {
+        throw new GeniusError("timeout", "\u043E\u0442\u0432\u0435\u0442 \u043D\u0435 \u043F\u0440\u0438\u0448\u0451\u043B \u0437\u0430 20 \u0441");
+      }
+      throw new GeniusError("network", messageOf(err));
+    } finally {
+      window.clearTimeout(timer);
+    }
+  }
+  async function geniusSearchSongs(query) {
+    const cachedHits = geniusSearchCache.get(query);
+    if (cachedHits) return cachedHits;
+    const data = await geniusApi("search", { q: query });
+    const hits = (data.response?.hits ?? []).filter((h) => h.type === "song" && h.result).map((h) => {
+      const r = h.result;
+      return {
+        id: String(r.id),
+        title: typeof r.title === "string" ? r.title : "",
+        artist: r.primary_artist?.name ?? "",
+        url: typeof r.url === "string" ? r.url : "",
+        lyricsState: typeof r.lyrics_state === "string" ? r.lyrics_state : null
+      };
+    });
+    geniusSearchCache.set(query, hits);
+    return hits;
+  }
+  async function geniusFetchSong(id) {
+    const cachedSong = geniusLyricsCache.get(id);
+    if (cachedSong) return cachedSong;
+    const data = await geniusApi("lyrics", { id });
+    const song = data.song;
+    if (!song) throw new GeniusError("parse", "\u043F\u0435\u0441\u043D\u044F \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430");
+    const parsed = {
+      id: String(song.id),
+      title: typeof song.title === "string" ? song.title : "",
+      artist: typeof song.artist === "string" ? song.artist : "",
+      url: typeof song.url === "string" ? song.url : "",
+      lyricsState: typeof song.lyrics_state === "string" ? song.lyrics_state : null,
+      text: typeof song.text === "string" ? song.text : ""
+    };
+    geniusLyricsCache.set(id, parsed);
+    return parsed;
+  }
+  var GENIUS_BRACKETS_RE = /[(\[{][^)\]}]*[)\]}]/g;
+  function geniusCleanTitle(raw) {
+    let t = raw.replace(GENIUS_BRACKETS_RE, " ");
+    t = t.replace(/\s*\b(?:feat|ft)\b\.?\s+.*$/i, " ");
+    t = t.replace(/\s*-\s*(?:remake|remaster(?:ed)?|version|edit|demo|mix)\b.*$/i, " ");
+    return t.replace(/\s+/g, " ").trim();
+  }
+  function geniusMainArtist(raw) {
+    return raw.split(/\s*,\s*|\s+&\s+|\s+(?:feat|ft)\.?\s+/i)[0].trim();
+  }
+  function geniusNorm(s) {
+    return s.toLowerCase().replace(/ё/g, "\u0435").replace(/[^\p{L}\p{N}]+/gu, "");
+  }
+  function geniusScore(song, artistQuery, titleQuery) {
+    const tN = geniusNorm(song.title);
+    const aN = geniusNorm(song.artist);
+    const tQ = geniusNorm(titleQuery);
+    const aQ = geniusNorm(artistQuery);
+    let titleOk = false;
+    let artistOk = false;
+    let total = 0;
+    if (tQ && tN) {
+      if (tN === tQ) {
+        titleOk = true;
+        total += 0.6;
+      } else if (tN.includes(tQ) || tQ.includes(tN)) {
+        titleOk = true;
+        total += 0.45;
+      } else if (tQ.length >= 4 && (tN.includes(tQ.slice(0, Math.ceil(tQ.length * 0.6))) || tQ.includes(tN.slice(0, Math.ceil(tN.length * 0.6))))) {
+        titleOk = true;
+        total += 0.25;
+      }
+    }
+    if (aQ && aN) {
+      if (aN === aQ) {
+        artistOk = true;
+        total += 0.4;
+      } else if (aN.includes(aQ) || aQ.includes(aN)) {
+        artistOk = true;
+        total += 0.3;
+      }
+    }
+    if (titleOk && artistOk && tN === tQ && aN === aQ) total += 0.1;
+    return { total, titleOk, artistOk };
+  }
+  var geniusLocalOverride = /* @__PURE__ */ new Map();
+  function geniusPinnedId(kind, refId) {
+    const override = geniusLocalOverride.get(`${kind}:${refId}`);
+    if (override) return override;
+    const row = kind === "track" ? tracks.find((t) => t.id === refId) : albums.find((a) => a.id === refId);
+    return row ? row.geniusId ?? row.geniusId ?? null : null;
+  }
+  async function geniusPin(kind, refId, songId) {
+    if (CLOUD) {
+      const table = kind === "track" ? "tracks" : "albums";
+      const { error } = await getSB().from(table).update({ genius_song_id: songId ? Number(songId) : null }).eq("id", refId);
+      if (error) throw error;
+      await refreshData();
+      return;
+    }
+    if (kind === "track") {
+      tracks = tracks.map((t) => t.id === refId ? { ...t, geniusId: songId } : t);
+      saveLocalTracks();
+    } else {
+      albums = albums.map((a) => a.id === refId ? { ...a, geniusId: songId } : a);
+      saveLocalAlbums();
+    }
+  }
+  var lyricsPanel = q("#lyrics-panel");
+  var lyricsSong = q("#lyrics-song");
+  var lyricsArtist = q("#lyrics-artist");
+  var lyricsLink = q("#lyrics-link");
+  var lyricsReplaceBtn = q("#lyrics-replace-btn");
+  var lyricsClose = q("#lyrics-close");
+  var lyricsState = q("#lyrics-state");
+  var lyricsSkeleton = q("#lyrics-skeleton");
+  var lyricsFail = q("#lyrics-fail");
+  var lyricsFailToggle = q("#lyrics-fail-toggle");
+  var lyricsReport = q("#lyrics-report");
+  var lyricsCopy = q("#lyrics-copy");
+  var lyricsText = q("#lyrics-text");
+  var lyricsFix = q("#lyrics-fix");
+  var lyricsCands = q("#lyrics-cands");
+  var lyricsUrl = q("#lyrics-url");
+  var lyricsUrlError = q("#lyrics-url-error");
+  var lyricsFixCancel = q("#lyrics-fix-cancel");
+  var lyricsFixSave = q("#lyrics-fix-save");
+  var lyricsFixNote = q("#lyrics-fix-note");
+  var vinylSection = q("#vinyl-section");
+  var vinylDisc = q("#vinyl-disc");
+  var vinylArt = q("#vinyl-art");
+  var vinylPin = q("#vinyl-pin");
+  var vinylSong = q("#vinyl-song");
+  var vinylArtist = q("#vinyl-artist");
+  var vinylLink = q("#vinyl-link");
+  var vinylReplaceBtn = q("#vinyl-replace-btn");
+  var vinylClip = q("#vinyl-clip");
+  var vinylState = q("#vinyl-state");
+  var vinylSkeleton = q("#vinyl-skeleton");
+  var vinylFail = q("#vinyl-fail");
+  var vinylFailToggle = q("#vinyl-fail-toggle");
+  var vinylReport = q("#vinyl-report");
+  var vinylCopy = q("#vinyl-copy");
+  var vinylText = q("#vinyl-text");
+  var vinylFix = q("#vinyl-fix");
+  var vinylCands = q("#vinyl-cands");
+  var vinylUrl = q("#vinyl-url");
+  var vinylUrlError = q("#vinyl-url-error");
+  var vinylFixCancel = q("#vinyl-fix-cancel");
+  var vinylFixSave = q("#vinyl-fix-save");
+  var vinylFixNote = q("#vinyl-fix-note");
+  var albumLyricsUi = {
+    song: lyricsSong,
+    artist: lyricsArtist,
+    link: lyricsLink,
+    replaceBtn: lyricsReplaceBtn,
+    state: lyricsState,
+    skeleton: lyricsSkeleton,
+    fail: lyricsFail,
+    failToggle: lyricsFailToggle,
+    report: lyricsReport,
+    copy: lyricsCopy,
+    text: lyricsText,
+    fix: lyricsFix,
+    cands: lyricsCands,
+    url: lyricsUrl,
+    urlError: lyricsUrlError,
+    fixCancel: lyricsFixCancel,
+    fixSave: lyricsFixSave,
+    fixNote: lyricsFixNote,
+    typewriter: false
+  };
+  var vinylLyricsUi = {
+    song: vinylSong,
+    artist: vinylArtist,
+    link: vinylLink,
+    replaceBtn: vinylReplaceBtn,
+    state: vinylState,
+    skeleton: vinylSkeleton,
+    fail: vinylFail,
+    failToggle: vinylFailToggle,
+    report: vinylReport,
+    copy: vinylCopy,
+    text: vinylText,
+    fix: vinylFix,
+    cands: vinylCands,
+    url: vinylUrl,
+    urlError: vinylUrlError,
+    fixCancel: vinylFixCancel,
+    fixSave: vinylFixSave,
+    fixNote: vinylFixNote,
+    typewriter: true
+  };
+  var geniusSeq = 0;
+  var geniusActiveKey = null;
+  var geniusTypeTimer;
+  function geniusReportText(run, err, detail) {
+    const build = document.querySelector('script[src*="app.js"]')?.getAttribute("src") ?? "app.js";
+    return [
+      "\u0422\u0435\u043A\u0441\u0442 \u043F\u0435\u0441\u043D\u0438 \u2014 \u043E\u0442\u0447\u0451\u0442 \u043E\u0431 \u043E\u0448\u0438\u0431\u043A\u0435",
+      `\u0438\u0441\u0442\u043E\u0447\u043D\u0438\u043A: Genius (${run.kind === "track" ? "\u0442\u0440\u0435\u043A" : "\u0441\u0438\u043D\u0433\u043B"})`,
+      `\u0438\u0441\u043A\u0430\u043B\u0438: \xAB${run.artist} ${run.title}\xBB`,
+      `\u044D\u0442\u0430\u043F: ${GENIUS_STAGE_TEXT[err.stage]}`,
+      `\u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435: ${err.message}`,
+      detail ? `\u0434\u0435\u0442\u0430\u043B\u0438: ${detail}` : "",
+      `\u0432\u0440\u0435\u043C\u044F: ${(/* @__PURE__ */ new Date()).toISOString()}`,
+      `\u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0430: ${location.href}`,
+      `\u0441\u0431\u043E\u0440\u043A\u0430: ${build}`
+    ].filter(Boolean).join("\n");
+  }
+  function geniusSetState(ui, text) {
+    ui.state.textContent = text;
+    const searching = text === "\u0438\u0449\u0435\u043C \u0442\u0435\u043A\u0441\u0442 \u043D\u0430 Genius\u2026";
+    ui.state.classList.toggle("is-searching", searching);
+    ui.skeleton.hidden = !searching;
+  }
+  function geniusShowError(ui, report) {
+    ui.fail.hidden = false;
+    ui.report.textContent = report;
+    ui.report.hidden = true;
+    ui.copy.hidden = true;
+    ui.failToggle.textContent = "\u043F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438";
+  }
+  function geniusResetUi(ui) {
+    window.clearInterval(geniusTypeTimer);
+    ui.song.textContent = "";
+    ui.artist.textContent = "";
+    ui.link.hidden = true;
+    ui.link.removeAttribute("href");
+    ui.state.textContent = "";
+    ui.fail.hidden = true;
+    ui.report.textContent = "";
+    ui.report.hidden = true;
+    ui.copy.hidden = true;
+    ui.text.hidden = true;
+    ui.text.textContent = "";
+    ui.text.classList.remove("is-typing");
+    ui.fix.hidden = true;
+    ui.cands.innerHTML = "";
+    ui.url.value = "";
+    ui.urlError.textContent = "";
+    ui.replaceBtn.hidden = !isAdmin();
+    ui.skeleton.hidden = true;
+    lyricsPanel.classList.remove("is-searching", "is-found");
+    vinylSection.classList.remove("is-searching", "is-found");
+    vinylDisc.classList.remove("is-landing");
+    vinylPin.classList.remove("is-dropping");
+  }
+  function geniusTypeText(ui, text) {
+    window.clearInterval(geniusTypeTimer);
+    ui.text.hidden = false;
+    ui.text.classList.remove("is-typing");
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      ui.text.textContent = text;
+      return;
+    }
+    if (!ui.typewriter) {
+      const frag = document.createDocumentFragment();
+      text.split("\n").forEach((line, i2) => {
+        const el = document.createElement("span");
+        el.className = "lyrics__line";
+        el.textContent = line.length ? line : "\xA0";
+        el.style.animationDelay = `${Math.min(i2 * 42, 1900)}ms`;
+        frag.appendChild(el);
+      });
+      ui.text.textContent = "";
+      ui.text.appendChild(frag);
+      return;
+    }
+    ui.text.textContent = "";
+    ui.text.classList.add("is-typing");
+    let i = 0;
+    geniusTypeTimer = window.setInterval(() => {
+      i = Math.min(text.length, i + 22);
+      ui.text.textContent = text.slice(0, i);
+      if (i >= text.length) {
+        window.clearInterval(geniusTypeTimer);
+        ui.text.classList.remove("is-typing");
+      }
+    }, 16);
+  }
+  function geniusRenderSong(run, song) {
+    const ui = run.ui;
+    geniusSetState(ui, song.text ? "" : "\u043D\u0430 Genius \u0442\u0435\u043A\u0441\u0442 \u044D\u0442\u043E\u0439 \u043F\u0435\u0441\u043D\u0438 \u043F\u043E\u043A\u0430 \u043D\u0435 \u0437\u0430\u043F\u043E\u043B\u043D\u0435\u043D");
+    ui.song.textContent = song.title;
+    ui.artist.textContent = song.artist;
+    if (song.url) {
+      ui.link.href = song.url;
+      ui.link.hidden = false;
+    }
+    if (song.text) geniusTypeText(ui, song.text);
+    const surface = run.kind === "single" ? vinylSection : lyricsPanel;
+    surface.classList.add("is-found");
+    if (run.kind === "single") {
+      vinylDisc.classList.add("is-landing");
+      vinylPin.classList.add("is-dropping");
+    }
+  }
+  function geniusRenderCandidates(run, candidates) {
+    const ui = run.ui;
+    ui.cands.innerHTML = "";
+    for (const song of candidates.slice(0, 6)) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "lyrics__cand";
+      chip.innerHTML = `<span class="lyrics__cand-title">${esc(song.title)}</span><span class="lyrics__cand-artist">${esc(song.artist)}</span>`;
+      chip.addEventListener("click", () => {
+        void geniusApplySong(run, song.id, song);
+      });
+      ui.cands.appendChild(chip);
+    }
+    if (!candidates.length) ui.cands.innerHTML = '<p class="cover-pick__note">\u043A\u0430\u043D\u0434\u0438\u0434\u0430\u0442\u043E\u0432 \u043D\u0435 \u043D\u0430\u0448\u043B\u043E\u0441\u044C \u2014 \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0441\u0441\u044B\u043B\u043A\u0443 \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u043F\u0435\u0441\u043D\u0438</p>';
+  }
+  function geniusOpenFix(run, candidates) {
+    const ui = run.ui;
+    geniusRenderCandidates(run, candidates);
+    ui.fix.hidden = false;
+    ui.fixNote.textContent = isAdmin() ? "\u043F\u043E\u0434\u0441\u0442\u0430\u0432\u043B\u0435\u043D\u043D\u0430\u044F \u043F\u0435\u0441\u043D\u044F \u0437\u0430\u043F\u043E\u043C\u043D\u0438\u0442\u0441\u044F \u0432 \u0431\u0430\u0437\u0435 \u0434\u043B\u044F \u0432\u0441\u0435\u0445" : "\u0437\u0430\u043C\u0435\u043D\u0443 \u0437\u0430\u043F\u043E\u043C\u043D\u0438\u0442 \u0442\u043E\u043B\u044C\u043A\u043E \u0430\u0434\u043C\u0438\u043D \u2014 \u043E\u0441\u0442\u0430\u043B\u044C\u043D\u044B\u043C \u043F\u043E\u0434\u0441\u0442\u0430\u043D\u043E\u0432\u043A\u0430 \u043E\u0442\u043A\u0440\u043E\u0435\u0442\u0441\u044F \u0434\u043E \u043F\u0435\u0440\u0435\u0437\u0430\u0433\u0440\u0443\u0437\u043A\u0438";
+  }
+  function geniusIdFromUrl(raw) {
+    try {
+      const url = new URL(raw.trim());
+      if (!/(^|\.)genius\.com$/i.test(url.hostname)) return null;
+      const m = url.pathname.match(/(\d+)(?!.*\d)/);
+      return m ? m[1] : null;
+    } catch {
+      return null;
+    }
+  }
+  async function geniusApplySong(run, songId, hint) {
+    const ui = run.ui;
+    ui.fixSave.classList.add("is-loading");
+    geniusSetState(ui, "\u043F\u0440\u043E\u0432\u0435\u0440\u044F\u0435\u043C \u043F\u0435\u0441\u043D\u044E\u2026");
+    try {
+      const song = await geniusFetchSong(songId);
+      geniusLocalOverride.set(`${run.kind}:${run.refId}`, song.id);
+      if (isAdmin()) {
+        try {
+          await geniusPin(run.kind, run.refId, song.id);
+        } catch (err) {
+          toast(messageOf(err));
+        }
+      }
+      geniusRenderSong(run, song);
+      ui.fix.hidden = true;
+      toast(run.kind === "track" ? "\u0422\u0435\u043A\u0441\u0442 \u043F\u043E\u0434\u0441\u0442\u0430\u0432\u043B\u0435\u043D" : "\u0422\u0435\u043A\u0441\u0442 \u043F\u043E\u0434\u0441\u0442\u0430\u0432\u043B\u0435\u043D \u043D\u0430 \u043F\u043B\u0430\u0441\u0442\u0438\u043D\u043A\u0443");
+    } catch (err) {
+      geniusSetState(ui, "");
+      ui.urlError.textContent = err instanceof GeniusError ? err.message : messageOf(err);
+    } finally {
+      ui.fixSave.classList.remove("is-loading");
+    }
+  }
+  async function geniusRun(run) {
+    const ui = run.ui;
+    geniusSeq += 1;
+    const seq = geniusSeq;
+    geniusActiveKey = `${run.kind}:${run.refId}`;
+    geniusResetUi(ui);
+    geniusSetState(ui, "\u0438\u0449\u0435\u043C \u0442\u0435\u043A\u0441\u0442 \u043D\u0430 Genius\u2026");
+    if (run.kind === "single") {
+      vinylSection.hidden = false;
+      vinylPin.classList.remove("is-active");
+      vinylPin.setAttribute("aria-expanded", "true");
+      vinylClip.classList.add("is-open");
+      vinylSection.classList.add("is-searching");
+      vinylDisc.classList.add("is-searching");
+    } else {
+      lyricsPanel.classList.add("is-searching");
+    }
+    const settle = () => {
+      if (run.kind === "single") {
+        vinylSection.classList.remove("is-searching");
+        vinylDisc.classList.remove("is-searching");
+      } else {
+        lyricsPanel.classList.remove("is-searching");
+      }
+      ui.skeleton.hidden = true;
+      ui.state.classList.remove("is-searching");
+    };
+    try {
+      const pinned = geniusPinnedId(run.kind, run.refId);
+      if (pinned) {
+        const song = await geniusFetchSong(pinned);
+        if (seq !== geniusSeq) return;
+        settle();
+        geniusRenderSong(run, song);
+        if (run.kind === "single") vinylPin.classList.add("is-active");
+        return;
+      }
+      const query = `${geniusMainArtist(run.artist)} ${geniusCleanTitle(run.title)}`.trim();
+      const hits = await geniusSearchSongs(query);
+      if (seq !== geniusSeq) return;
+      const scored = hits.map((song) => ({ song, ...geniusScore(song, run.artist, run.title) })).sort((a, b) => b.total - a.total);
+      const best = scored[0];
+      if (best && best.titleOk && best.artistOk) {
+        const songId = best.song.id;
+        try {
+          await geniusPin(run.kind, run.refId, songId);
+          if (seq !== geniusSeq) return;
+        } catch {
+        }
+        const song = await geniusFetchSong(songId);
+        if (seq !== geniusSeq) return;
+        settle();
+        geniusRenderSong(run, song);
+        if (run.kind === "single") vinylPin.classList.add("is-active");
+        return;
+      }
+      settle();
+      geniusSetState(ui, "\u043D\u0435 \u0443\u0432\u0435\u0440\u0435\u043D\u044B, \u0447\u0442\u043E \u043D\u0430\u0448\u043B\u0438 \u0438\u043C\u0435\u043D\u043D\u043E \u044D\u0442\u0443 \u043F\u0435\u0441\u043D\u044E \u2014 \u043F\u0440\u043E\u0432\u0435\u0440\u044C\u0442\u0435 \u0432\u0430\u0440\u0438\u0430\u043D\u0442\u044B");
+      geniusOpenFix(run, scored.map((s) => s.song));
+    } catch (err) {
+      if (seq !== geniusSeq) return;
+      settle();
+      const searchErr = err instanceof GeniusError ? err : new GeniusError("network", messageOf(err));
+      geniusSetState(ui, `\u043D\u0435 \u043F\u043E\u043B\u0443\u0447\u0438\u043B\u043E\u0441\u044C: ${searchErr.message}`);
+      geniusShowError(ui, geniusReportText(run, searchErr, `\u044D\u043D\u0434\u043F\u043E\u0438\u043D\u0442: /api/genius/`));
+    }
+  }
+  function toggleTrackGenius(trackId) {
+    const track = tracks.find((t) => t.id === trackId);
+    if (!track || !currentAlbumId) return;
+    const key = `track:${trackId}`;
+    if (geniusActiveKey === key && !lyricsPanel.hidden) {
+      closeLyricsPanel();
+      return;
+    }
+    const album = currentAlbum();
+    geniusResetUi(albumLyricsUi);
+    lyricsPanel.hidden = false;
+    lyricsPanel.classList.remove("is-open");
+    void lyricsPanel.offsetWidth;
+    lyricsPanel.classList.add("is-open");
+    trackList.querySelectorAll(".track__genius.is-active").forEach((b) => b.classList.remove("is-active"));
+    const btn = trackList.querySelector(`[data-id="${trackId}"] .track__genius`);
+    btn?.classList.add("is-active");
+    void geniusRun({
+      kind: "track",
+      refId: trackId,
+      artist: album.artist,
+      title: track.title,
+      ui: albumLyricsUi
+    });
+    window.setTimeout(() => lyricsPanel.scrollIntoView({ behavior: "smooth", block: "nearest" }), 120);
+  }
+  function closeLyricsPanel() {
+    lyricsPanel.hidden = true;
+    lyricsPanel.classList.remove("is-open");
+    geniusActiveKey = null;
+    window.clearInterval(geniusTypeTimer);
+    trackList.querySelectorAll(".track__genius.is-active").forEach((b) => b.classList.remove("is-active"));
+  }
+  lyricsClose.addEventListener("click", closeLyricsPanel);
+  lyricsReplaceBtn.addEventListener("click", () => {
+    const activeKey = geniusActiveKey;
+    if (activeKey?.startsWith("track:")) {
+      const track = tracks.find((t) => t.id === activeKey.slice(6));
+      const album = currentAlbum();
+      if (track && album) {
+        geniusSetState(albumLyricsUi, "\u0438\u0449\u0435\u043C \u0432\u0430\u0440\u0438\u0430\u043D\u0442\u044B\u2026");
+        void (async () => {
+          try {
+            const query = `${geniusMainArtist(album.artist)} ${geniusCleanTitle(track.title)}`.trim();
+            const hits = await geniusSearchSongs(query);
+            geniusSetState(albumLyricsUi, "\u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043F\u0440\u0430\u0432\u0438\u043B\u044C\u043D\u0443\u044E \u043F\u0435\u0441\u043D\u044E:");
+            geniusOpenFix({ kind: "track", refId: track.id, artist: album.artist, title: track.title, ui: albumLyricsUi }, hits);
+          } catch (err) {
+            geniusSetState(albumLyricsUi, messageOf(err));
+          }
+        })();
+      }
+    }
+  });
+  lyricsFailToggle.addEventListener("click", () => {
+    const willShow = lyricsReport.hidden;
+    lyricsReport.hidden = !willShow;
+    lyricsCopy.hidden = !willShow;
+    lyricsFailToggle.textContent = willShow ? "\u0441\u043A\u0440\u044B\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438" : "\u043F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438";
+  });
+  lyricsCopy.addEventListener("click", () => {
+    const ok = copyTextToClipboard(lyricsReport.textContent ?? "");
+    void Promise.resolve(ok).then((copied) => toast(copied ? "\u041E\u0442\u0447\u0451\u0442 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D \u2014 \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0435\u0433\u043E \u0432 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435 \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u0443" : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C: \u0432\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0434\u0435\u0442\u0430\u043B\u0435\u0439 \u0438 \u0441\u043A\u043E\u043F\u0438\u0440\u0443\u0439\u0442\u0435 \u0432\u0440\u0443\u0447\u043D\u0443\u044E (Ctrl+C)"));
+  });
+  lyricsFixCancel.addEventListener("click", () => {
+    lyricsFix.hidden = true;
+    lyricsUrlError.textContent = "";
+  });
+  lyricsFix.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fromUrl = geniusIdFromUrl(lyricsUrl.value);
+    if (!fromUrl) {
+      lyricsUrlError.textContent = "\u043D\u0443\u0436\u043D\u0430 \u0441\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u043F\u0435\u0441\u043D\u0438 \u0432\u0438\u0434\u0430 https://genius.com/\u2026";
+      return;
+    }
+    const track = tracks.find((t) => t.id === geniusActiveKey?.slice(6));
+    const album = currentAlbum();
+    if (track && album) void geniusApplySong({ kind: "track", refId: track.id, artist: album.artist, title: track.title, ui: albumLyricsUi }, fromUrl);
+  });
+  function resetVinyl() {
+    window.clearInterval(geniusTypeTimer);
+    vinylSection.hidden = true;
+    vinylSection.classList.remove("is-searching", "is-found");
+    vinylDisc.classList.remove("is-searching", "is-landing");
+    vinylPin.classList.remove("is-dropping");
+    vinylSkeleton.hidden = true;
+    vinylPin.classList.remove("is-active", "is-open");
+    vinylPin.setAttribute("aria-expanded", "false");
+    vinylClip.classList.remove("is-open");
+  }
+  vinylPin.addEventListener("click", () => {
+    const isOpen = vinylClip.classList.toggle("is-open");
+    vinylPin.setAttribute("aria-expanded", String(isOpen));
+  });
+  vinylFailToggle.addEventListener("click", () => {
+    const willShow = vinylReport.hidden;
+    vinylReport.hidden = !willShow;
+    vinylCopy.hidden = !willShow;
+    vinylFailToggle.textContent = willShow ? "\u0441\u043A\u0440\u044B\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438" : "\u043F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0434\u0435\u0442\u0430\u043B\u0438";
+  });
+  vinylCopy.addEventListener("click", () => {
+    const ok = copyTextToClipboard(vinylReport.textContent ?? "");
+    void Promise.resolve(ok).then((copied) => toast(copied ? "\u041E\u0442\u0447\u0451\u0442 \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u043D \u2014 \u0432\u0441\u0442\u0430\u0432\u044C\u0442\u0435 \u0435\u0433\u043E \u0432 \u0441\u043E\u043E\u0431\u0449\u0435\u043D\u0438\u0435 \u0440\u0430\u0437\u0440\u0430\u0431\u043E\u0442\u0447\u0438\u043A\u0443" : "\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u0441\u043A\u043E\u043F\u0438\u0440\u043E\u0432\u0430\u0442\u044C: \u0432\u044B\u0434\u0435\u043B\u0438\u0442\u0435 \u0442\u0435\u043A\u0441\u0442 \u0434\u0435\u0442\u0430\u043B\u0435\u0439 \u0438 \u0441\u043A\u043E\u043F\u0438\u0440\u0443\u0439\u0442\u0435 \u0432\u0440\u0443\u0447\u043D\u0443\u044E (Ctrl+C)"));
+  });
+  vinylReplaceBtn.addEventListener("click", () => {
+    const s = currentSingle();
+    if (!s) return;
+    geniusSetState(vinylLyricsUi, "\u0438\u0449\u0435\u043C \u0432\u0430\u0440\u0438\u0430\u043D\u0442\u044B\u2026");
+    void (async () => {
+      try {
+        const query = `${geniusMainArtist(s.artist)} ${geniusCleanTitle(singleDisplayTitle(s))}`.trim();
+        const hits = await geniusSearchSongs(query);
+        geniusSetState(vinylLyricsUi, "\u0432\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u043F\u0440\u0430\u0432\u0438\u043B\u044C\u043D\u0443\u044E \u043F\u0435\u0441\u043D\u044E:");
+        geniusOpenFix({ kind: "single", refId: s.id, artist: s.artist, title: singleDisplayTitle(s), ui: vinylLyricsUi }, hits);
+      } catch (err) {
+        geniusSetState(vinylLyricsUi, messageOf(err));
+      }
+    })();
+  });
+  vinylFixCancel.addEventListener("click", () => {
+    vinylFix.hidden = true;
+    vinylUrlError.textContent = "";
+  });
+  vinylFix.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const fromUrl = geniusIdFromUrl(vinylUrl.value);
+    if (!fromUrl) {
+      vinylUrlError.textContent = "\u043D\u0443\u0436\u043D\u0430 \u0441\u0441\u044B\u043B\u043A\u0430 \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u043F\u0435\u0441\u043D\u0438 \u0432\u0438\u0434\u0430 https://genius.com/\u2026";
+      return;
+    }
+    const s = currentSingle();
+    if (s) void geniusApplySong({ kind: "single", refId: s.id, artist: s.artist, title: singleDisplayTitle(s), ui: vinylLyricsUi }, fromUrl);
+  });
+  function startVinylLyrics(single) {
+    resetVinyl();
+    vinylSection.hidden = false;
+    const cover = coverSrc(single);
+    if (cover && !cover.startsWith("data:image/svg")) vinylArt.src = cover;
+    void geniusRun({
+      kind: "single",
+      refId: single.id,
+      artist: single.artist,
+      title: singleDisplayTitle(single),
+      ui: vinylLyricsUi
+    });
+  }
   var addPending = false;
   var pendingCover = null;
   var coverUrlTimer;
@@ -24223,6 +25362,7 @@ ${suffix}`;
     artistList.hidden = true;
     markArtistPicked();
     refreshDupHint();
+    addCoverSearch.syncContext();
     titleInput.focus();
   }
   function markArtistPicked() {
@@ -24256,6 +25396,7 @@ ${suffix}`;
     updateArtistFeatNote();
     clearAddErrors();
     refreshDupHint();
+    addCoverSearch.syncContext();
   });
   artistInput.addEventListener("focus", () => updateArtistList());
   artistInput.addEventListener("blur", () => {
@@ -24269,6 +25410,7 @@ ${suffix}`;
   titleInput.addEventListener("input", () => {
     clearAddErrors();
     refreshDupHint();
+    addCoverSearch.syncContext();
   });
   yearInput.addEventListener("input", () => clearAddErrors());
   function normalizeArtist(raw) {
@@ -24357,6 +25499,7 @@ ${suffix}`;
       applyCover(await prepareCoverFile(file));
       coverUrl.value = "";
       clearCoverUrlError();
+      addCoverSearch.clearSelection();
     } catch (err) {
       toast(messageOf(err));
     }
@@ -24390,6 +25533,7 @@ ${suffix}`;
     coverUrl.value = "";
     clearCoverUrlError();
     window.clearTimeout(coverUrlTimer);
+    addCoverSearch.clearSelection();
   });
   function resetAddForm() {
     addForm.reset();
@@ -24402,6 +25546,7 @@ ${suffix}`;
     window.clearTimeout(coverUrlTimer);
     artistList.hidden = true;
     artistField.classList.remove("is-picked", "pulse");
+    addCoverSearch.reset();
     clearAddErrors();
   }
   var addKind = "album";
@@ -24520,7 +25665,8 @@ ${suffix}`;
       parentIds,
       tracksLocked: false,
       cohesion: null,
-      albumType: null
+      albumType: null,
+      geniusId: null
     });
     saveLocalAlbums();
     return id;

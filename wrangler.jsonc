@@ -1,7 +1,11 @@
 {
   "name": "albumratings",
   "compatibility_date": "2026-09-06",
+  // main — серверный прокси Genius (/api/genius/*): текст песен + токен на сервере.
+  // Статика сайта отдаётся напрямую из ./site; не-ассетные запросы уходят в worker.js.
+  "main": "worker.js",
   "assets": {
-    "directory": "./site"
+    "directory": "./site",
+    "binding": "ASSETS"
   }
 }

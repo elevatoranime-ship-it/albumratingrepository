@@ -48,8 +48,65 @@ def genius_api(path, params):
         raise RuntimeError(f"Genius API ответил {e.code}{': ' + detail if detail else ''}") from None
 
 
+# Внутри первого блока data-lyrics-container Genius держит «шапку» — счётчик
+# «6 Contributors», переводы и заголовок «<название> Lyrics» (div с атрибутом
+# data-exclude-from-selection="true", класс LyricsHeader__Container-…); в конце
+# последнего блока может лежать такой же подвал (LyricsFooter__…, «Embed»).
+# Всё это вырезается из разметки до снятия тегов — иначе текст начинался бы
+# с «6 Contributorsназвание Lyrics[Текст песни …]». Логика зеркалит worker.js.
+LYRICS_CHROME_RE = re.compile(
+    r'data-exclude-from-selection="true"|class="[^"]*\bLyrics(?:Header|Footer)__', re.I
+)
+# Блочные теги → перенос строки, чтобы соседние блоки не склеивались в одну строку.
+BLOCK_TAG_RE = re.compile(
+    r"</?(?:div|p|h[1-6]|section|header|footer|ul|ol|li|blockquote)\b[^>]*>", re.I
+)
+# Страховка: если разметка шапки изменится и она всё же дойдёт до текста.
+LYRICS_HEADER_TEXT_RE = re.compile(r"^\d+\s*Contributors?[\s\S]*?\bLyrics\b(?=[ \t]*\n|\[)", re.I)
+# Пустые элементы HTML — без закрывающего тега.
+VOID_TAGS = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+
+
+def cut_element_at(html, at):
+    """Вырезает из фрагмента элемент (со всем содержимым), внутри открывающего
+    тега которого стоит позиция `at`. None — если `at` не внутри тега."""
+    tag_start = html.rfind("<", 0, at)
+    tag_end = html.find(">", at)
+    if tag_start == -1 or tag_end == -1 or html.rfind(">", 0, at) > tag_start:
+        return None
+    m = re.match(r"<([a-z][\w-]*)", html[tag_start:tag_end], re.I)
+    if not m:
+        return None
+    name = m.group(1).lower()
+    end = tag_end + 1
+    if name not in VOID_TAGS and html[tag_end - 1] != "/":
+        end, depth = len(html), 1  # незакрытый элемент — до конца фрагмента
+        for t in re.finditer(rf"<(/?){name}(?=[\s/>])", html[tag_end + 1:], re.I):
+            depth += -1 if t.group(1) else 1
+            if depth == 0:
+                close = html.find(">", tag_end + 1 + t.start())
+                end = len(html) if close == -1 else close + 1
+                break
+    return html[:tag_start] + html[end:], tag_start
+
+
+def drop_elements(html, pattern):
+    """Удаляет из фрагмента все элементы, в открывающем теге которых встречается `pattern`."""
+    pos = 0
+    while True:
+        m = pattern.search(html, pos)
+        if not m:
+            return html
+        cut = cut_element_at(html, m.start())
+        if cut is None:  # совпадение не в теге — идём дальше
+            pos = m.end()
+            continue
+        html, pos = cut
+
+
 def extract_lyrics(html):
-    """Блоки data-lyrics-container с учётом вложенности → чистый текст."""
+    """Блоки data-lyrics-container с учётом вложенности → чистый текст
+    (шапка/подвал Genius вырезаются, <br> и блочные теги → переносы строк)."""
     marker = 'data-lyrics-container="true"'
     parts, i = [], 0
     while True:
@@ -69,17 +126,19 @@ def extract_lyrics(html):
             else:
                 depth -= 1
                 pos = close_t + 6
-        parts.append(html[chunk_start:pos - 6])
+        part = re.sub(r"<!--[\s\S]*?-->", "", html[chunk_start:pos - 6])
+        parts.append(drop_elements(part, LYRICS_CHROME_RE))
         i = pos
     text = "\n".join(parts)
-    text = re.sub(r"<!--[\s\S]*?-->", "", text)
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
     text = re.sub(r"</p>", "\n\n", text, flags=re.I)
+    text = BLOCK_TAG_RE.sub("\n", text)
     text = re.sub(r"<[^>]+>", "", text)
     text = unescape(text)
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
-    return text.strip()
+    text = text.strip()
+    return LYRICS_HEADER_TEXT_RE.sub("", text, count=1).lstrip()
 
 
 class ReusableTCPServer(socketserver.TCPServer):
@@ -150,6 +209,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         print(fmt % args)
 
 
-with ReusableTCPServer(("0.0.0.0", PORT), Handler) as httpd:
-    print(f"Serving on http://0.0.0.0:{PORT}")
-    httpd.serve_forever()
+if __name__ == "__main__":
+    with ReusableTCPServer(("0.0.0.0", PORT), Handler) as httpd:
+        print(f"Serving on http://0.0.0.0:{PORT}")
+        httpd.serve_forever()

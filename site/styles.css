@@ -21,6 +21,8 @@
   --danger: #f0a8a0;
   --success: #a9d9c0;
   --serif: Georgia, "Iowan Old Style", "Times New Roman", serif;
+  /* нативный шрифт интерфейса: системный стек, тот же, что у всего UI */
+  --font-ui: "Inter", "SF Pro Display", -apple-system, "Segoe UI", Roboto, sans-serif;
   --r: 20px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-inout: cubic-bezier(0.65, 0, 0.35, 1);
@@ -36,7 +38,7 @@
 html, body { height: 100%; }
 
 body {
-  font-family: "Inter", "SF Pro Display", -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-ui);
   background: var(--bg);
   color: var(--text);
   -webkit-font-smoothing: antialiased;
@@ -3145,13 +3147,15 @@ body { -webkit-tap-highlight-color: transparent; }
   50% { opacity: 1; transform: none; }
 }
 
-/* сам текст: антиква-читалка */
+/* сам текст: нативный шрифт UI — в тон всей остальной гамме сайта,
+   без «книжной» антиквы, которая выбивалась из монохром-лаванды */
 .lyrics__text {
   margin: 12px 0 0;
   padding: 14px 16px;
-  font-family: var(--serif);
+  font-family: var(--font-ui);
   font-size: 16px;
-  line-height: 1.75;
+  line-height: 1.7;
+  letter-spacing: 0.005em;
   color: var(--text);
   background: var(--panel);
   border: 1px solid var(--line);

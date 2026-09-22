@@ -102,7 +102,7 @@ test('кастомный выбор: круглые аватары, выбран
   const trigger = page.locator('#evaluator-trigger');
   const list = page.locator('#evaluator-list');
   await expect(page.locator('select#evaluator-input')).toHaveCount(0);
-  await expect(trigger).toHaveText('Все участники');
+  await expect(trigger.locator('.evaluator__name')).toHaveText('Все участники');
   await expect(trigger.locator('.evaluator__avatar')).toHaveCount(2);
   await expect(page.locator('#evaluator-note')).toHaveText('Все или один участник. После создания выбор не изменить.');
   await trigger.click();
@@ -117,6 +117,7 @@ test('кастомный выбор: круглые аватары, выбран
   const bounds = await list.boundingBox();
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  await person.scrollIntoViewIfNeeded();
   const unobscured = await person.evaluate((el) => {
     const r = el.getBoundingClientRect();
     return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
@@ -124,7 +125,7 @@ test('кастомный выбор: круглые аватары, выбран
   expect(unobscured).toBe(true);
   await person.click();
   await expect(list).toBeHidden();
-  await expect(trigger).toHaveText('киллмиплаг');
+  await expect(trigger.locator('.evaluator__name')).toHaveText('киллмиплаг');
   await expect(trigger.locator('.evaluator__avatar')).toHaveCount(1);
   await expect(page.locator('#evaluator-input')).toHaveValue(evaluator);
   await expect(page.locator('#evaluator-picker')).toHaveClass(/is-picked/);
@@ -137,7 +138,7 @@ test('кастомный выбор: круглые аватары, выбран
   await page.locator('#add-back').click();
   await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
   await page.locator('#albums .album--add').click();
-  await expect(trigger).toHaveText('Все участники');
+  await expect(trigger.locator('.evaluator__name')).toHaveText('Все участники');
   await expect(page.locator('#evaluator-input')).toHaveValue('');
   await expect(page.locator('#evaluator-picker')).not.toHaveClass(/is-picked/);
 });
@@ -154,7 +155,7 @@ test('кастомный выбор: клавиатура, Escape без ухо�
   await expect(trigger).toHaveAttribute('aria-activedescendant', 'evaluator-option-2');
   await trigger.press('Enter');
   await expect(page.locator('#evaluator-input')).toHaveValue(admin);
-  await expect(trigger).toHaveText('Elevator');
+  await expect(trigger.locator('.evaluator__name')).toHaveText('Elevator');
   await trigger.press('Space');
   await trigger.press('Home');
   await trigger.press('Escape');
@@ -170,7 +171,7 @@ test('кастомный выбор: клавиатура, Escape без ухо�
   await trigger.press('Enter');
   await trigger.press('Home');
   await trigger.press('Enter');
-  await expect(trigger).toHaveText('Все участники');
+  await expect(trigger.locator('.evaluator__name')).toHaveText('Все участники');
   await expect(page.locator('#evaluator-input')).toHaveValue('');
 });
 
@@ -195,7 +196,7 @@ test('кастомный выбор: плавное раскрытие, подт
   await expect(trigger).toHaveAttribute('aria-expanded', 'true');
   await expect(list).toHaveCSS('opacity', '1');
   await list.getByRole('option', { name: 'Elevator', exact: true }).click();
-  await expect(trigger).toHaveText('Elevator');
+  await expect(trigger.locator('.evaluator__name')).toHaveText('Elevator');
   await expect(list).toBeHidden();
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await trigger.click();

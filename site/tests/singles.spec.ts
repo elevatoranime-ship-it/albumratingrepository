@@ -620,7 +620,7 @@ test('если миграция не выполнена, раздел сингл
   await page.route('**/config.js', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
-      supabaseUrl: ORIGIN, supabaseAnonKey: 'sb_publishable_mock-only', allowedUsers: [ME, PEER].map((u) => ({ ...u, admin: adminMode && u.id === ME.id })),
+      supabaseUrl: ORIGIN, supabaseAnonKey: 'sb_publishable_mock-only', allowedUsers: [ME, PEER].map((u) => ({ ...u, admin: false })),
     })};`,
   }));
   await page.route(`${ORIGIN}/**`, async (route) => {

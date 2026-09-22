@@ -1050,7 +1050,8 @@ for (const kind of ['album', 'single'] as const) {
     if (kind === 'single') await page.locator('#seg-singles').click();
     await page.locator('#albums .album--add').click();
     await expect(page.locator('#evaluator-input')).toHaveValue('');
-    await page.locator('#evaluator-input').selectOption(PEER.id);
+    await page.locator('#evaluator-trigger').click();
+    await page.locator(`#evaluator-list [data-value="${PEER.id}"]`).click();
     await page.locator('#artist-input').fill('Персональный артист');
     await page.locator('#title-input').fill('Персональный релиз');
     await page.locator('#year-input').fill('2025');

@@ -25,7 +25,8 @@ test('демо: создать, унаследовать назначение, �
   await page.locator('#artist-input').fill('Тестовый артист');
   await page.locator('#title-input').fill('Личный альбом');
   await page.locator('#year-input').fill('2025');
-  await page.locator('#evaluator-input').selectOption(evaluator);
+  await page.locator('#evaluator-trigger').click();
+  await page.locator(`#evaluator-list [data-value="${evaluator}"]`).click();
   await page.locator('#add-submit').click();
   await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
   await card(page, 'Личный альбом').click();
@@ -72,7 +73,8 @@ test('демо: несовместимые привязки запрещены �
   await page.locator('#artist-input').fill('Тест');
   await page.locator('#title-input').fill('Личный сингл');
   await page.locator('#year-input').fill('2025');
-  await page.locator('#evaluator-input').selectOption(evaluator);
+  await page.locator('#evaluator-trigger').click();
+  await page.locator(`#evaluator-list [data-value="${evaluator}"]`).click();
   await page.locator('#parent-input').fill('MUSIC');
   await page.locator('#add-submit').click();
   await expect(page.locator('#view-add')).toHaveClass(/is-visible/);
@@ -88,4 +90,119 @@ test('демо: несовместимые привязки запрещены �
   await login(page, evaluator);
   await page.locator('#albums .album--add').click();
   await expect(page.locator('#evaluator-field')).toBeHidden();
+});
+
+test('кастомный выбор: круглые аватары, выбранная опция и сброс новой формы', async ({ page }) => {
+  const avatar = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="40" height="40"><rect width="40" height="40" fill="#b7a8ef"/></svg>');
+  await page.addInitScript(({ evaluator, avatar }) => {
+    localStorage.setItem('profile_meta_local_v1', JSON.stringify({ [evaluator]: { username: 'киллмиплаг', avatarUrl: avatar } }));
+  }, { evaluator, avatar });
+  await login(page, admin);
+  await page.locator('#albums .album--add').click();
+  const trigger = page.locator('#evaluator-trigger');
+  const list = page.locator('#evaluator-list');
+  await expect(page.locator('select#evaluator-input')).toHaveCount(0);
+  await expect(trigger).toHaveText('Все участники');
+  await expect(trigger.locator('.evaluator__avatar')).toHaveCount(2);
+  await expect(page.locator('#evaluator-note')).toHaveText('Все или один участник. После создания выбор не изменить.');
+  await trigger.click();
+  await expect(list).toBeVisible();
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(list.getByRole('option')).toHaveCount(3);
+  const person = list.getByRole('option', { name: 'киллмиплаг', exact: true });
+  await expect(person.locator('.evaluator__avatar')).toHaveCSS('border-radius', '50%');
+  await expect(person.locator('.evaluator__avatar')).toHaveCSS('background-image', /data:image\/svg/);
+  await expect(list.getByRole('option', { name: 'Elevator', exact: true }).locator('.evaluator__avatar')).toHaveText('E');
+  // Список непрозрачен, не перекрыт следующими полями и не выходит по ширине.
+  const bounds = await list.boundingBox();
+  expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+  const unobscured = await person.evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+  });
+  expect(unobscured).toBe(true);
+  await person.click();
+  await expect(list).toBeHidden();
+  await expect(trigger).toHaveText('киллмиплаг');
+  await expect(trigger.locator('.evaluator__avatar')).toHaveCount(1);
+  await expect(page.locator('#evaluator-input')).toHaveValue(evaluator);
+  await expect(page.locator('#evaluator-picker')).toHaveClass(/is-picked/);
+  await expect(trigger).toBeFocused();
+  await trigger.click();
+  await expect(person).toHaveAttribute('aria-selected', 'true');
+  await page.locator('#year-input').click();
+  await expect(list).toBeHidden();
+  await expect(page.locator('#evaluator-input')).toHaveValue(evaluator);
+  await page.locator('#add-back').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  await page.locator('#albums .album--add').click();
+  await expect(trigger).toHaveText('Все участники');
+  await expect(page.locator('#evaluator-input')).toHaveValue('');
+  await expect(page.locator('#evaluator-picker')).not.toHaveClass(/is-picked/);
+});
+
+test('кастомный выбор: клавиатура, Escape без ухода, Tab без изменения и возврат ко всем', async ({ page }) => {
+  await login(page, admin);
+  await page.locator('#seg-singles').click();
+  await page.locator('#albums .album--add').click();
+  const trigger = page.locator('#evaluator-trigger');
+  await trigger.focus();
+  await trigger.press('ArrowDown');
+  await expect(trigger).toHaveAttribute('aria-activedescendant', 'evaluator-option-0');
+  await trigger.press('End');
+  await expect(trigger).toHaveAttribute('aria-activedescendant', 'evaluator-option-2');
+  await trigger.press('Enter');
+  await expect(page.locator('#evaluator-input')).toHaveValue(admin);
+  await expect(trigger).toHaveText('Elevator');
+  await trigger.press('Space');
+  await trigger.press('Home');
+  await trigger.press('Escape');
+  await expect(page.locator('#evaluator-list')).toBeHidden();
+  await expect(page.locator('#view-add')).toHaveClass(/is-visible/);
+  await expect(page.locator('#evaluator-input')).toHaveValue(admin);
+  await trigger.press('ArrowUp');
+  await trigger.press('ArrowUp');
+  await trigger.press('Tab');
+  await expect(page.locator('#evaluator-list')).toBeHidden();
+  await expect(page.locator('#evaluator-input')).toHaveValue(admin);
+  await trigger.focus();
+  await trigger.press('Enter');
+  await trigger.press('Home');
+  await trigger.press('Enter');
+  await expect(trigger).toHaveText('Все участники');
+  await expect(page.locator('#evaluator-input')).toHaveValue('');
+});
+
+test('кастомный выбор: плавное раскрытие, подтверждение, быстрые клики и reduced motion', async ({ page }) => {
+  await login(page, admin);
+  await page.locator('#albums .album--add').click();
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  const trigger = page.locator('#evaluator-trigger');
+  const list = page.locator('#evaluator-list');
+  await trigger.click();
+  await expect(list).toHaveCSS('opacity', '1');
+  await expect(list).toHaveCSS('transition-duration', '0.22s, 0.28s, 0s');
+  // CSS-пульс и прорисовка галочки должны действительно запуститься.
+  const animations = await list.getByRole('option', { name: 'киллмиплаг', exact: true }).evaluate((el: HTMLElement) => {
+    el.click();
+    return document.querySelector('#evaluator-picker')!.getAnimations({ subtree: true }).map((a) => a instanceof CSSAnimation ? a.animationName : 'transition');
+  });
+  expect(animations).toContain('evaluatorConfirm');
+  expect(animations).toContain('checkDraw');
+  await expect(list).toBeHidden();
+  await trigger.evaluate((el: HTMLButtonElement) => { el.click(); el.click(); el.click(); });
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(list).toHaveCSS('opacity', '1');
+  await list.getByRole('option', { name: 'Elevator', exact: true }).click();
+  await expect(trigger).toHaveText('Elevator');
+  await expect(list).toBeHidden();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await trigger.click();
+  const reducedAnimations = await list.getByRole('option', { name: 'Все участники', exact: true }).evaluate((el: HTMLElement) => {
+    el.click();
+    return document.querySelector('#evaluator-picker')!.getAnimations({ subtree: true }).length;
+  });
+  expect(reducedAnimations).toBe(0);
+  await expect(list).toBeHidden();
 });

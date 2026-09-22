@@ -21092,6 +21092,12 @@ ${suffix}`;
   var artistField = q("#artist-field");
   var artistInput = q("#artist-input");
   var artistList = q("#artist-list");
+  var evaluatorField = q("#evaluator-field");
+  var evaluatorPicker = q("#evaluator-picker");
+  var evaluatorInput = q("#evaluator-input");
+  var evaluatorTrigger = q("#evaluator-trigger");
+  var evaluatorValue = q("#evaluator-value");
+  var evaluatorList = q("#evaluator-list");
   var titleInput = q("#title-input");
   var titleError = q("#title-error");
   var yearInput = q("#year-input");
@@ -21105,6 +21111,7 @@ ${suffix}`;
   var addSubmitLabel = q("#add-submit-label");
   var addError = q("#add-error");
   async function swapTo(from, to, after) {
+    if (from === viewAdd) setEvaluatorOpen(false);
     from.classList.add("is-leaving");
     await sleep3(560);
     from.classList.remove("is-visible", "is-leaving");
@@ -25571,7 +25578,145 @@ ${suffix}`;
     window.clearTimeout(coverUrlTimer);
     addCoverSearch.clearSelection();
   });
+  var evaluatorOpen = false;
+  var evaluatorActiveIndex = 0;
+  var evaluatorCloseTimer;
+  var evaluatorValueAnimation;
+  function evaluatorIdentity(id) {
+    const identity = document.createElement("span");
+    identity.className = "evaluator__identity";
+    const avatars = document.createElement("span");
+    avatars.className = "evaluator__avatars" + (id ? "" : " evaluator__avatars--all");
+    avatars.setAttribute("aria-hidden", "true");
+    const info = profileCache.get(id);
+    for (const person of info ? [info] : [...profileCache.values()]) {
+      const avatar = document.createElement("span");
+      avatar.className = "evaluator__avatar";
+      setAvatarEl(avatar, person);
+      avatars.appendChild(avatar);
+    }
+    const name = document.createElement("span");
+    name.className = "evaluator__name";
+    name.textContent = info?.username ?? "\u0412\u0441\u0435 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438";
+    identity.append(avatars, name);
+    return identity;
+  }
+  function evaluatorOptions() {
+    return [...evaluatorList.querySelectorAll('[role="option"]')];
+  }
+  function highlightEvaluator(index, scroll = false) {
+    const options = evaluatorOptions();
+    evaluatorActiveIndex = Math.max(0, Math.min(index, options.length - 1));
+    options.forEach((option, i) => option.classList.toggle("is-active", i === evaluatorActiveIndex));
+    const active = options[evaluatorActiveIndex];
+    if (active && evaluatorOpen) {
+      evaluatorTrigger.setAttribute("aria-activedescendant", active.id);
+      if (scroll) active.scrollIntoView({ block: "nearest" });
+    }
+  }
+  function setEvaluatorOpen(open) {
+    if (open && (evaluatorField.hidden || !isAdmin())) return;
+    window.clearTimeout(evaluatorCloseTimer);
+    evaluatorOpen = open;
+    evaluatorPicker.classList.toggle("is-open", open);
+    evaluatorField.classList.toggle("is-open", open);
+    evaluatorTrigger.setAttribute("aria-expanded", String(open));
+    evaluatorList.setAttribute("aria-hidden", String(!open));
+    evaluatorList.inert = !open;
+    if (open) {
+      evaluatorField.classList.remove("is-closing");
+      artistList.hidden = true;
+      parentList.hidden = true;
+      highlightEvaluator(evaluatorOptions().findIndex((option) => option.dataset.value === evaluatorInput.value));
+    } else {
+      evaluatorTrigger.removeAttribute("aria-activedescendant");
+      evaluatorField.classList.add("is-closing");
+      evaluatorCloseTimer = window.setTimeout(() => evaluatorField.classList.remove("is-closing"), 200);
+    }
+  }
+  function selectEvaluator(id) {
+    if (id && !profileCache.has(id)) return;
+    evaluatorInput.value = id;
+    evaluatorValueAnimation?.cancel();
+    evaluatorValue.replaceChildren(evaluatorIdentity(id));
+    for (const option of evaluatorOptions()) {
+      option.setAttribute("aria-selected", String(option.dataset.value === id));
+    }
+    setEvaluatorOpen(false);
+    evaluatorTrigger.focus({ preventScroll: true });
+    evaluatorPicker.classList.remove("is-picked", "is-confirming");
+    void evaluatorTrigger.offsetWidth;
+    evaluatorPicker.classList.add("is-picked", "is-confirming");
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      evaluatorValueAnimation = evaluatorValue.animate([
+        { opacity: 0, transform: "translateY(4px)" },
+        { opacity: 1, transform: "translateY(0)" }
+      ], { duration: 240, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+    }
+    clearAddErrors();
+  }
+  function resetEvaluatorPicker() {
+    setEvaluatorOpen(false);
+    window.clearTimeout(evaluatorCloseTimer);
+    evaluatorField.classList.remove("is-closing");
+    evaluatorValueAnimation?.cancel();
+    evaluatorPicker.classList.remove("is-picked", "is-confirming");
+    evaluatorInput.value = "";
+    evaluatorValue.replaceChildren(evaluatorIdentity(""));
+    evaluatorList.replaceChildren();
+    for (const [index, id] of ["", ...profileCache.keys()].entries()) {
+      const option = document.createElement("li");
+      option.id = `evaluator-option-${index}`;
+      option.className = "evaluator__option";
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(id === ""));
+      option.dataset.value = id;
+      option.style.setProperty("--option-delay", `${index * 28}ms`);
+      option.appendChild(evaluatorIdentity(id));
+      const check = document.createElement("span");
+      check.className = "evaluator__option-check";
+      check.setAttribute("aria-hidden", "true");
+      check.innerHTML = CHECK_SVG;
+      option.appendChild(check);
+      evaluatorList.appendChild(option);
+    }
+    highlightEvaluator(0);
+  }
+  evaluatorTrigger.addEventListener("click", () => setEvaluatorOpen(!evaluatorOpen));
+  evaluatorTrigger.addEventListener("keydown", (event) => {
+    const { key } = event;
+    if (key === "Escape" && evaluatorOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      setEvaluatorOpen(false);
+    } else if (key === "Tab") {
+      setEvaluatorOpen(false);
+    } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(key)) {
+      event.preventDefault();
+      const wasOpen = evaluatorOpen;
+      if (!wasOpen) setEvaluatorOpen(true);
+      const last = evaluatorOptions().length - 1;
+      const index = key === "Home" ? 0 : key === "End" ? last : wasOpen ? evaluatorActiveIndex + (key === "ArrowDown" ? 1 : -1) : evaluatorActiveIndex;
+      highlightEvaluator(index, true);
+    } else if (key === "Enter" || key === " ") {
+      event.preventDefault();
+      if (evaluatorOpen) selectEvaluator(evaluatorOptions()[evaluatorActiveIndex]?.dataset.value ?? "");
+      else setEvaluatorOpen(true);
+    }
+  });
+  evaluatorList.addEventListener("pointerdown", (event) => event.preventDefault());
+  evaluatorList.addEventListener("click", (event) => {
+    const option = event.target.closest('[role="option"]');
+    if (option && evaluatorOpen) selectEvaluator(option.dataset.value ?? "");
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (evaluatorOpen && !evaluatorPicker.contains(event.target)) setEvaluatorOpen(false);
+  });
+  evaluatorPicker.addEventListener("focusout", (event) => {
+    if (!evaluatorPicker.contains(event.relatedTarget)) setEvaluatorOpen(false);
+  });
   function resetAddForm() {
+    setEvaluatorOpen(false);
     addForm.reset();
     pendingCover = null;
     coverImg.removeAttribute("src");
@@ -25588,9 +25733,8 @@ ${suffix}`;
   var addKind = "album";
   function applyAddMode(kind) {
     addKind = kind;
-    const evaluator = q("#evaluator-input");
-    q("#evaluator-field").hidden = !isAdmin();
-    evaluator.innerHTML = '<option value="">\u0412\u0441\u0435 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438 (\u043A\u0430\u043A \u0440\u0430\u043D\u044C\u0448\u0435)</option>' + [...profileCache].map(([id, info]) => `<option value="${esc(id)}">${esc(info.username)}</option>`).join("");
+    evaluatorField.hidden = !isAdmin();
+    resetEvaluatorPicker();
     const single = kind === "single";
     viewAdd.setAttribute("aria-label", single ? "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0441\u0438\u043D\u0433\u043B" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0430\u043B\u044C\u0431\u043E\u043C");
     addTitle.textContent = single ? "\u041D\u043E\u0432\u044B\u0439 \u0441\u0438\u043D\u0433\u043B" : "\u041D\u043E\u0432\u044B\u0439 \u0430\u043B\u044C\u0431\u043E\u043C";
@@ -25779,7 +25923,7 @@ ${suffix}`;
         coverDataUrl: pendingCover && pendingCover.startsWith("data:") ? pendingCover : null,
         coverUrl: pendingCover && !pendingCover.startsWith("data:") ? pendingCover : null,
         kind: addKind,
-        evaluatorId: isAdmin() ? q("#evaluator-input").value || null : null,
+        evaluatorId: isAdmin() ? evaluatorInput.value || null : null,
         parentIds
       });
       const added = createdId ? await attachSingleTracks(createdId, parentIds) : null;

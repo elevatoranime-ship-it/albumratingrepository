@@ -1301,6 +1301,12 @@ const artistBox = q<HTMLDivElement>('#artist-box');
 const artistField = q<HTMLDivElement>('#artist-field');
 const artistInput = q<HTMLInputElement>('#artist-input');
 const artistList = q<HTMLUListElement>('#artist-list');
+const evaluatorField = q<HTMLDivElement>('#evaluator-field');
+const evaluatorPicker = q<HTMLDivElement>('#evaluator-picker');
+const evaluatorInput = q<HTMLInputElement>('#evaluator-input');
+const evaluatorTrigger = q<HTMLButtonElement>('#evaluator-trigger');
+const evaluatorValue = q<HTMLSpanElement>('#evaluator-value');
+const evaluatorList = q<HTMLUListElement>('#evaluator-list');
 const titleInput = q<HTMLInputElement>('#title-input');
 const titleError = q<HTMLParagraphElement>('#title-error');
 const yearInput = q<HTMLInputElement>('#year-input');
@@ -1316,6 +1322,7 @@ const addError = q<HTMLParagraphElement>('#add-error');
 
 /* ---------- Переходы между экранами ---------- */
 async function swapTo(from: HTMLElement, to: HTMLElement, after?: () => void): Promise<void> {
+  if (from === viewAdd) setEvaluatorOpen(false);
   from.classList.add('is-leaving');
   await sleep(560);
   from.classList.remove('is-visible', 'is-leaving');
@@ -6343,7 +6350,159 @@ coverRemove.addEventListener('click', (e) => {
   addCoverSearch.clearSelection();
 });
 
+/* Кастомный select: фокус остаётся на combobox, стрелки перемещают активную
+   опцию, Enter/Space подтверждают. Escape/Tab не меняют выбранного участника. */
+let evaluatorOpen = false;
+let evaluatorActiveIndex = 0;
+let evaluatorCloseTimer: number | undefined;
+let evaluatorValueAnimation: Animation | undefined;
+
+function evaluatorIdentity(id: string): HTMLElement {
+  const identity = document.createElement('span');
+  identity.className = 'evaluator__identity';
+  const avatars = document.createElement('span');
+  avatars.className = 'evaluator__avatars' + (id ? '' : ' evaluator__avatars--all');
+  avatars.setAttribute('aria-hidden', 'true');
+  const info = profileCache.get(id);
+  for (const person of info ? [info] : [...profileCache.values()]) {
+    const avatar = document.createElement('span');
+    avatar.className = 'evaluator__avatar';
+    setAvatarEl(avatar, person);
+    avatars.appendChild(avatar);
+  }
+  const name = document.createElement('span');
+  name.className = 'evaluator__name';
+  name.textContent = info?.username ?? 'Все участники';
+  identity.append(avatars, name);
+  return identity;
+}
+
+function evaluatorOptions(): HTMLElement[] {
+  return [...evaluatorList.querySelectorAll<HTMLElement>('[role="option"]')];
+}
+
+function highlightEvaluator(index: number, scroll = false): void {
+  const options = evaluatorOptions();
+  evaluatorActiveIndex = Math.max(0, Math.min(index, options.length - 1));
+  options.forEach((option, i) => option.classList.toggle('is-active', i === evaluatorActiveIndex));
+  const active = options[evaluatorActiveIndex];
+  if (active && evaluatorOpen) {
+    evaluatorTrigger.setAttribute('aria-activedescendant', active.id);
+    if (scroll) active.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function setEvaluatorOpen(open: boolean): void {
+  if (open && (evaluatorField.hidden || !isAdmin())) return;
+  window.clearTimeout(evaluatorCloseTimer);
+  evaluatorOpen = open;
+  evaluatorPicker.classList.toggle('is-open', open);
+  evaluatorField.classList.toggle('is-open', open);
+  evaluatorTrigger.setAttribute('aria-expanded', String(open));
+  evaluatorList.setAttribute('aria-hidden', String(!open));
+  evaluatorList.inert = !open;
+  if (open) {
+    evaluatorField.classList.remove('is-closing');
+    artistList.hidden = true;
+    parentList.hidden = true;
+    highlightEvaluator(evaluatorOptions().findIndex((option) => option.dataset.value === evaluatorInput.value));
+  } else {
+    evaluatorTrigger.removeAttribute('aria-activedescendant');
+    // Не опускаем слой списка под следующие поля до окончания сворачивания.
+    evaluatorField.classList.add('is-closing');
+    evaluatorCloseTimer = window.setTimeout(() => evaluatorField.classList.remove('is-closing'), 200);
+  }
+}
+
+function selectEvaluator(id: string): void {
+  if (id && !profileCache.has(id)) return;
+  evaluatorInput.value = id;
+  evaluatorValueAnimation?.cancel();
+  evaluatorValue.replaceChildren(evaluatorIdentity(id));
+  for (const option of evaluatorOptions()) {
+    option.setAttribute('aria-selected', String(option.dataset.value === id));
+  }
+  setEvaluatorOpen(false);
+  evaluatorTrigger.focus({ preventScroll: true });
+  // Та же обратная связь, что у артиста: лавандовая рамка, лёгкий пульс,
+  // рисующаяся галочка. Пульсируем только полем, не всем блоком со списком.
+  evaluatorPicker.classList.remove('is-picked', 'is-confirming');
+  void evaluatorTrigger.offsetWidth;
+  evaluatorPicker.classList.add('is-picked', 'is-confirming');
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    evaluatorValueAnimation = evaluatorValue.animate([
+      { opacity: 0, transform: 'translateY(4px)' },
+      { opacity: 1, transform: 'translateY(0)' },
+    ], { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+  }
+  clearAddErrors();
+}
+
+function resetEvaluatorPicker(): void {
+  setEvaluatorOpen(false);
+  window.clearTimeout(evaluatorCloseTimer);
+  evaluatorField.classList.remove('is-closing');
+  evaluatorValueAnimation?.cancel();
+  evaluatorPicker.classList.remove('is-picked', 'is-confirming');
+  evaluatorInput.value = '';
+  evaluatorValue.replaceChildren(evaluatorIdentity(''));
+  evaluatorList.replaceChildren();
+  for (const [index, id] of ['', ...profileCache.keys()].entries()) {
+    const option = document.createElement('li');
+    option.id = `evaluator-option-${index}`;
+    option.className = 'evaluator__option';
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(id === ''));
+    option.dataset.value = id;
+    option.style.setProperty('--option-delay', `${index * 28}ms`);
+    option.appendChild(evaluatorIdentity(id));
+    const check = document.createElement('span');
+    check.className = 'evaluator__option-check';
+    check.setAttribute('aria-hidden', 'true');
+    check.innerHTML = CHECK_SVG;
+    option.appendChild(check);
+    evaluatorList.appendChild(option);
+  }
+  highlightEvaluator(0);
+}
+
+evaluatorTrigger.addEventListener('click', () => setEvaluatorOpen(!evaluatorOpen));
+evaluatorTrigger.addEventListener('keydown', (event) => {
+  const { key } = event;
+  if (key === 'Escape' && evaluatorOpen) {
+    event.preventDefault();
+    event.stopPropagation(); // не уходить со страницы добавления
+    setEvaluatorOpen(false);
+  } else if (key === 'Tab') {
+    setEvaluatorOpen(false);
+  } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(key)) {
+    event.preventDefault();
+    const wasOpen = evaluatorOpen;
+    if (!wasOpen) setEvaluatorOpen(true);
+    const last = evaluatorOptions().length - 1;
+    const index = key === 'Home' ? 0 : key === 'End' ? last
+      : wasOpen ? evaluatorActiveIndex + (key === 'ArrowDown' ? 1 : -1) : evaluatorActiveIndex;
+    highlightEvaluator(index, true);
+  } else if (key === 'Enter' || key === ' ') {
+    event.preventDefault(); // не отправлять форму и не генерировать второй click
+    if (evaluatorOpen) selectEvaluator(evaluatorOptions()[evaluatorActiveIndex]?.dataset.value ?? '');
+    else setEvaluatorOpen(true);
+  }
+});
+evaluatorList.addEventListener('pointerdown', (event) => event.preventDefault());
+evaluatorList.addEventListener('click', (event) => {
+  const option = (event.target as HTMLElement).closest<HTMLElement>('[role="option"]');
+  if (option && evaluatorOpen) selectEvaluator(option.dataset.value ?? '');
+});
+document.addEventListener('pointerdown', (event) => {
+  if (evaluatorOpen && !evaluatorPicker.contains(event.target as Node)) setEvaluatorOpen(false);
+});
+evaluatorPicker.addEventListener('focusout', (event) => {
+  if (!evaluatorPicker.contains(event.relatedTarget as Node | null)) setEvaluatorOpen(false);
+});
+
 function resetAddForm(): void {
+  setEvaluatorOpen(false);
   addForm.reset();
   pendingCover = null;
   coverImg.removeAttribute('src');
@@ -6364,10 +6523,8 @@ let addKind: ReleaseKind = 'album';
 
 function applyAddMode(kind: ReleaseKind): void {
   addKind = kind;
-  const evaluator = q<HTMLSelectElement>('#evaluator-input');
-  q<HTMLElement>('#evaluator-field').hidden = !isAdmin();
-  evaluator.innerHTML = '<option value="">Все участники (как раньше)</option>' + [...profileCache]
-    .map(([id, info]) => `<option value="${esc(id)}">${esc(info.username)}</option>`).join('');
+  evaluatorField.hidden = !isAdmin();
+  resetEvaluatorPicker();
   const single = kind === 'single';
   viewAdd.setAttribute('aria-label', single ? 'Добавить сингл' : 'Добавить альбом');
   addTitle.textContent = single ? 'Новый сингл' : 'Новый альбом';
@@ -6568,7 +6725,7 @@ async function handleAdd(): Promise<void> {
       coverDataUrl: pendingCover && pendingCover.startsWith('data:') ? pendingCover : null,
       coverUrl: pendingCover && !pendingCover.startsWith('data:') ? pendingCover : null,
       kind: addKind,
-      evaluatorId: isAdmin() ? q<HTMLSelectElement>('#evaluator-input').value || null : null,
+      evaluatorId: isAdmin() ? evaluatorInput.value || null : null,
       parentIds,
     });
     // Сингл с привязкой сразу становится треком альбома (в конец списка).

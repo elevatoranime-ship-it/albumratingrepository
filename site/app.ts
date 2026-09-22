@@ -4,6 +4,8 @@
    его треков. Данные: Supabase (облако) или localStorage (демо).
    ========================================================================== */
 
+import { canEvaluate, sameEvaluators, requiredEvaluators, allRatingsConfirmed } from './rating-access';
+
 import { createClient, type SupabaseClient, type RealtimeChannel } from '@supabase/supabase-js';
 
 /* ---------- Конфигурация (config.js) ---------- */
@@ -39,6 +41,7 @@ interface ProfileInfo { id: string; email: string; username: string; initials: s
 /** Тип релиза: полноценный альбом или сингл (один трек, оценка ставится релизу целиком). */
 type ReleaseKind = 'album' | 'single';
 interface UiAlbum {
+  evaluatorId?: string | null; // null — все участники; иначе единственный оценивающий
   id: string; artist: string; title: string; year: number; cover: string;
   kind: ReleaseKind;            // 'album' | 'single'
   parentId: string | null;      // первый альбом, совместимость со старыми данными
@@ -53,6 +56,7 @@ interface TrackRating { score: number; confirmed: boolean; }
 type RatingMap = Record<string, Record<string, TrackRating>>;
 interface PendingRating { value: TrackRating | null; savedAfterRead?: number; failed?: boolean; }
 interface AddInput {
+  evaluatorId?: string | null;
   artist: string; title: string; year: number;
   coverDataUrl: string | null;
   coverUrl: string | null;
@@ -158,6 +162,7 @@ function normalizeAlbum(a: Partial<UiAlbum> & { id: string; artist: string; titl
     title: a.title,
     year: a.year,
     cover: a.cover ?? '',
+    evaluatorId: a.evaluatorId ?? null,
     kind: a.kind === 'single' ? 'single' : 'album',
     parentId: a.parentIds?.[0] ?? (a.parentIds ? null : a.parentId ?? null),
     ...(a.kind === 'single' ? { parentIds: [...new Set(a.parentIds ?? (a.parentId ? [a.parentId] : []))] } : {}),
@@ -309,10 +314,11 @@ async function refreshData(signal?: AbortSignal): Promise<void> {
       if (me) currentUser.username = me.username, currentUser.avatarUrl = me.avatarUrl;
     }
 
-    albums = ((aa.data ?? []) as Array<{ id: string; artist: string; title: string; year: number; cover_url: string | null; tracks_locked: boolean | null; cohesion: number | null; album_type: string | null; kind: string | null; parent_album_id: string | null; parent_album_ids?: string[] | null; genius_song_id?: number | null }>)
+    albums = ((aa.data ?? []) as Array<{ id: string; artist: string; title: string; year: number; cover_url: string | null; tracks_locked: boolean | null; cohesion: number | null; album_type: string | null; kind: string | null; parent_album_id: string | null; parent_album_ids?: string[] | null; genius_song_id?: number | null; evaluator_id?: string | null }>)
       .map((x) => normalizeAlbum({
         id: x.id, artist: x.artist, title: x.title, year: x.year, cover: x.cover_url ?? '', geniusId: x.genius_song_id != null ? String(x.genius_song_id) : null,
         kind: x.kind === 'single' ? 'single' : 'album',
+        evaluatorId: x.evaluator_id ?? null,
         parentId: x.parent_album_id ?? null,
         parentIds: x.parent_album_ids ?? undefined,
         tracksLocked: Boolean(x.tracks_locked), cohesion: x.cohesion ?? null, albumType: x.album_type ?? null,
@@ -507,6 +513,7 @@ function renderSynchronizedData(changed: boolean): void {
   if (viewSingle.classList.contains('is-visible')) {
     const s = currentSingle();
     if (s) {
+      renderEvaluator(s, '#sv-evaluator');
       if (svTitle.textContent !== singleDisplayTitle(s)) svTitle.textContent = singleDisplayTitle(s);
       const artistHtml = singleArtistHTML(s, 'sv__artist-link');
       if (svArtist.innerHTML !== artistHtml) svArtist.innerHTML = artistHtml;
@@ -525,6 +532,7 @@ function renderSynchronizedData(changed: boolean): void {
   if (viewAlbum.classList.contains('is-visible')) {
     const al = currentAlbum();
     if (al) {
+      renderEvaluator(al, '#av-evaluator');
       avTitle.textContent = al.title;
       if (avArtist.querySelector<HTMLElement>('[data-artist]')?.dataset.artist !== al.artist) {
         avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
@@ -776,32 +784,41 @@ function peerRatingOf(trackId: string): { score: number; confirmed: boolean; use
   return null;
 }
 
-/* обе оценки сингла подтверждены — релиз целиком «зафиксирован» */
+/* Все требуемые оценки подтверждены — релиз целиком «зафиксирован». */
 function singleAllConfirmed(singleId: string): boolean {
-  if (profileCache.size < 2) return false;
-  const r = singleRatings[singleId];
-  if (!r) return false;
-  for (const pid of profileCache.keys()) {
-    const e = r[pid];
-    if (!e || !e.confirmed) return false;
-  }
-  return true;
+  const release = singleById(singleId);
+  return Boolean(release && allRatingsConfirmed(release, profileCache.keys(), [singleRatings[singleId]]));
 }
 
-/* итог подтверждён, когда оба участника подтвердили оценку каждого трека */
+/* Для персонального альбома достаточно подтверждения всех треков назначенным участником. */
 function albumAllConfirmed(albumId: string): boolean {
-  if (profileCache.size < 2) return false;
-  const list = tracks.filter((t) => t.albumId === albumId);
-  if (!list.length) return false;
-  for (const t of list) {
-    const r = trackRatings[t.id];
-    if (!r) return false;
-    for (const pid of profileCache.keys()) {
-      const e = r[pid];
-      if (!e || !e.confirmed) return false;
+  const release = albums.find((a) => a.id === albumId);
+  return Boolean(release && allRatingsConfirmed(release, profileCache.keys(),
+    tracks.filter((t) => t.albumId === albumId).map((t) => trackRatings[t.id])));
+}
+
+function trackRelease(trackId: string): UiAlbum | undefined {
+  const track = tracks.find((t) => t.id === trackId);
+  return albums.find((a) => a.id === track?.albumId);
+}
+function canRateTrack(trackId: string): boolean {
+  return canEvaluate(trackRelease(trackId), currentUser?.id);
+}
+function renderEvaluator(release: UiAlbum, selector: string): void {
+  const el = q<HTMLElement>(selector);
+  el.hidden = !release.evaluatorId;
+  const name = profileCache.get(release.evaluatorId ?? '')?.username ?? 'назначенный участник';
+  el.textContent = `Оценивает только ${name}. ` + (canEvaluate(release, currentUser?.id)
+    ? 'Вашей полной подтверждённой оценки достаточно для рейтинга.'
+    : 'Вам доступны просмотр оценок и обычное редактирование, но не оценивание и выбор целостности.');
+}
+function assertCompatibleParents(release: { evaluatorId?: string | null }, ids: string[]): void {
+  for (const id of ids) {
+    const parent = albums.find((a) => a.id === id && a.kind === 'album');
+    if (!parent || !sameEvaluators(release, parent)) {
+      throw new Error(`У сингла и альбома «${parent?.title ?? id}» должны совпадать оценивающие участники`);
     }
   }
-  return true;
 }
 
 function trackCountOf(albumId: string): number {
@@ -1284,6 +1301,12 @@ const artistBox = q<HTMLDivElement>('#artist-box');
 const artistField = q<HTMLDivElement>('#artist-field');
 const artistInput = q<HTMLInputElement>('#artist-input');
 const artistList = q<HTMLUListElement>('#artist-list');
+const evaluatorField = q<HTMLDivElement>('#evaluator-field');
+const evaluatorPicker = q<HTMLDivElement>('#evaluator-picker');
+const evaluatorInput = q<HTMLInputElement>('#evaluator-input');
+const evaluatorTrigger = q<HTMLButtonElement>('#evaluator-trigger');
+const evaluatorValue = q<HTMLSpanElement>('#evaluator-value');
+const evaluatorList = q<HTMLUListElement>('#evaluator-list');
 const titleInput = q<HTMLInputElement>('#title-input');
 const titleError = q<HTMLParagraphElement>('#title-error');
 const yearInput = q<HTMLInputElement>('#year-input');
@@ -1299,6 +1322,7 @@ const addError = q<HTMLParagraphElement>('#add-error');
 
 /* ---------- Переходы между экранами ---------- */
 async function swapTo(from: HTMLElement, to: HTMLElement, after?: () => void): Promise<void> {
+  if (from === viewAdd) setEvaluatorOpen(false);
   from.classList.add('is-leaving');
   await sleep(560);
   from.classList.remove('is-visible', 'is-leaving');
@@ -1536,6 +1560,7 @@ function renderAlbumCover(al: UiAlbum): void {
 }
 
 function renderAlbumPage(al: UiAlbum): void {
+  renderEvaluator(al, '#av-evaluator');
   avTitle.textContent = al.title;
   avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
   avYear.textContent = String(al.year);
@@ -1832,6 +1857,7 @@ function renderImpact(): void {
 
   const rows: Array<{ id: string; username: string; initials: string; avatarUrl: string | null; mean: number | null; n: number }> = [];
   for (const [pid, info] of profileCache) {
+    if (!requiredEvaluators(currentAlbum() ?? {}, profileCache.keys()).includes(pid)) continue;
     let sum = 0, n = 0;
     for (const t of list) {
       const v = trackRatings[t.id]?.[pid];
@@ -1908,7 +1934,9 @@ function renderFinalize(animateKind?: 'cohesion' | 'type'): void {
     return;
   }
   cohesionControl.innerHTML = al.cohesion === null
-    ? finSelectHTML('cohesion', COHESION_OPTIONS.map((o, i) => ({ value: String(i + 1), label: o })))
+    ? (canEvaluate(al, currentUser?.id)
+      ? finSelectHTML('cohesion', COHESION_OPTIONS.map((o, i) => ({ value: String(i + 1), label: o })))
+      : '<p class="cover-pick__note">Выбирает назначенный участник</p>')
     : finalBadgeHTML(COHESION_OPTIONS[al.cohesion - 1] ?? '—', animateKind === 'cohesion');
   typeControl.innerHTML = al.albumType === null
     ? finSelectHTML('type', TYPE_OPTIONS)
@@ -1965,6 +1993,7 @@ async function onFinalizePick(kind: string, value: string, label: string): Promi
   if (!value) return;
 
   const isCohesion = kind === 'cohesion';
+  if (isCohesion && !canEvaluate(al, currentUser?.id)) { renderFinalize(); return; }
   const current = isCohesion ? al.cohesion : al.albumType;
   if (current !== null) { renderFinalize(); return; } // уже финально
 
@@ -1987,14 +2016,13 @@ async function onFinalizePick(kind: string, value: string, label: string): Promi
 
 async function saveCohesion(v: number): Promise<void> {
   const al = currentAlbum();
-  if (!al) return;
+  if (!al || !canEvaluate(al, currentUser?.id)) return;
   if (CLOUD) {
     const { error } = await getSB().from('albums').update({ cohesion: v }).eq('id', al.id);
     if (error) throw error;
-  } else {
-    saveLocalAlbums();
   }
   al.cohesion = v;
+  if (!CLOUD) saveLocalAlbums();
   renderFinalize('cohesion');
 }
 
@@ -2004,10 +2032,9 @@ async function saveAlbumType(v: string): Promise<void> {
   if (CLOUD) {
     const { error } = await getSB().from('albums').update({ album_type: v }).eq('id', al.id);
     if (error) throw error;
-  } else {
-    saveLocalAlbums();
   }
   al.albumType = v;
+  if (!CLOUD) saveLocalAlbums();
   renderFinalize('type');
 }
 
@@ -2100,7 +2127,7 @@ function setTrackSave(trackId: string, s: 'save' | 'done' | 'err' | ''): void {
 }
 
 function setTrackRating(trackId: string, v: number): void {
-  if (!currentUser) return;
+  if (!currentUser || !canRateTrack(trackId)) return;
   const prev = trackRatings[trackId]?.[currentUser.id];
   (trackRatings[trackId] ??= {})[currentUser.id] = { score: v, confirmed: prev?.confirmed === true };
   if (!CLOUD) saveLocalRatings();
@@ -2110,7 +2137,7 @@ function setTrackRating(trackId: string, v: number): void {
 }
 
 function clearTrackRating(trackId: string): void {
-  if (!currentUser) return;
+  if (!currentUser || !canRateTrack(trackId)) return;
   const r = trackRatings[trackId];
   if (r) {
     delete r[currentUser.id];
@@ -2145,7 +2172,7 @@ function scheduleTrackSave(trackId: string): void {
 }
 
 function persistTrackRating(trackId: string): Promise<void> {
-  if (!currentUser) return Promise.resolve();
+  if (!currentUser || !canRateTrack(trackId)) return Promise.resolve();
   window.clearTimeout(saveTimers.get(trackId));
   saveTimers.delete(trackId);
   const existing = ratingWrites.get(trackId);
@@ -2192,7 +2219,7 @@ function persistTrackRating(trackId: string): Promise<void> {
 
 /* Подтверждение использует ту же очередь, что и изменение балла. */
 async function toggleRatingConfirm(trackId: string): Promise<void> {
-  if (!currentUser) return;
+  if (!currentUser || !canRateTrack(trackId)) return;
   const entry = trackRatings[trackId]?.[currentUser.id];
   if (!entry) return;
   const epoch = syncEpoch;
@@ -2242,12 +2269,13 @@ function setConfirmIcon(btn: HTMLButtonElement, confirmed: boolean): void {
 }
 
 function applyRatingLockState(li: HTMLLIElement, confirmed: boolean): void {
-  li.classList.toggle('is-rated-locked', confirmed);
+  const permitted = canRateTrack(li.dataset.id ?? '');
+  li.classList.toggle('is-rated-locked', confirmed || !permitted);
   const slider = li.querySelector<HTMLInputElement>('.track__slider');
   const num = li.querySelector<HTMLInputElement>('.track__numinput');
   const btn = li.querySelector<HTMLButtonElement>('.track__confirm-btn');
-  if (slider) slider.disabled = confirmed;
-  if (num) num.disabled = confirmed;
+  if (slider) slider.disabled = confirmed || !permitted;
+  if (num) num.disabled = confirmed || !permitted;
   if (btn) {
     setConfirmIcon(btn, confirmed);
     btn.title = confirmed ? 'Изменить оценку' : 'Подтвердить оценку';
@@ -2309,7 +2337,7 @@ function syncTrackRatingControls(): void {
     }
     applyRatingLockState(li, mine?.confirmed === true);
     const confirm = li.querySelector<HTMLButtonElement>('.track__confirm-btn');
-    if (confirm) confirm.disabled = !mine;
+    if (confirm) confirm.disabled = !mine || !canRateTrack(id);
     const html = peerRatingHTML(id);
     if (li.dataset.peerHtml !== html) {
       li.querySelector('.track__peer')?.remove();
@@ -2332,6 +2360,7 @@ function renderTracks(enterId?: string): void {
     const mine = trackRatings[t.id]?.[myId];
     const mineScore = typeof mine?.score === 'number' ? mine.score : undefined;
     const mineConfirmed = mine?.confirmed === true;
+    const permitted = canRateTrack(t.id);
     const tavg = trackScoreOf(t.id);
     const tavgStr = tavg === null ? '—' : fmt(tavg);
     const mineStr = typeof mineScore === 'number' ? fmt(mineScore) : '';
@@ -2343,7 +2372,7 @@ function renderTracks(enterId?: string): void {
     li.className = 'track';
     if (t.locked) li.classList.add('is-locked');
     if (locked) li.classList.add('is-frozen');
-    if (mineConfirmed) li.classList.add('is-rated-locked');
+    if (mineConfirmed || !permitted) li.classList.add('is-rated-locked');
     if (single) li.classList.add('track--single');
     li.dataset.id = t.id;
     if (single) li.dataset.singleId = single.id;
@@ -2373,10 +2402,10 @@ function renderTracks(enterId?: string): void {
         <span class="track__actions">${actions}</span>
       </div>
       <div class="track__row2">
-        <span class="track__rate-label">моя оценка</span>
-        <input class="track__slider" type="range" min="0" max="10" step="0.01" value="${typeof mineScore === 'number' ? mineScore : 5}" aria-label="Моя оценка"${mineConfirmed ? ' disabled' : ''} />
-        <input class="track__numinput" type="number" min="0" max="10" step="0.01" inputmode="decimal" placeholder="—" value="${mineStr}"${mineConfirmed ? ' disabled' : ''} />
-        <button class="track__confirm-btn" type="button"${typeof mineScore === 'number' ? '' : ' disabled'} aria-label="${mineConfirmed ? 'Изменить оценку' : 'Подтвердить оценку'}" title="${mineConfirmed ? 'Изменить оценку' : 'Подтвердить оценку'}">${mineConfirmed ? PENCIL_SVG : CHECK_SVG}</button>
+        <span class="track__rate-label">${permitted ? 'моя оценка' : 'без права оценки'}</span>
+        <input class="track__slider" type="range" min="0" max="10" step="0.01" value="${typeof mineScore === 'number' ? mineScore : 5}" aria-label="Моя оценка"${mineConfirmed || !permitted ? ' disabled' : ''} />
+        <input class="track__numinput" type="number" min="0" max="10" step="0.01" inputmode="decimal" placeholder="—" value="${mineStr}"${mineConfirmed || !permitted ? ' disabled' : ''} />
+        <button class="track__confirm-btn" type="button"${permitted && typeof mineScore === 'number' ? '' : ' disabled'} aria-label="${mineConfirmed ? 'Изменить оценку' : 'Подтвердить оценку'}" title="${mineConfirmed ? 'Изменить оценку' : 'Подтвердить оценку'}">${mineConfirmed ? PENCIL_SVG : CHECK_SVG}</button>
         <span class="track__save" aria-live="polite"></span>
       </div>`;
 
@@ -3363,16 +3392,10 @@ function trackVotesOf(trackId: string): number {
   return r ? Object.keys(r).length : 0;
 }
 
-/* обе оценки трека подтверждены — трек попадает в рейтинг */
+/* Все требуемые оценки трека подтверждены — трек попадает в рейтинг. */
 function trackAllConfirmed(trackId: string): boolean {
-  if (profileCache.size < 2) return false;
-  const r = trackRatings[trackId];
-  if (!r) return false;
-  for (const pid of profileCache.keys()) {
-    const e = r[pid];
-    if (!e || !e.confirmed) return false;
-  }
-  return true;
+  const release = trackRelease(trackId);
+  return Boolean(release && allRatingsConfirmed(release, profileCache.keys(), [trackRatings[trackId]]));
 }
 
 function trackRankedScoreOf(trackId: string): number | null {
@@ -3850,6 +3873,7 @@ function handleParentClick(e: MouseEvent): boolean {
 }
 
 function renderSinglePage(s: UiAlbum): void {
+  renderEvaluator(s, '#sv-evaluator');
   svTitle.textContent = singleDisplayTitle(s);
   svArtist.innerHTML = singleArtistHTML(s, 'sv__artist-link');
   svYear.textContent = String(s.year);
@@ -3868,6 +3892,7 @@ function renderSinglePage(s: UiAlbum): void {
   updateSingleDisplays();
   svNote.textContent = singlesUnavailable()
     ? 'раздел синглов не подключён к базе: выполните migrate.sql в Supabase'
+    : !canEvaluate(s, currentUser?.id) ? 'Этот сингл оценивает назначенный участник. Его оценка видна вам на этой странице.'
     : 'передвиньте ползунок или введите число, затем подтвердите — до подтверждения балл не влияет на рейтинг';
 }
 
@@ -3904,7 +3929,7 @@ function renderSingleImpact(): void {
   if (!r || !Object.keys(r).length) { svImpact.hidden = true; return; }
   svImpact.hidden = false;
 
-  const rows = [...profileCache].map(([pid, info]) => ({
+  const rows = [...profileCache].filter(([pid]) => requiredEvaluators(s, profileCache.keys()).includes(pid)).map(([pid, info]) => ({
     id: pid, username: info.username, initials: info.initials, avatarUrl: info.avatarUrl,
     value: r[pid] ?? null,
   }));
@@ -3974,9 +3999,11 @@ function syncSingleControls(): void {
     svNum.value = mine ? fmt(mine.score) : '';
   }
   const confirmed = mine?.confirmed === true;
-  svSlider.disabled = confirmed;
-  svNum.disabled = confirmed;
-  svConfirmBtn.disabled = !mine;
+  const permitted = canEvaluate(s, currentUser?.id);
+  q<HTMLElement>('.sv__rate-label').textContent = permitted ? 'моя оценка' : 'без права оценки';
+  svSlider.disabled = confirmed || !permitted;
+  svNum.disabled = confirmed || !permitted;
+  svConfirmBtn.disabled = !mine || !permitted;
   setConfirmIcon(svConfirmBtn, confirmed);
   const label = confirmed ? 'Изменить оценку' : 'Подтвердить оценку';
   svConfirmBtn.title = label;
@@ -3996,7 +4023,7 @@ function syncSingleControls(): void {
 
 function setSingleRating(v: number): void {
   const s = currentSingle();
-  if (!s || !currentUser) return;
+  if (!s || !currentUser || !canEvaluate(s, currentUser.id)) return;
   const prev = singleRatings[s.id]?.[currentUser.id];
   (singleRatings[s.id] ??= {})[currentUser.id] = { score: v, confirmed: prev?.confirmed === true };
   if (!CLOUD) saveLocalSingleRatings();
@@ -4007,7 +4034,7 @@ function setSingleRating(v: number): void {
 
 function clearSingleRating(): void {
   const s = currentSingle();
-  if (!s || !currentUser) return;
+  if (!s || !currentUser || !canEvaluate(s, currentUser.id)) return;
   const r = singleRatings[s.id];
   if (r) {
     delete r[currentUser.id];
@@ -4128,7 +4155,7 @@ function mirrorSingleToTracks(singleId: string, immediate = false, exceptTrackId
 }
 
 function persistSingleRating(singleId: string): Promise<void> {
-  if (!currentUser) return Promise.resolve();
+  if (!currentUser || !canEvaluate(singleById(singleId), currentUser.id)) return Promise.resolve();
   window.clearTimeout(singleSaveTimers.get(singleId));
   singleSaveTimers.delete(singleId);
   const existing = singleWrites.get(singleId);
@@ -4176,7 +4203,7 @@ function persistSingleRating(singleId: string): Promise<void> {
 /* Подтверждение идёт через ту же очередь записи, что и изменение балла. */
 async function toggleSingleConfirm(): Promise<void> {
   const s = currentSingle();
-  if (!s || !currentUser) return;
+  if (!s || !currentUser || !canEvaluate(s, currentUser.id)) return;
   const entry = singleRatings[s.id]?.[currentUser.id];
   if (!entry) return;
   const epoch = syncEpoch;
@@ -4410,6 +4437,7 @@ async function saveSingleLink(parentIds: string[]): Promise<void> {
   if (JSON.stringify(parentIdsOf(single)) === JSON.stringify(parentIds)) { closeSingleLinkEditor(); return; }
   singleLinkSave.classList.add('is-loading');
   try {
+    assertCompatibleParents(single, parentIds);
     if (CLOUD) {
       const { error } = await getSB().from('albums').update({ parent_album_id: parentIds[0] ?? null, parent_album_ids: parentIds }).eq('id', id);
       if (error) throw error;
@@ -4531,6 +4559,7 @@ async function attachSingleTrack(singleId: string, parentId: string): Promise<st
   const single = singleById(singleId);
   const al = albums.find((a) => a.id === parentId && a.kind === 'album');
   if (!single || !al) return null;
+  assertCompatibleParents(single, [parentId]);
   if (al.tracksLocked) {
     return 'Сингл привязан, но треки альбома зафиксированы — в списке треков он не появился';
   }
@@ -4610,6 +4639,7 @@ async function markTrackAsSingle(t: UiTrack): Promise<void> {
           kind: 'single',
           parent_album_id: al.id,
           created_by: currentUser.id,
+          ...(al.evaluatorId ? { evaluator_id: al.evaluatorId } : {}),
         }).select('id').single();
         if (ins.error) {
           if (ins.error.code === '23505') throw new Error('Такой сингл у этого артиста уже есть');
@@ -4626,6 +4656,7 @@ async function markTrackAsSingle(t: UiTrack): Promise<void> {
         const singleId = 's' + Date.now().toString(36);
         albums.push({
           id: singleId, artist: al.artist, title: singleTitle, year: al.year, cover: '',
+          evaluatorId: al.evaluatorId ?? null,
           kind: 'single', parentId: al.id, tracksLocked: false, cohesion: null, albumType: null,
         });
         tracks = tracks.map((x) => (x.id === t.id ? { ...x, title: cleanTitle, featArtist: guest || null, singleId } : x));
@@ -6319,7 +6350,159 @@ coverRemove.addEventListener('click', (e) => {
   addCoverSearch.clearSelection();
 });
 
+/* Кастомный select: фокус остаётся на combobox, стрелки перемещают активную
+   опцию, Enter/Space подтверждают. Escape/Tab не меняют выбранного участника. */
+let evaluatorOpen = false;
+let evaluatorActiveIndex = 0;
+let evaluatorCloseTimer: number | undefined;
+let evaluatorValueAnimation: Animation | undefined;
+
+function evaluatorIdentity(id: string): HTMLElement {
+  const identity = document.createElement('span');
+  identity.className = 'evaluator__identity';
+  const avatars = document.createElement('span');
+  avatars.className = 'evaluator__avatars' + (id ? '' : ' evaluator__avatars--all');
+  avatars.setAttribute('aria-hidden', 'true');
+  const info = profileCache.get(id);
+  for (const person of info ? [info] : [...profileCache.values()]) {
+    const avatar = document.createElement('span');
+    avatar.className = 'evaluator__avatar';
+    setAvatarEl(avatar, person);
+    avatars.appendChild(avatar);
+  }
+  const name = document.createElement('span');
+  name.className = 'evaluator__name';
+  name.textContent = info?.username ?? 'Все участники';
+  identity.append(avatars, name);
+  return identity;
+}
+
+function evaluatorOptions(): HTMLElement[] {
+  return [...evaluatorList.querySelectorAll<HTMLElement>('[role="option"]')];
+}
+
+function highlightEvaluator(index: number, scroll = false): void {
+  const options = evaluatorOptions();
+  evaluatorActiveIndex = Math.max(0, Math.min(index, options.length - 1));
+  options.forEach((option, i) => option.classList.toggle('is-active', i === evaluatorActiveIndex));
+  const active = options[evaluatorActiveIndex];
+  if (active && evaluatorOpen) {
+    evaluatorTrigger.setAttribute('aria-activedescendant', active.id);
+    if (scroll) active.scrollIntoView({ block: 'nearest' });
+  }
+}
+
+function setEvaluatorOpen(open: boolean): void {
+  if (open && (evaluatorField.hidden || !isAdmin())) return;
+  window.clearTimeout(evaluatorCloseTimer);
+  evaluatorOpen = open;
+  evaluatorPicker.classList.toggle('is-open', open);
+  evaluatorField.classList.toggle('is-open', open);
+  evaluatorTrigger.setAttribute('aria-expanded', String(open));
+  evaluatorList.setAttribute('aria-hidden', String(!open));
+  evaluatorList.inert = !open;
+  if (open) {
+    evaluatorField.classList.remove('is-closing');
+    artistList.hidden = true;
+    parentList.hidden = true;
+    highlightEvaluator(evaluatorOptions().findIndex((option) => option.dataset.value === evaluatorInput.value));
+  } else {
+    evaluatorTrigger.removeAttribute('aria-activedescendant');
+    // Не опускаем слой списка под следующие поля до окончания сворачивания.
+    evaluatorField.classList.add('is-closing');
+    evaluatorCloseTimer = window.setTimeout(() => evaluatorField.classList.remove('is-closing'), 200);
+  }
+}
+
+function selectEvaluator(id: string): void {
+  if (id && !profileCache.has(id)) return;
+  evaluatorInput.value = id;
+  evaluatorValueAnimation?.cancel();
+  evaluatorValue.replaceChildren(evaluatorIdentity(id));
+  for (const option of evaluatorOptions()) {
+    option.setAttribute('aria-selected', String(option.dataset.value === id));
+  }
+  setEvaluatorOpen(false);
+  evaluatorTrigger.focus({ preventScroll: true });
+  // Та же обратная связь, что у артиста: лавандовая рамка, лёгкий пульс,
+  // рисующаяся галочка. Пульсируем только полем, не всем блоком со списком.
+  evaluatorPicker.classList.remove('is-picked', 'is-confirming');
+  void evaluatorTrigger.offsetWidth;
+  evaluatorPicker.classList.add('is-picked', 'is-confirming');
+  if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    evaluatorValueAnimation = evaluatorValue.animate([
+      { opacity: 0, transform: 'translateY(4px)' },
+      { opacity: 1, transform: 'translateY(0)' },
+    ], { duration: 240, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' });
+  }
+  clearAddErrors();
+}
+
+function resetEvaluatorPicker(): void {
+  setEvaluatorOpen(false);
+  window.clearTimeout(evaluatorCloseTimer);
+  evaluatorField.classList.remove('is-closing');
+  evaluatorValueAnimation?.cancel();
+  evaluatorPicker.classList.remove('is-picked', 'is-confirming');
+  evaluatorInput.value = '';
+  evaluatorValue.replaceChildren(evaluatorIdentity(''));
+  evaluatorList.replaceChildren();
+  for (const [index, id] of ['', ...profileCache.keys()].entries()) {
+    const option = document.createElement('li');
+    option.id = `evaluator-option-${index}`;
+    option.className = 'evaluator__option';
+    option.setAttribute('role', 'option');
+    option.setAttribute('aria-selected', String(id === ''));
+    option.dataset.value = id;
+    option.style.setProperty('--option-delay', `${index * 28}ms`);
+    option.appendChild(evaluatorIdentity(id));
+    const check = document.createElement('span');
+    check.className = 'evaluator__option-check';
+    check.setAttribute('aria-hidden', 'true');
+    check.innerHTML = CHECK_SVG;
+    option.appendChild(check);
+    evaluatorList.appendChild(option);
+  }
+  highlightEvaluator(0);
+}
+
+evaluatorTrigger.addEventListener('click', () => setEvaluatorOpen(!evaluatorOpen));
+evaluatorTrigger.addEventListener('keydown', (event) => {
+  const { key } = event;
+  if (key === 'Escape' && evaluatorOpen) {
+    event.preventDefault();
+    event.stopPropagation(); // не уходить со страницы добавления
+    setEvaluatorOpen(false);
+  } else if (key === 'Tab') {
+    setEvaluatorOpen(false);
+  } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(key)) {
+    event.preventDefault();
+    const wasOpen = evaluatorOpen;
+    if (!wasOpen) setEvaluatorOpen(true);
+    const last = evaluatorOptions().length - 1;
+    const index = key === 'Home' ? 0 : key === 'End' ? last
+      : wasOpen ? evaluatorActiveIndex + (key === 'ArrowDown' ? 1 : -1) : evaluatorActiveIndex;
+    highlightEvaluator(index, true);
+  } else if (key === 'Enter' || key === ' ') {
+    event.preventDefault(); // не отправлять форму и не генерировать второй click
+    if (evaluatorOpen) selectEvaluator(evaluatorOptions()[evaluatorActiveIndex]?.dataset.value ?? '');
+    else setEvaluatorOpen(true);
+  }
+});
+evaluatorList.addEventListener('pointerdown', (event) => event.preventDefault());
+evaluatorList.addEventListener('click', (event) => {
+  const option = (event.target as HTMLElement).closest<HTMLElement>('[role="option"]');
+  if (option && evaluatorOpen) selectEvaluator(option.dataset.value ?? '');
+});
+document.addEventListener('pointerdown', (event) => {
+  if (evaluatorOpen && !evaluatorPicker.contains(event.target as Node)) setEvaluatorOpen(false);
+});
+evaluatorPicker.addEventListener('focusout', (event) => {
+  if (!evaluatorPicker.contains(event.relatedTarget as Node | null)) setEvaluatorOpen(false);
+});
+
 function resetAddForm(): void {
+  setEvaluatorOpen(false);
   addForm.reset();
   pendingCover = null;
   coverImg.removeAttribute('src');
@@ -6340,6 +6523,8 @@ let addKind: ReleaseKind = 'album';
 
 function applyAddMode(kind: ReleaseKind): void {
   addKind = kind;
+  evaluatorField.hidden = !isAdmin();
+  resetEvaluatorPicker();
   const single = kind === 'single';
   viewAdd.setAttribute('aria-label', single ? 'Добавить сингл' : 'Добавить альбом');
   addTitle.textContent = single ? 'Новый сингл' : 'Новый альбом';
@@ -6406,8 +6591,11 @@ document.addEventListener('keydown', (e) => {
 });
 
 async function addAlbum(input: AddInput): Promise<string | null> {
+  const evaluatorId = input.evaluatorId ?? null;
+  if (evaluatorId && (!isAdmin() || !profileCache.has(evaluatorId))) throw new Error('Назначать оценивающего может только админ');
   const kind = input.kind ?? 'album';
   const parentIds = kind === 'single' ? (input.parentIds ?? []) : [];
+  assertCompatibleParents({ evaluatorId }, parentIds);
   const parentId = parentIds[0] ?? null;
   const what = kind === 'single' ? 'сингл' : 'альбом';
   if (CLOUD) {
@@ -6424,6 +6612,7 @@ async function addAlbum(input: AddInput): Promise<string | null> {
       parent_album_id: parentId,
       ...(kind === 'single' ? { parent_album_ids: parentIds } : {}),
       created_by: currentUser?.id ?? null,
+      ...(evaluatorId ? { evaluator_id: evaluatorId } : {}),
     });
     if (ins.error) {
       if ((ins.error as { code?: string }).code === '23505') {
@@ -6449,6 +6638,7 @@ async function addAlbum(input: AddInput): Promise<string | null> {
     year: input.year,
     cover: input.coverDataUrl ?? input.coverUrl ?? '',
     kind,
+    evaluatorId,
     parentId,
     parentIds,
     tracksLocked: false,
@@ -6535,6 +6725,7 @@ async function handleAdd(): Promise<void> {
       coverDataUrl: pendingCover && pendingCover.startsWith('data:') ? pendingCover : null,
       coverUrl: pendingCover && !pendingCover.startsWith('data:') ? pendingCover : null,
       kind: addKind,
+      evaluatorId: isAdmin() ? evaluatorInput.value || null : null,
       parentIds,
     });
     // Сингл с привязкой сразу становится треком альбома (в конец списка).

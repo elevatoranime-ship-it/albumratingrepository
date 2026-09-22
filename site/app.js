@@ -1,5 +1,21 @@
 "use strict";
 (() => {
+  // rating-access.ts
+  function canEvaluate(release, profileId) {
+    return Boolean(release && profileId && (!release.evaluatorId || release.evaluatorId === profileId));
+  }
+  function sameEvaluators(a, b) {
+    return (a.evaluatorId ?? null) === (b.evaluatorId ?? null);
+  }
+  function requiredEvaluators(release, profiles) {
+    return release.evaluatorId ? [release.evaluatorId] : [...profiles];
+  }
+  function allRatingsConfirmed(release, profiles, rows) {
+    const required = requiredEvaluators(release, profiles);
+    if (!rows.length || required.length < (release.evaluatorId ? 1 : 2)) return false;
+    return rows.every((row) => required.every((id) => row?.[id]?.confirmed === true));
+  }
+
   // node_modules/tslib/tslib.es6.mjs
   function __rest(s, e) {
     var t = {};
@@ -20086,6 +20102,7 @@ ${suffix}`;
       title: a.title,
       year: a.year,
       cover: a.cover ?? "",
+      evaluatorId: a.evaluatorId ?? null,
       kind: a.kind === "single" ? "single" : "album",
       parentId: a.parentIds?.[0] ?? (a.parentIds ? null : a.parentId ?? null),
       ...a.kind === "single" ? { parentIds: [...new Set(a.parentIds ?? (a.parentId ? [a.parentId] : []))] } : {},
@@ -20247,6 +20264,7 @@ ${suffix}`;
         cover: x.cover_url ?? "",
         geniusId: x.genius_song_id != null ? String(x.genius_song_id) : null,
         kind: x.kind === "single" ? "single" : "album",
+        evaluatorId: x.evaluator_id ?? null,
         parentId: x.parent_album_id ?? null,
         parentIds: x.parent_album_ids ?? void 0,
         tracksLocked: Boolean(x.tracks_locked),
@@ -20422,6 +20440,7 @@ ${suffix}`;
     if (viewSingle.classList.contains("is-visible")) {
       const s = currentSingle();
       if (s) {
+        renderEvaluator(s, "#sv-evaluator");
         if (svTitle.textContent !== singleDisplayTitle(s)) svTitle.textContent = singleDisplayTitle(s);
         const artistHtml = singleArtistHTML(s, "sv__artist-link");
         if (svArtist.innerHTML !== artistHtml) svArtist.innerHTML = artistHtml;
@@ -20440,6 +20459,7 @@ ${suffix}`;
     if (viewAlbum.classList.contains("is-visible")) {
       const al = currentAlbum();
       if (al) {
+        renderEvaluator(al, "#av-evaluator");
         avTitle.textContent = al.title;
         if (avArtist.querySelector("[data-artist]")?.dataset.artist !== al.artist) {
           avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
@@ -20645,28 +20665,37 @@ ${suffix}`;
     return null;
   }
   function singleAllConfirmed(singleId) {
-    if (profileCache.size < 2) return false;
-    const r = singleRatings[singleId];
-    if (!r) return false;
-    for (const pid of profileCache.keys()) {
-      const e = r[pid];
-      if (!e || !e.confirmed) return false;
-    }
-    return true;
+    const release = singleById(singleId);
+    return Boolean(release && allRatingsConfirmed(release, profileCache.keys(), [singleRatings[singleId]]));
   }
   function albumAllConfirmed(albumId) {
-    if (profileCache.size < 2) return false;
-    const list = tracks.filter((t) => t.albumId === albumId);
-    if (!list.length) return false;
-    for (const t of list) {
-      const r = trackRatings[t.id];
-      if (!r) return false;
-      for (const pid of profileCache.keys()) {
-        const e = r[pid];
-        if (!e || !e.confirmed) return false;
+    const release = albums.find((a) => a.id === albumId);
+    return Boolean(release && allRatingsConfirmed(
+      release,
+      profileCache.keys(),
+      tracks.filter((t) => t.albumId === albumId).map((t) => trackRatings[t.id])
+    ));
+  }
+  function trackRelease(trackId) {
+    const track = tracks.find((t) => t.id === trackId);
+    return albums.find((a) => a.id === track?.albumId);
+  }
+  function canRateTrack(trackId) {
+    return canEvaluate(trackRelease(trackId), currentUser?.id);
+  }
+  function renderEvaluator(release, selector) {
+    const el = q(selector);
+    el.hidden = !release.evaluatorId;
+    const name = profileCache.get(release.evaluatorId ?? "")?.username ?? "\u043D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044B\u0439 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A";
+    el.textContent = `\u041E\u0446\u0435\u043D\u0438\u0432\u0430\u0435\u0442 \u0442\u043E\u043B\u044C\u043A\u043E ${name}. ` + (canEvaluate(release, currentUser?.id) ? "\u0412\u0430\u0448\u0435\u0439 \u043F\u043E\u043B\u043D\u043E\u0439 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0451\u043D\u043D\u043E\u0439 \u043E\u0446\u0435\u043D\u043A\u0438 \u0434\u043E\u0441\u0442\u0430\u0442\u043E\u0447\u043D\u043E \u0434\u043B\u044F \u0440\u0435\u0439\u0442\u0438\u043D\u0433\u0430." : "\u0412\u0430\u043C \u0434\u043E\u0441\u0442\u0443\u043F\u043D\u044B \u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440 \u043E\u0446\u0435\u043D\u043E\u043A \u0438 \u043E\u0431\u044B\u0447\u043D\u043E\u0435 \u0440\u0435\u0434\u0430\u043A\u0442\u0438\u0440\u043E\u0432\u0430\u043D\u0438\u0435, \u043D\u043E \u043D\u0435 \u043E\u0446\u0435\u043D\u0438\u0432\u0430\u043D\u0438\u0435 \u0438 \u0432\u044B\u0431\u043E\u0440 \u0446\u0435\u043B\u043E\u0441\u0442\u043D\u043E\u0441\u0442\u0438.");
+  }
+  function assertCompatibleParents(release, ids) {
+    for (const id of ids) {
+      const parent = albums.find((a) => a.id === id && a.kind === "album");
+      if (!parent || !sameEvaluators(release, parent)) {
+        throw new Error(`\u0423 \u0441\u0438\u043D\u0433\u043B\u0430 \u0438 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \xAB${parent?.title ?? id}\xBB \u0434\u043E\u043B\u0436\u043D\u044B \u0441\u043E\u0432\u043F\u0430\u0434\u0430\u0442\u044C \u043E\u0446\u0435\u043D\u0438\u0432\u0430\u044E\u0449\u0438\u0435 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438`);
       }
     }
-    return true;
   }
   function trackCountOf(albumId) {
     return tracks.filter((t) => t.albumId === albumId).length;
@@ -21063,6 +21092,12 @@ ${suffix}`;
   var artistField = q("#artist-field");
   var artistInput = q("#artist-input");
   var artistList = q("#artist-list");
+  var evaluatorField = q("#evaluator-field");
+  var evaluatorPicker = q("#evaluator-picker");
+  var evaluatorInput = q("#evaluator-input");
+  var evaluatorTrigger = q("#evaluator-trigger");
+  var evaluatorValue = q("#evaluator-value");
+  var evaluatorList = q("#evaluator-list");
   var titleInput = q("#title-input");
   var titleError = q("#title-error");
   var yearInput = q("#year-input");
@@ -21076,6 +21111,7 @@ ${suffix}`;
   var addSubmitLabel = q("#add-submit-label");
   var addError = q("#add-error");
   async function swapTo(from, to, after) {
+    if (from === viewAdd) setEvaluatorOpen(false);
     from.classList.add("is-leaving");
     await sleep3(560);
     from.classList.remove("is-visible", "is-leaving");
@@ -21287,6 +21323,7 @@ ${suffix}`;
     avCoverEditLabel.textContent = al.cover ? "\u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443" : "\u0434\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043E\u0431\u043B\u043E\u0436\u043A\u0443";
   }
   function renderAlbumPage(al) {
+    renderEvaluator(al, "#av-evaluator");
     avTitle.textContent = al.title;
     avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
     avYear.textContent = String(al.year);
@@ -21551,6 +21588,7 @@ ${suffix}`;
     avImpact.hidden = false;
     const rows = [];
     for (const [pid, info] of profileCache) {
+      if (!requiredEvaluators(currentAlbum() ?? {}, profileCache.keys()).includes(pid)) continue;
       let sum = 0, n = 0;
       for (const t of list) {
         const v = trackRatings[t.id]?.[pid];
@@ -21615,7 +21653,7 @@ ${suffix}`;
       typeControl.innerHTML = "";
       return;
     }
-    cohesionControl.innerHTML = al.cohesion === null ? finSelectHTML("cohesion", COHESION_OPTIONS.map((o, i) => ({ value: String(i + 1), label: o }))) : finalBadgeHTML(COHESION_OPTIONS[al.cohesion - 1] ?? "\u2014", animateKind === "cohesion");
+    cohesionControl.innerHTML = al.cohesion === null ? canEvaluate(al, currentUser?.id) ? finSelectHTML("cohesion", COHESION_OPTIONS.map((o, i) => ({ value: String(i + 1), label: o }))) : '<p class="cover-pick__note">\u0412\u044B\u0431\u0438\u0440\u0430\u0435\u0442 \u043D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044B\u0439 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A</p>' : finalBadgeHTML(COHESION_OPTIONS[al.cohesion - 1] ?? "\u2014", animateKind === "cohesion");
     typeControl.innerHTML = al.albumType === null ? finSelectHTML("type", TYPE_OPTIONS) : finalBadgeHTML(typeLabelOf(al.albumType), animateKind === "type");
   }
   function closeAllFinSelects() {
@@ -21666,6 +21704,10 @@ ${suffix}`;
     }
     if (!value) return;
     const isCohesion = kind === "cohesion";
+    if (isCohesion && !canEvaluate(al, currentUser?.id)) {
+      renderFinalize();
+      return;
+    }
     const current = isCohesion ? al.cohesion : al.albumType;
     if (current !== null) {
       renderFinalize();
@@ -21691,14 +21733,13 @@ ${suffix}`;
   }
   async function saveCohesion(v) {
     const al = currentAlbum();
-    if (!al) return;
+    if (!al || !canEvaluate(al, currentUser?.id)) return;
     if (CLOUD) {
       const { error } = await getSB().from("albums").update({ cohesion: v }).eq("id", al.id);
       if (error) throw error;
-    } else {
-      saveLocalAlbums();
     }
     al.cohesion = v;
+    if (!CLOUD) saveLocalAlbums();
     renderFinalize("cohesion");
   }
   async function saveAlbumType(v) {
@@ -21707,10 +21748,9 @@ ${suffix}`;
     if (CLOUD) {
       const { error } = await getSB().from("albums").update({ album_type: v }).eq("id", al.id);
       if (error) throw error;
-    } else {
-      saveLocalAlbums();
     }
     al.albumType = v;
+    if (!CLOUD) saveLocalAlbums();
     renderFinalize("type");
   }
   var confirmResolve = null;
@@ -21782,7 +21822,7 @@ ${suffix}`;
     }
   }
   function setTrackRating(trackId, v) {
-    if (!currentUser) return;
+    if (!currentUser || !canRateTrack(trackId)) return;
     const prev = trackRatings[trackId]?.[currentUser.id];
     (trackRatings[trackId] ?? (trackRatings[trackId] = {}))[currentUser.id] = { score: v, confirmed: prev?.confirmed === true };
     if (!CLOUD) saveLocalRatings();
@@ -21791,7 +21831,7 @@ ${suffix}`;
     scheduleTrackSave(trackId);
   }
   function clearTrackRating(trackId) {
-    if (!currentUser) return;
+    if (!currentUser || !canRateTrack(trackId)) return;
     const r = trackRatings[trackId];
     if (r) {
       delete r[currentUser.id];
@@ -21821,7 +21861,7 @@ ${suffix}`;
     armTrackSave(trackId);
   }
   function persistTrackRating(trackId) {
-    if (!currentUser) return Promise.resolve();
+    if (!currentUser || !canRateTrack(trackId)) return Promise.resolve();
     window.clearTimeout(saveTimers.get(trackId));
     saveTimers.delete(trackId);
     const existing = ratingWrites.get(trackId);
@@ -21863,7 +21903,7 @@ ${suffix}`;
     return task;
   }
   async function toggleRatingConfirm(trackId) {
-    if (!currentUser) return;
+    if (!currentUser || !canRateTrack(trackId)) return;
     const entry = trackRatings[trackId]?.[currentUser.id];
     if (!entry) return;
     const epoch = syncEpoch;
@@ -21901,12 +21941,13 @@ ${suffix}`;
     btn.innerHTML = confirmed ? PENCIL_SVG : CHECK_SVG;
   }
   function applyRatingLockState(li, confirmed) {
-    li.classList.toggle("is-rated-locked", confirmed);
+    const permitted = canRateTrack(li.dataset.id ?? "");
+    li.classList.toggle("is-rated-locked", confirmed || !permitted);
     const slider = li.querySelector(".track__slider");
     const num = li.querySelector(".track__numinput");
     const btn = li.querySelector(".track__confirm-btn");
-    if (slider) slider.disabled = confirmed;
-    if (num) num.disabled = confirmed;
+    if (slider) slider.disabled = confirmed || !permitted;
+    if (num) num.disabled = confirmed || !permitted;
     if (btn) {
       setConfirmIcon(btn, confirmed);
       btn.title = confirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443";
@@ -21959,7 +22000,7 @@ ${suffix}`;
       }
       applyRatingLockState(li, mine?.confirmed === true);
       const confirm = li.querySelector(".track__confirm-btn");
-      if (confirm) confirm.disabled = !mine;
+      if (confirm) confirm.disabled = !mine || !canRateTrack(id);
       const html = peerRatingHTML(id);
       if (li.dataset.peerHtml !== html) {
         li.querySelector(".track__peer")?.remove();
@@ -21979,6 +22020,7 @@ ${suffix}`;
       const mine = trackRatings[t.id]?.[myId];
       const mineScore = typeof mine?.score === "number" ? mine.score : void 0;
       const mineConfirmed = mine?.confirmed === true;
+      const permitted = canRateTrack(t.id);
       const tavg = trackScoreOf(t.id);
       const tavgStr = tavg === null ? "\u2014" : fmt(tavg);
       const mineStr = typeof mineScore === "number" ? fmt(mineScore) : "";
@@ -21989,7 +22031,7 @@ ${suffix}`;
       li.className = "track";
       if (t.locked) li.classList.add("is-locked");
       if (locked) li.classList.add("is-frozen");
-      if (mineConfirmed) li.classList.add("is-rated-locked");
+      if (mineConfirmed || !permitted) li.classList.add("is-rated-locked");
       if (single) li.classList.add("track--single");
       li.dataset.id = t.id;
       if (single) li.dataset.singleId = single.id;
@@ -22016,10 +22058,10 @@ ${suffix}`;
         <span class="track__actions">${actions}</span>
       </div>
       <div class="track__row2">
-        <span class="track__rate-label">\u043C\u043E\u044F \u043E\u0446\u0435\u043D\u043A\u0430</span>
-        <input class="track__slider" type="range" min="0" max="10" step="0.01" value="${typeof mineScore === "number" ? mineScore : 5}" aria-label="\u041C\u043E\u044F \u043E\u0446\u0435\u043D\u043A\u0430"${mineConfirmed ? " disabled" : ""} />
-        <input class="track__numinput" type="number" min="0" max="10" step="0.01" inputmode="decimal" placeholder="\u2014" value="${mineStr}"${mineConfirmed ? " disabled" : ""} />
-        <button class="track__confirm-btn" type="button"${typeof mineScore === "number" ? "" : " disabled"} aria-label="${mineConfirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443"}" title="${mineConfirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443"}">${mineConfirmed ? PENCIL_SVG : CHECK_SVG}</button>
+        <span class="track__rate-label">${permitted ? "\u043C\u043E\u044F \u043E\u0446\u0435\u043D\u043A\u0430" : "\u0431\u0435\u0437 \u043F\u0440\u0430\u0432\u0430 \u043E\u0446\u0435\u043D\u043A\u0438"}</span>
+        <input class="track__slider" type="range" min="0" max="10" step="0.01" value="${typeof mineScore === "number" ? mineScore : 5}" aria-label="\u041C\u043E\u044F \u043E\u0446\u0435\u043D\u043A\u0430"${mineConfirmed || !permitted ? " disabled" : ""} />
+        <input class="track__numinput" type="number" min="0" max="10" step="0.01" inputmode="decimal" placeholder="\u2014" value="${mineStr}"${mineConfirmed || !permitted ? " disabled" : ""} />
+        <button class="track__confirm-btn" type="button"${permitted && typeof mineScore === "number" ? "" : " disabled"} aria-label="${mineConfirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443"}" title="${mineConfirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443"}">${mineConfirmed ? PENCIL_SVG : CHECK_SVG}</button>
         <span class="track__save" aria-live="polite"></span>
       </div>`;
       trackList.appendChild(li);
@@ -22946,14 +22988,8 @@ ${suffix}`;
     return r ? Object.keys(r).length : 0;
   }
   function trackAllConfirmed(trackId) {
-    if (profileCache.size < 2) return false;
-    const r = trackRatings[trackId];
-    if (!r) return false;
-    for (const pid of profileCache.keys()) {
-      const e = r[pid];
-      if (!e || !e.confirmed) return false;
-    }
-    return true;
+    const release = trackRelease(trackId);
+    return Boolean(release && allRatingsConfirmed(release, profileCache.keys(), [trackRatings[trackId]]));
   }
   function trackRankedScoreOf(trackId) {
     return trackAllConfirmed(trackId) ? trackScoreOf(trackId) : null;
@@ -23376,6 +23412,7 @@ ${suffix}`;
     return true;
   }
   function renderSinglePage(s) {
+    renderEvaluator(s, "#sv-evaluator");
     svTitle.textContent = singleDisplayTitle(s);
     svArtist.innerHTML = singleArtistHTML(s, "sv__artist-link");
     svYear.textContent = String(s.year);
@@ -23388,7 +23425,7 @@ ${suffix}`;
     svAvg.textContent = score === null ? "\u2014" : fmt(score);
     delete svAvg.dataset.val;
     updateSingleDisplays();
-    svNote.textContent = singlesUnavailable() ? "\u0440\u0430\u0437\u0434\u0435\u043B \u0441\u0438\u043D\u0433\u043B\u043E\u0432 \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0451\u043D \u043A \u0431\u0430\u0437\u0435: \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0435 migrate.sql \u0432 Supabase" : "\u043F\u0435\u0440\u0435\u0434\u0432\u0438\u043D\u044C\u0442\u0435 \u043F\u043E\u043B\u0437\u0443\u043D\u043E\u043A \u0438\u043B\u0438 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u0447\u0438\u0441\u043B\u043E, \u0437\u0430\u0442\u0435\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0435 \u2014 \u0434\u043E \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0431\u0430\u043B\u043B \u043D\u0435 \u0432\u043B\u0438\u044F\u0435\u0442 \u043D\u0430 \u0440\u0435\u0439\u0442\u0438\u043D\u0433";
+    svNote.textContent = singlesUnavailable() ? "\u0440\u0430\u0437\u0434\u0435\u043B \u0441\u0438\u043D\u0433\u043B\u043E\u0432 \u043D\u0435 \u043F\u043E\u0434\u043A\u043B\u044E\u0447\u0451\u043D \u043A \u0431\u0430\u0437\u0435: \u0432\u044B\u043F\u043E\u043B\u043D\u0438\u0442\u0435 migrate.sql \u0432 Supabase" : !canEvaluate(s, currentUser?.id) ? "\u042D\u0442\u043E\u0442 \u0441\u0438\u043D\u0433\u043B \u043E\u0446\u0435\u043D\u0438\u0432\u0430\u0435\u0442 \u043D\u0430\u0437\u043D\u0430\u0447\u0435\u043D\u043D\u044B\u0439 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A. \u0415\u0433\u043E \u043E\u0446\u0435\u043D\u043A\u0430 \u0432\u0438\u0434\u043D\u0430 \u0432\u0430\u043C \u043D\u0430 \u044D\u0442\u043E\u0439 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435." : "\u043F\u0435\u0440\u0435\u0434\u0432\u0438\u043D\u044C\u0442\u0435 \u043F\u043E\u043B\u0437\u0443\u043D\u043E\u043A \u0438\u043B\u0438 \u0432\u0432\u0435\u0434\u0438\u0442\u0435 \u0447\u0438\u0441\u043B\u043E, \u0437\u0430\u0442\u0435\u043C \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u0435 \u2014 \u0434\u043E \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F \u0431\u0430\u043B\u043B \u043D\u0435 \u0432\u043B\u0438\u044F\u0435\u0442 \u043D\u0430 \u0440\u0435\u0439\u0442\u0438\u043D\u0433";
   }
   function updateSingleDisplays() {
     const s = currentSingle();
@@ -23423,7 +23460,7 @@ ${suffix}`;
       return;
     }
     svImpact.hidden = false;
-    const rows = [...profileCache].map(([pid, info]) => ({
+    const rows = [...profileCache].filter(([pid]) => requiredEvaluators(s, profileCache.keys()).includes(pid)).map(([pid, info]) => ({
       id: pid,
       username: info.username,
       initials: info.initials,
@@ -23492,9 +23529,11 @@ ${suffix}`;
       svNum.value = mine ? fmt(mine.score) : "";
     }
     const confirmed = mine?.confirmed === true;
-    svSlider.disabled = confirmed;
-    svNum.disabled = confirmed;
-    svConfirmBtn.disabled = !mine;
+    const permitted = canEvaluate(s, currentUser?.id);
+    q(".sv__rate-label").textContent = permitted ? "\u043C\u043E\u044F \u043E\u0446\u0435\u043D\u043A\u0430" : "\u0431\u0435\u0437 \u043F\u0440\u0430\u0432\u0430 \u043E\u0446\u0435\u043D\u043A\u0438";
+    svSlider.disabled = confirmed || !permitted;
+    svNum.disabled = confirmed || !permitted;
+    svConfirmBtn.disabled = !mine || !permitted;
     setConfirmIcon(svConfirmBtn, confirmed);
     const label = confirmed ? "\u0418\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443" : "\u041F\u043E\u0434\u0442\u0432\u0435\u0440\u0434\u0438\u0442\u044C \u043E\u0446\u0435\u043D\u043A\u0443";
     svConfirmBtn.title = label;
@@ -23511,7 +23550,7 @@ ${suffix}`;
   function setSingleRating(v) {
     var _a;
     const s = currentSingle();
-    if (!s || !currentUser) return;
+    if (!s || !currentUser || !canEvaluate(s, currentUser.id)) return;
     const prev = singleRatings[s.id]?.[currentUser.id];
     (singleRatings[_a = s.id] ?? (singleRatings[_a] = {}))[currentUser.id] = { score: v, confirmed: prev?.confirmed === true };
     if (!CLOUD) saveLocalSingleRatings();
@@ -23521,7 +23560,7 @@ ${suffix}`;
   }
   function clearSingleRating() {
     const s = currentSingle();
-    if (!s || !currentUser) return;
+    if (!s || !currentUser || !canEvaluate(s, currentUser.id)) return;
     const r = singleRatings[s.id];
     if (r) {
       delete r[currentUser.id];
@@ -23618,7 +23657,7 @@ ${suffix}`;
     }
   }
   function persistSingleRating(singleId) {
-    if (!currentUser) return Promise.resolve();
+    if (!currentUser || !canEvaluate(singleById(singleId), currentUser.id)) return Promise.resolve();
     window.clearTimeout(singleSaveTimers.get(singleId));
     singleSaveTimers.delete(singleId);
     const existing = singleWrites.get(singleId);
@@ -23661,7 +23700,7 @@ ${suffix}`;
   }
   async function toggleSingleConfirm() {
     const s = currentSingle();
-    if (!s || !currentUser) return;
+    if (!s || !currentUser || !canEvaluate(s, currentUser.id)) return;
     const entry = singleRatings[s.id]?.[currentUser.id];
     if (!entry) return;
     const epoch = syncEpoch;
@@ -23887,6 +23926,7 @@ ${suffix}`;
     }
     singleLinkSave.classList.add("is-loading");
     try {
+      assertCompatibleParents(single, parentIds);
       if (CLOUD) {
         const { error } = await getSB().from("albums").update({ parent_album_id: parentIds[0] ?? null, parent_album_ids: parentIds }).eq("id", id);
         if (error) throw error;
@@ -23993,6 +24033,7 @@ ${suffix}`;
     const single = singleById(singleId);
     const al = albums.find((a) => a.id === parentId && a.kind === "album");
     if (!single || !al) return null;
+    assertCompatibleParents(single, [parentId]);
     if (al.tracksLocked) {
       return "\u0421\u0438\u043D\u0433\u043B \u043F\u0440\u0438\u0432\u044F\u0437\u0430\u043D, \u043D\u043E \u0442\u0440\u0435\u043A\u0438 \u0430\u043B\u044C\u0431\u043E\u043C\u0430 \u0437\u0430\u0444\u0438\u043A\u0441\u0438\u0440\u043E\u0432\u0430\u043D\u044B \u2014 \u0432 \u0441\u043F\u0438\u0441\u043A\u0435 \u0442\u0440\u0435\u043A\u043E\u0432 \u043E\u043D \u043D\u0435 \u043F\u043E\u044F\u0432\u0438\u043B\u0441\u044F";
     }
@@ -24068,7 +24109,8 @@ ${suffix}`;
             tracks_locked: false,
             kind: "single",
             parent_album_id: al.id,
-            created_by: currentUser.id
+            created_by: currentUser.id,
+            ...al.evaluatorId ? { evaluator_id: al.evaluatorId } : {}
           }).select("id").single();
           if (ins.error) {
             if (ins.error.code === "23505") throw new Error("\u0422\u0430\u043A\u043E\u0439 \u0441\u0438\u043D\u0433\u043B \u0443 \u044D\u0442\u043E\u0433\u043E \u0430\u0440\u0442\u0438\u0441\u0442\u0430 \u0443\u0436\u0435 \u0435\u0441\u0442\u044C");
@@ -24089,6 +24131,7 @@ ${suffix}`;
             title: singleTitle,
             year: al.year,
             cover: "",
+            evaluatorId: al.evaluatorId ?? null,
             kind: "single",
             parentId: al.id,
             tracksLocked: false,
@@ -25535,7 +25578,145 @@ ${suffix}`;
     window.clearTimeout(coverUrlTimer);
     addCoverSearch.clearSelection();
   });
+  var evaluatorOpen = false;
+  var evaluatorActiveIndex = 0;
+  var evaluatorCloseTimer;
+  var evaluatorValueAnimation;
+  function evaluatorIdentity(id) {
+    const identity = document.createElement("span");
+    identity.className = "evaluator__identity";
+    const avatars = document.createElement("span");
+    avatars.className = "evaluator__avatars" + (id ? "" : " evaluator__avatars--all");
+    avatars.setAttribute("aria-hidden", "true");
+    const info = profileCache.get(id);
+    for (const person of info ? [info] : [...profileCache.values()]) {
+      const avatar = document.createElement("span");
+      avatar.className = "evaluator__avatar";
+      setAvatarEl(avatar, person);
+      avatars.appendChild(avatar);
+    }
+    const name = document.createElement("span");
+    name.className = "evaluator__name";
+    name.textContent = info?.username ?? "\u0412\u0441\u0435 \u0443\u0447\u0430\u0441\u0442\u043D\u0438\u043A\u0438";
+    identity.append(avatars, name);
+    return identity;
+  }
+  function evaluatorOptions() {
+    return [...evaluatorList.querySelectorAll('[role="option"]')];
+  }
+  function highlightEvaluator(index, scroll = false) {
+    const options = evaluatorOptions();
+    evaluatorActiveIndex = Math.max(0, Math.min(index, options.length - 1));
+    options.forEach((option, i) => option.classList.toggle("is-active", i === evaluatorActiveIndex));
+    const active = options[evaluatorActiveIndex];
+    if (active && evaluatorOpen) {
+      evaluatorTrigger.setAttribute("aria-activedescendant", active.id);
+      if (scroll) active.scrollIntoView({ block: "nearest" });
+    }
+  }
+  function setEvaluatorOpen(open) {
+    if (open && (evaluatorField.hidden || !isAdmin())) return;
+    window.clearTimeout(evaluatorCloseTimer);
+    evaluatorOpen = open;
+    evaluatorPicker.classList.toggle("is-open", open);
+    evaluatorField.classList.toggle("is-open", open);
+    evaluatorTrigger.setAttribute("aria-expanded", String(open));
+    evaluatorList.setAttribute("aria-hidden", String(!open));
+    evaluatorList.inert = !open;
+    if (open) {
+      evaluatorField.classList.remove("is-closing");
+      artistList.hidden = true;
+      parentList.hidden = true;
+      highlightEvaluator(evaluatorOptions().findIndex((option) => option.dataset.value === evaluatorInput.value));
+    } else {
+      evaluatorTrigger.removeAttribute("aria-activedescendant");
+      evaluatorField.classList.add("is-closing");
+      evaluatorCloseTimer = window.setTimeout(() => evaluatorField.classList.remove("is-closing"), 200);
+    }
+  }
+  function selectEvaluator(id) {
+    if (id && !profileCache.has(id)) return;
+    evaluatorInput.value = id;
+    evaluatorValueAnimation?.cancel();
+    evaluatorValue.replaceChildren(evaluatorIdentity(id));
+    for (const option of evaluatorOptions()) {
+      option.setAttribute("aria-selected", String(option.dataset.value === id));
+    }
+    setEvaluatorOpen(false);
+    evaluatorTrigger.focus({ preventScroll: true });
+    evaluatorPicker.classList.remove("is-picked", "is-confirming");
+    void evaluatorTrigger.offsetWidth;
+    evaluatorPicker.classList.add("is-picked", "is-confirming");
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      evaluatorValueAnimation = evaluatorValue.animate([
+        { opacity: 0, transform: "translateY(4px)" },
+        { opacity: 1, transform: "translateY(0)" }
+      ], { duration: 240, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+    }
+    clearAddErrors();
+  }
+  function resetEvaluatorPicker() {
+    setEvaluatorOpen(false);
+    window.clearTimeout(evaluatorCloseTimer);
+    evaluatorField.classList.remove("is-closing");
+    evaluatorValueAnimation?.cancel();
+    evaluatorPicker.classList.remove("is-picked", "is-confirming");
+    evaluatorInput.value = "";
+    evaluatorValue.replaceChildren(evaluatorIdentity(""));
+    evaluatorList.replaceChildren();
+    for (const [index, id] of ["", ...profileCache.keys()].entries()) {
+      const option = document.createElement("li");
+      option.id = `evaluator-option-${index}`;
+      option.className = "evaluator__option";
+      option.setAttribute("role", "option");
+      option.setAttribute("aria-selected", String(id === ""));
+      option.dataset.value = id;
+      option.style.setProperty("--option-delay", `${index * 28}ms`);
+      option.appendChild(evaluatorIdentity(id));
+      const check = document.createElement("span");
+      check.className = "evaluator__option-check";
+      check.setAttribute("aria-hidden", "true");
+      check.innerHTML = CHECK_SVG;
+      option.appendChild(check);
+      evaluatorList.appendChild(option);
+    }
+    highlightEvaluator(0);
+  }
+  evaluatorTrigger.addEventListener("click", () => setEvaluatorOpen(!evaluatorOpen));
+  evaluatorTrigger.addEventListener("keydown", (event) => {
+    const { key } = event;
+    if (key === "Escape" && evaluatorOpen) {
+      event.preventDefault();
+      event.stopPropagation();
+      setEvaluatorOpen(false);
+    } else if (key === "Tab") {
+      setEvaluatorOpen(false);
+    } else if (["ArrowDown", "ArrowUp", "Home", "End"].includes(key)) {
+      event.preventDefault();
+      const wasOpen = evaluatorOpen;
+      if (!wasOpen) setEvaluatorOpen(true);
+      const last = evaluatorOptions().length - 1;
+      const index = key === "Home" ? 0 : key === "End" ? last : wasOpen ? evaluatorActiveIndex + (key === "ArrowDown" ? 1 : -1) : evaluatorActiveIndex;
+      highlightEvaluator(index, true);
+    } else if (key === "Enter" || key === " ") {
+      event.preventDefault();
+      if (evaluatorOpen) selectEvaluator(evaluatorOptions()[evaluatorActiveIndex]?.dataset.value ?? "");
+      else setEvaluatorOpen(true);
+    }
+  });
+  evaluatorList.addEventListener("pointerdown", (event) => event.preventDefault());
+  evaluatorList.addEventListener("click", (event) => {
+    const option = event.target.closest('[role="option"]');
+    if (option && evaluatorOpen) selectEvaluator(option.dataset.value ?? "");
+  });
+  document.addEventListener("pointerdown", (event) => {
+    if (evaluatorOpen && !evaluatorPicker.contains(event.target)) setEvaluatorOpen(false);
+  });
+  evaluatorPicker.addEventListener("focusout", (event) => {
+    if (!evaluatorPicker.contains(event.relatedTarget)) setEvaluatorOpen(false);
+  });
   function resetAddForm() {
+    setEvaluatorOpen(false);
     addForm.reset();
     pendingCover = null;
     coverImg.removeAttribute("src");
@@ -25552,6 +25733,8 @@ ${suffix}`;
   var addKind = "album";
   function applyAddMode(kind) {
     addKind = kind;
+    evaluatorField.hidden = !isAdmin();
+    resetEvaluatorPicker();
     const single = kind === "single";
     viewAdd.setAttribute("aria-label", single ? "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0441\u0438\u043D\u0433\u043B" : "\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u0430\u043B\u044C\u0431\u043E\u043C");
     addTitle.textContent = single ? "\u041D\u043E\u0432\u044B\u0439 \u0441\u0438\u043D\u0433\u043B" : "\u041D\u043E\u0432\u044B\u0439 \u0430\u043B\u044C\u0431\u043E\u043C";
@@ -25620,8 +25803,11 @@ ${suffix}`;
     if (visibleView() && !viewHome.classList.contains("is-visible")) void goBack();
   });
   async function addAlbum(input) {
+    const evaluatorId = input.evaluatorId ?? null;
+    if (evaluatorId && (!isAdmin() || !profileCache.has(evaluatorId))) throw new Error("\u041D\u0430\u0437\u043D\u0430\u0447\u0430\u0442\u044C \u043E\u0446\u0435\u043D\u0438\u0432\u0430\u044E\u0449\u0435\u0433\u043E \u043C\u043E\u0436\u0435\u0442 \u0442\u043E\u043B\u044C\u043A\u043E \u0430\u0434\u043C\u0438\u043D");
     const kind = input.kind ?? "album";
     const parentIds = kind === "single" ? input.parentIds ?? [] : [];
+    assertCompatibleParents({ evaluatorId }, parentIds);
     const parentId = parentIds[0] ?? null;
     const what = kind === "single" ? "\u0441\u0438\u043D\u0433\u043B" : "\u0430\u043B\u044C\u0431\u043E\u043C";
     if (CLOUD) {
@@ -25637,7 +25823,8 @@ ${suffix}`;
         kind,
         parent_album_id: parentId,
         ...kind === "single" ? { parent_album_ids: parentIds } : {},
-        created_by: currentUser?.id ?? null
+        created_by: currentUser?.id ?? null,
+        ...evaluatorId ? { evaluator_id: evaluatorId } : {}
       });
       if (ins.error) {
         if (ins.error.code === "23505") {
@@ -25661,6 +25848,7 @@ ${suffix}`;
       year: input.year,
       cover: input.coverDataUrl ?? input.coverUrl ?? "",
       kind,
+      evaluatorId,
       parentId,
       parentIds,
       tracksLocked: false,
@@ -25735,6 +25923,7 @@ ${suffix}`;
         coverDataUrl: pendingCover && pendingCover.startsWith("data:") ? pendingCover : null,
         coverUrl: pendingCover && !pendingCover.startsWith("data:") ? pendingCover : null,
         kind: addKind,
+        evaluatorId: isAdmin() ? evaluatorInput.value || null : null,
         parentIds
       });
       const added = createdId ? await attachSingleTracks(createdId, parentIds) : null;

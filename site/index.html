@@ -213,6 +213,7 @@
 
           <div class="av__info reveal" style="--d:.16s">
             <h1 class="av__title" id="av-title"></h1>
+            <p class="release-evaluator" id="av-evaluator" hidden></p>
             <p class="av__artist" id="av-artist"></p>
 
             <div class="av__avg">
@@ -382,6 +383,29 @@
               <span class="field__label">Год *</span>
               <input class="field__input field__input--plain field__input--year" id="year-input" type="text"
                      inputmode="numeric" autocomplete="off" placeholder="2024" maxlength="4" />
+            </div>
+
+            <div class="field field--evaluator reveal" id="evaluator-field" style="--d:.26s" hidden>
+              <span class="field__label" id="evaluator-label">Кто оценивает релиз</span>
+              <div class="evaluator" id="evaluator-picker">
+                <input id="evaluator-input" type="hidden" value="" />
+                <button class="evaluator__trigger" id="evaluator-trigger" type="button" role="combobox"
+                        aria-haspopup="listbox" aria-expanded="false" aria-controls="evaluator-list"
+                        aria-labelledby="evaluator-label evaluator-value" aria-describedby="evaluator-note">
+                  <span class="evaluator__value" id="evaluator-value">Все участники</span>
+                  <span class="evaluator__check" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+                         stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5L19.5 6.5"/></svg>
+                  </span>
+                  <span class="evaluator__chevron" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                         stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                  </span>
+                </button>
+                <ul class="evaluator__list" id="evaluator-list" role="listbox"
+                    aria-labelledby="evaluator-label" aria-hidden="true" inert></ul>
+              </div>
+              <p class="cover-pick__note" id="evaluator-note">Все или один участник. После создания выбор не изменить.</p>
             </div>
 
             <div class="field field--parent reveal" id="parent-field" style="--d:.27s" hidden>
@@ -572,6 +596,7 @@
 
           <div class="sv__info reveal" style="--d:.16s">
             <h1 class="sv__title" id="sv-title"></h1>
+            <p class="release-evaluator" id="sv-evaluator" hidden></p>
             <p class="sv__artist" id="sv-artist"></p>
 
             <div class="sv__parent" id="sv-parent">

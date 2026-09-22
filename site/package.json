@@ -5,12 +5,14 @@
   "scripts": {
     "build": "esbuild app.ts --bundle --outfile=app.js --format=iife --target=es2020",
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && playwright test"
+    "test": "npm run build && playwright test",
+    "test:unit": "playwright test rating-access.spec.ts rating-access-sql.spec.ts genius-extract.spec.ts --project=desktop --workers=1"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@playwright/test": "^1.63.0",
     "esbuild": "^0.23.1",
     "typescript": "^5.5.4"

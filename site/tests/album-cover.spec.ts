@@ -102,7 +102,8 @@ test('file cover persists without changing tracks, ratings or final album choice
   await save(page);
   const saved = await storedAlbum(page);
   expect(saved.cover).toMatch(/^data:image\/jpeg;base64,/);
-  expect({ ...saved, cover: '' }).toEqual(album);
+  // Старый релиз нормализуется в совместный режим; остальные поля не меняются.
+  expect({ ...saved, cover: '' }).toEqual({ ...album, evaluatorId: null });
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('tracks_local_v1')!))).toEqual([track]);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('track_ratings_local_v1')!))).toEqual(ratings);
   await expect(page.locator('#av-cover-img')).toHaveAttribute('src', saved.cover);

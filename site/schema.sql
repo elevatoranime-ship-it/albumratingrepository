@@ -1,3 +1,6 @@
+-- Все изменения применяются атомарно, включая политики доступа.
+begin;
+
 -- ==========================================================================
 -- СХЕМА БАЗЫ ДАННЫХ (Supabase / Postgres)
 -- Выполните целиком в Supabase: SQL Editor → New query → Run (для НОВОЙ базы).
@@ -262,3 +265,143 @@ begin
 exception when others then
   raise notice 'realtime single_ratings skipped: %', SQLERRM;
 end $$;
+
+-- 8) Персональное оценивание. NULL сохраняет прежнее совместное поведение.
+-- RESTRICT: удаление профиля не должно превращать персональный релиз в общий.
+alter table public.albums add column if not exists evaluator_id uuid
+  references public.profiles(id) on delete restrict;
+
+-- Серверный список админов. Меняется ТОЛЬКО владельцем БД через SQL Editor.
+-- Клиентский config.js и user_metadata не являются источниками полномочий.
+create table if not exists public.release_admins (
+  email text primary key check (email = lower(email))
+);
+alter table public.release_admins enable row level security;
+revoke all on public.release_admins from public, anon, authenticated;
+insert into public.release_admins(email) values ('sportgamergd@gmail.com') on conflict do nothing;
+
+create or replace function public.is_release_admin()
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from auth.users u join public.release_admins a on a.email = lower(u.email)
+    where u.id = auth.uid()
+  );
+$$;
+revoke all on function public.is_release_admin() from public;
+grant execute on function public.is_release_admin() to authenticated;
+
+create or replace function public.can_rate_release(release_id uuid)
+returns boolean language sql stable set search_path = '' as $$
+  select auth.uid() is not null and exists (
+    select 1 from public.albums a where a.id = release_id
+      and (a.evaluator_id is null or a.evaluator_id = auth.uid())
+  );
+$$;
+revoke all on function public.can_rate_release(uuid) from public;
+grant execute on function public.can_rate_release(uuid) to authenticated;
+
+create or replace function public.guard_release_evaluator()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if TG_OP = 'UPDATE' then
+    if new.evaluator_id is distinct from old.evaluator_id then
+      raise exception 'Оценивающего можно выбрать только при создании релиза';
+    end if;
+    if new.cohesion is distinct from old.cohesion
+       and new.evaluator_id is not null
+       and new.evaluator_id is distinct from auth.uid() then
+      raise exception 'Целостность выбирает только назначенный участник';
+    end if;
+  else
+    if new.evaluator_id is not null and not public.is_release_admin() then
+      -- Создание сингла из трека не назначает новые права: наследует родителя.
+      -- Все родители дополнительно проверяются ниже.
+      if new.kind <> 'single' or not exists (
+        select 1 from public.albums a where a.id = new.parent_album_id
+          and a.kind = 'album' and a.evaluator_id = new.evaluator_id
+      ) then
+        raise exception 'Назначать оценивающего может только админ';
+      end if;
+    end if;
+    if new.cohesion is not null and new.evaluator_id is not null
+       and new.evaluator_id is distinct from auth.uid() then
+      raise exception 'Целостность выбирает только назначенный участник';
+    end if;
+  end if;
+
+  if exists (
+    select 1 from public.albums a
+    where a.id = any(new.parent_album_ids)
+      and a.evaluator_id is distinct from new.evaluator_id
+  ) then
+    raise exception 'У сингла и альбома должны совпадать оценивающие участники';
+  end if;
+  return new;
+end $$;
+revoke all on function public.guard_release_evaluator() from public;
+-- Имя обеспечивает выполнение ПОСЛЕ normalize_single_albums (нормализация старого FK).
+drop trigger if exists zz_guard_release_evaluator on public.albums;
+create trigger zz_guard_release_evaluator before insert or update on public.albums
+for each row execute function public.guard_release_evaluator();
+
+create or replace function public.guard_track_evaluator()
+returns trigger language plpgsql set search_path = '' as $$
+declare
+  target_evaluator uuid;
+begin
+  select a.evaluator_id into target_evaluator from public.albums a
+    where a.id = new.album_id and a.kind = 'album';
+  if not found then raise exception 'Трек должен принадлежать альбому'; end if;
+  if TG_OP = 'UPDATE' and new.album_id is distinct from old.album_id then
+    if exists (select 1 from public.albums a where a.id = old.album_id
+               and a.evaluator_id is distinct from target_evaluator) then
+      raise exception 'Нельзя переносить трек между разными режимами оценивания';
+    end if;
+  end if;
+  if new.single_id is not null and not exists (
+    select 1 from public.albums s where s.id = new.single_id and s.kind = 'single'
+      and s.evaluator_id is not distinct from target_evaluator
+  ) then
+    raise exception 'У сингла и альбома должны совпадать оценивающие участники';
+  end if;
+  return new;
+end $$;
+revoke all on function public.guard_track_evaluator() from public;
+drop trigger if exists guard_track_evaluator on public.tracks;
+create trigger guard_track_evaluator before insert or update of album_id, single_id on public.tracks
+for each row execute function public.guard_track_evaluator();
+
+-- SELECT остаётся общим: результаты видны обоим. Проверяем и старую, и новую
+-- строку UPDATE, чтобы нельзя было обойти ограничения заменой track_id/album_id.
+drop policy if exists ratings_insert on public.ratings;
+drop policy if exists ratings_update on public.ratings;
+drop policy if exists ratings_delete on public.ratings;
+create policy ratings_insert on public.ratings for insert to authenticated
+with check (auth.uid() = profile_id and exists (
+  select 1 from public.tracks t where t.id = track_id and public.can_rate_release(t.album_id)
+));
+create policy ratings_update on public.ratings for update to authenticated
+using (auth.uid() = profile_id and exists (
+  select 1 from public.tracks t where t.id = track_id and public.can_rate_release(t.album_id)
+)) with check (auth.uid() = profile_id and exists (
+  select 1 from public.tracks t where t.id = track_id and public.can_rate_release(t.album_id)
+));
+create policy ratings_delete on public.ratings for delete to authenticated
+using (auth.uid() = profile_id and exists (
+  select 1 from public.tracks t where t.id = track_id and public.can_rate_release(t.album_id)
+));
+
+drop policy if exists single_ratings_insert on public.single_ratings;
+drop policy if exists single_ratings_update on public.single_ratings;
+drop policy if exists single_ratings_delete on public.single_ratings;
+create policy single_ratings_insert on public.single_ratings for insert to authenticated
+with check (auth.uid() = profile_id and public.can_rate_release(album_id)
+  and exists (select 1 from public.albums a where a.id = album_id and a.kind = 'single'));
+create policy single_ratings_update on public.single_ratings for update to authenticated
+using (auth.uid() = profile_id and public.can_rate_release(album_id))
+with check (auth.uid() = profile_id and public.can_rate_release(album_id)
+  and exists (select 1 from public.albums a where a.id = album_id and a.kind = 'single'));
+create policy single_ratings_delete on public.single_ratings for delete to authenticated
+using (auth.uid() = profile_id and public.can_rate_release(album_id));
+
+commit;

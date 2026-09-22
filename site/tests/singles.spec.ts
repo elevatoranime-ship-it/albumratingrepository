@@ -17,7 +17,7 @@ type SingleRow = { album_id: string; profile_id: string; score: number; confirme
 const pageErrors = new WeakMap<Page, string[]>();
 test.afterEach(async ({ page }) => { expect(pageErrors.get(page) ?? []).toEqual([]); });
 
-function backend() {
+function backend(adminMode = false) {
   const state = {
     albums: [structuredClone(ALBUM), structuredClone(SINGLE), structuredClone(SOLO)],
     tracks: [structuredClone(TRACK), structuredClone(TRACK_TWO)],
@@ -42,7 +42,7 @@ function backend() {
       body: `window.APP_CONFIG = ${JSON.stringify({
         supabaseUrl: ORIGIN,
         supabaseAnonKey: 'sb_publishable_mock-only',
-        allowedUsers: [ME, PEER].map((u) => ({ ...u, admin: false })),
+        allowedUsers: [ME, PEER].map((u) => ({ ...u, admin: adminMode && u.id === ME.id })),
       })};`,
     }));
     // Молчаливый Realtime: приложение продолжит работать и на фоновой сверке.
@@ -620,7 +620,7 @@ test('если миграция не выполнена, раздел сингл
   await page.route('**/config.js', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
-      supabaseUrl: ORIGIN, supabaseAnonKey: 'sb_publishable_mock-only', allowedUsers: [ME, PEER].map((u) => ({ ...u, admin: false })),
+      supabaseUrl: ORIGIN, supabaseAnonKey: 'sb_publishable_mock-only', allowedUsers: [ME, PEER].map((u) => ({ ...u, admin: adminMode && u.id === ME.id })),
     })};`,
   }));
   await page.route(`${ORIGIN}/**`, async (route) => {
@@ -978,3 +978,87 @@ test('равные отступы, анимация раскрытия и быс
   expect(reducedAnimations).toBe(0);
   await expect(list).toBeVisible();
 });
+
+/* Персональный режим в облаке: evaluator_id приходит из API, не из демо. */
+test('персональный облачный релиз: админ-наблюдатель видит результат, но не оценивает', async ({ page }) => {
+  const cloud = backend(true);
+  Object.assign(cloud.state.albums[0], { evaluator_id: PEER.id, album_type: null });
+  Object.assign(cloud.state.albums[1], { evaluator_id: PEER.id });
+  cloud.state.ratings = [TRACK, TRACK_TWO].map((t) => ({ track_id: t.id, profile_id: PEER.id, score: 9, confirmed: true }));
+  cloud.state.singleRatings = [{ album_id: SINGLE.id, profile_id: PEER.id, score: 9, confirmed: true }];
+  await cloud.install(page);
+  await login(page);
+  await cardByTitle(page, ALBUM.title).click();
+  await expect(page.locator('#av-confirm-state')).toHaveText('подтверждён');
+  await expect(page.locator('#av-avg')).toHaveText('9');
+  await expect(page.locator('#av-evaluator')).toContainText('Оценивает только Второй');
+  await expect(page.locator('#cohesion-control')).toHaveText('Выбирает назначенный участник');
+  await expect(page.locator('#type-control .fin-select__trigger')).toBeEnabled();
+  for (const input of await page.locator('#track-list .track__numinput, #track-list .track__slider, #track-list .track__confirm-btn').all()) {
+    await expect(input).toBeDisabled();
+  }
+  // Даже принудительно включённое поле не должно отправлять запись.
+  await page.locator('#track-list .track__numinput').first().evaluate((el: HTMLInputElement) => {
+    el.disabled = false; el.value = '1'; el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.locator('#track-list .track__single').click();
+  await expect(page.locator('#sv-confirm-state')).toHaveText('подтверждён');
+  await expect(page.locator('#sv-avg')).toHaveText('9');
+  await expect(page.locator('#sv-num')).toBeDisabled();
+  await expect(page.locator('#sv-slider')).toBeDisabled();
+  await expect(page.locator('#sv-confirm-btn')).toBeDisabled();
+  await page.locator('#sv-num').evaluate((el: HTMLInputElement) => {
+    el.disabled = false; el.value = '1'; el.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  await page.locator('#sv-parent-edit').click();
+  await expect(page.locator('#single-link-dialog')).toBeVisible();
+  expect(cloud.state.writes.filter((w) => /\/rest\/v1\/(ratings|single_ratings)/.test(w.path))).toEqual([]);
+});
+
+test('персональный облачный альбом: одна полная оценка подтверждает альбом, сингл и рейтинг', async ({ page }) => {
+  const cloud = backend();
+  Object.assign(cloud.state.albums[0], { evaluator_id: ME.id });
+  Object.assign(cloud.state.albums[1], { evaluator_id: ME.id });
+  cloud.state.singleRatings = [{ album_id: SINGLE.id, profile_id: ME.id, score: 8, confirmed: true }];
+  await cloud.install(page);
+  await login(page);
+  await cardByTitle(page, ALBUM.title).click();
+  await expect(page.locator('#av-confirm-state')).toHaveText('не подтверждён');
+  const row = page.locator(`#track-list .track[data-id="${TRACK_TWO.id}"]`);
+  await row.locator('.track__numinput').fill('10');
+  await row.locator('.track__confirm-btn').click();
+  await expect(page.locator('#av-confirm-state')).toHaveText('подтверждён');
+  await expect(page.locator('#av-avg')).toHaveText('9');
+  await expect.poll(() => cloud.state.ratings.find((r) => r.track_id === TRACK_TWO.id)?.confirmed).toBe(true);
+  await page.locator('#album-back').click();
+  await page.locator('#artists-btn').click();
+  await page.locator('[data-rank="albums"]').click();
+  await expect(page.locator('#album-rank-list .rank').first().locator('.rank__score')).toHaveText('9');
+  await page.locator('#album-rank-list .rank').first().click();
+  await page.locator('#track-list .track__single').click();
+  await expect(page.locator('#sv-confirm-state')).toHaveText('подтверждён');
+  await page.locator('#sv-confirm-btn').click();
+  await expect(page.locator('#sv-confirm-state')).toHaveText('не подтверждён');
+  await expect(page.locator('#sv-num')).toBeEnabled();
+});
+
+for (const kind of ['album', 'single'] as const) {
+  test(`админ создаёт персональный ${kind}: назначение сохраняется в Supabase`, async ({ page }) => {
+    const cloud = backend(true);
+    await cloud.install(page);
+    await login(page);
+    if (kind === 'single') await page.locator('#seg-singles').click();
+    await page.locator('#albums .album--add').click();
+    await expect(page.locator('#evaluator-input')).toHaveValue('');
+    await page.locator('#evaluator-input').selectOption(PEER.id);
+    await page.locator('#artist-input').fill('Персональный артист');
+    await page.locator('#title-input').fill('Персональный релиз');
+    await page.locator('#year-input').fill('2025');
+    await page.locator('#add-submit').click();
+    await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+    expect(cloud.state.writes.find((w) => w.method === 'POST' && w.path.startsWith('/rest/v1/albums'))?.body)
+      .toMatchObject({ kind, evaluator_id: PEER.id });
+    await cardByTitle(page, 'Персональный релиз').click();
+    await expect(page.locator(kind === 'album' ? '#av-evaluator' : '#sv-evaluator')).toContainText('Оценивает только Второй');
+  });
+}

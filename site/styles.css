@@ -3526,3 +3526,8 @@ body { -webkit-tap-highlight-color: transparent; }
   .vinyl.is-found #vinyl-song, .vinyl.is-found #vinyl-artist { animation: none !important; }
   .vinyl__tilt, .vinyl__label, .lyrics::before, .lyrics::after, .vinyl__sweep { transition: none !important; }
 }
+
+/* Персональное оценивание: информация остаётся видна обоим участникам. */
+.release-evaluator { margin: 12px 0; max-width: 620px; padding: 12px 16px; border-left: 2px solid var(--accent, #d5e97a); background: rgba(255,255,255,.04); color: var(--muted, #aaa); font-size: 13px; line-height: 1.6; }
+#evaluator-input { width: 100%; color-scheme: dark; }
+.track__slider:disabled, #sv-slider:disabled { cursor: not-allowed; }

@@ -867,14 +867,9 @@ function votesPlural(n: number): string {
   return 'оценок';
 }
 
-/* «к альбому»: обложка сингла берётся у связанного альбома, пока своя не задана */
-function coverSrc(a: UiAlbum): string {
-  if (a.cover) return a.cover;
-  if (a.kind === 'single') {
-    const p = parentOf(a);
-    if (p && p.cover) return p.cover;
-  }
-  const initial = (a.title.trim().charAt(0) || '?').toUpperCase();
+/* Плитка-заглушка: круг и первая буква названия релиза (или имени артиста). */
+function letterCover(text: string): string {
+  const initial = (text.trim().charAt(0) || '?').toUpperCase();
   const svg =
     "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'>" +
     "<rect width='600' height='600' fill='#15151a'/>" +
@@ -883,6 +878,21 @@ function coverSrc(a: UiAlbum): string {
     esc(initial) +
     '</text></svg>';
   return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+}
+
+/* «к альбому»: обложка сингла берётся у связанного альбома, пока своя не задана */
+function coverSrc(a: UiAlbum): string {
+  if (a.cover) return a.cover;
+  if (a.kind === 'single') {
+    const p = parentOf(a);
+    if (p && p.cover) return p.cover;
+  }
+  return letterCover(a.title);
+}
+
+/* Есть ли у релиза настоящая картинка: своя обложка или обложка альбома сингла. */
+function hasCoverArt(a: UiAlbum): boolean {
+  return Boolean(a.cover || (a.kind === 'single' && parentOf(a)?.cover));
 }
 
 /* --- фиты и профили артистов --- */
@@ -2364,7 +2374,10 @@ function renderTracks(enterId?: string): void {
     const tavg = trackScoreOf(t.id);
     const tavgStr = tavg === null ? '—' : fmt(tavg);
     const mineStr = typeof mineScore === 'number' ? fmt(mineScore) : '';
-    const canRename = !locked && !t.locked; // фиксация названия (или количества) запрещает переименование
+    /* Фиксация количества треков запрещает добавлять, удалять и менять порядок,
+       но названия править можно и при ней. Переименование запрещает только
+       личная фиксация названия трека (t.locked). */
+    const canRename = !t.locked;
     const canOrder = !locked;               // только фиксация количества запрещает порядок/удаление
     const single = singleOfTrack(t);
 
@@ -3018,6 +3031,15 @@ function makeAlbumCard(a: UiAlbum, featScore: number | null = null, animate = fa
   const n = trackCountOf(a.id);
   const parent = single ? parentOf(a) : undefined;
   const title = single ? singleDisplayTitle(a) : a.title;
+  /* У сингла треков нет (макси-синглы не ведём), поэтому «0 треков» не пишем:
+     показываем количество оценок релиза, а пока оценок нет — ничего. */
+  const votes = single ? singleVotesOf(a.id) : 0;
+  const pending = single ? pendingCountOf(a.id) : 0;
+  const countHTML = single
+    ? (votes
+      ? `<span class="album__count">${votes} ${votesPlural(votes)}</span>${pending ? `<span class="album__votes-count">${pending} без подтверждения</span>` : ''}`
+      : '')
+    : `<span class="album__count">${n} ${tracksPlural(n)}</span>`;
   el.innerHTML = `
     <div class="album__cover">
       <img src="${esc(coverSrc(a))}" alt="${esc(singleArtistText(a))} — ${esc(title)}" loading="lazy">
@@ -3035,9 +3057,7 @@ function makeAlbumCard(a: UiAlbum, featScore: number | null = null, animate = fa
           <span class="album__avg-num">${avgStr}</span>
           <span class="album__avg-of">/10</span>
         </div>
-        <div class="album__votes">
-          <span class="album__count">${n} ${tracksPlural(n)}</span>
-        </div>
+        <div class="album__votes">${countHTML}</div>
       </div>
     </div>`;
   el.addEventListener('click', (ev) => {
@@ -3134,42 +3154,59 @@ function renderArtistPage(): void {
   artistOwn.innerHTML = '';
   for (const a of own) artistOwn.appendChild(makeAlbumCard(a));
 
+  /* Синглы — все релизы артиста такого типа: и сольные, и с фитом/совместкой
+     («Название & Гость»). Гость видит сингл здесь же, а не в «при участии»:
+     раздел «при участии» оставлен за альбомами с его фит-треками. */
   const ownSingles = artistOwnSingles(name);
-  artistSinglesSection.hidden = ownSingles.length === 0;
+  const featSingles = artistFeatureSingles(name);
+  artistSinglesSection.hidden = ownSingles.length === 0 && featSingles.length === 0;
   artistSingles.innerHTML = '';
   for (const s of ownSingles) artistSingles.appendChild(makeAlbumCard(s));
+  for (const f of featSingles) artistSingles.appendChild(makeAlbumCard(f.single));
 
   const feats = artistFeatureAlbums(name);
-  const featSingles = artistFeatureSingles(name);
-  artistFeatSection.hidden = feats.length === 0 && featSingles.length === 0;
+  artistFeatSection.hidden = feats.length === 0;
   artistFeat.innerHTML = '';
   for (const f of feats) artistFeat.appendChild(makeAlbumCard(f.album, f.score));
-  if (featSingles.length) {
-    const grid = document.createElement('div');
-    grid.className = 'sgrid artist__feat-singles';
-    for (const f of featSingles) grid.appendChild(makeSingleRow(f.single));
-    artistFeat.appendChild(grid);
-  }
 }
 
 /* --- рейтинг артистов --- */
 interface ArtistRank { name: string; score: number | null; ownCount: number; featCount: number; cover: string; }
 
+/* Обложка в рейтинге артистов — с ЛУЧШЕЙ работы, а не только лучшего альбома:
+   сначала свои альбомы и синглы, затем (если своих релизов нет) альбомы, где
+   артист участвует на фите, и в последнюю очередь синглы с его участием.
+   Внутри группы берётся работа с самым высоким баллом, но если у неё нет своей
+   картинки — следующая по баллу работа с настоящей обложкой: пустой плитки
+   с буквой и тем более пустого <img> в рейтинге не остаётся. */
+function artistRankCover(name: string): string {
+  const groups: Array<Array<{ release: UiAlbum; score: number | null }>> = [
+    [
+      ...artistOwnAlbums(name).map((a) => ({ release: a, score: albumScoreOf(a.id) })),
+      ...artistOwnSingles(name).map((s) => ({ release: s, score: singleScoreOf(s.id) })),
+    ],
+    artistFeatureAlbums(name).map((f) => ({ release: f.album, score: f.score })),
+    artistFeatureSingles(name).map((f) => ({ release: f.single, score: singleScoreOf(f.single.id) })),
+  ];
+  for (const group of groups) {
+    if (!group.length) continue;
+    const sorted = [...group].sort((x, y) => (y.score ?? -1) - (x.score ?? -1));
+    const withArt = sorted.find((c) => hasCoverArt(c.release));
+    return coverSrc((withArt ?? sorted[0]).release);
+  }
+  return letterCover(name);
+}
+
 function artistRanks(): ArtistRank[] {
   return allArtistNames().map((name) => {
     const own = artistOwnAlbums(name);
     const feats = artistFeatureAlbums(name);
-    const cands: Array<{ album: UiAlbum; score: number | null }> = [];
-    for (const a of own) cands.push({ album: a, score: albumScoreOf(a.id) });
-    for (const f of feats) cands.push({ album: f.album, score: f.score });
-    cands.sort((x, y) => (y.score ?? -1) - (x.score ?? -1));
-    const best = cands[0];
     return {
       name,
       score: artistScoreOf(name),
       ownCount: own.length,
       featCount: feats.length,
-      cover: best ? coverSrc(best.album) : '',
+      cover: artistRankCover(name),
     };
   }).sort((a, b) => {
     if (a.score === null && b.score === null) return a.name.localeCompare(b.name, 'ru');
@@ -3357,7 +3394,8 @@ function renderSingleRank(): void {
     li.className = 'rank' + (pos <= 3 && r.score !== null ? ` rank--${pos}` : '') + (r.score === null ? ' is-unranked' : '');
     const parent = parentOf(r.single);
     const meta: string[] = [String(r.single.year), singleArtistText(r.single)];
-    meta.push(parent ? `к альбому «${parent.title}»` : 'вне альбома');
+    /* Привязку показываем, только если она есть: «вне альбома» в рейтинге — лишний шум. */
+    if (parent) meta.push(`к альбому «${parent.title}»`);
     if (r.score === null) meta.push(singleRankReason(r.single.id));
     li.innerHTML = `
       <span class="rank__pos">${pos}</span>
@@ -6573,6 +6611,9 @@ addBack.addEventListener('click', () => void goBack());
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  /* Escape в поле переименования трека отменяет только переименование: свой
+     обработчик поля уже снял правку, «назад» с экрана уводить не нужно. */
+  if ((e.target as HTMLElement).classList?.contains('track__rename-input')) return;
   if (albumCoverDialog.open) {
     e.preventDefault();
     closeAlbumCoverEditor();

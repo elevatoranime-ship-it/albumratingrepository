@@ -156,3 +156,62 @@ test('тач: тап вне списка треков снимает выдел�
   await expect(row).not.toHaveClass(/is-active/);
   expect(errors).toEqual([]);
 });
+
+/* Разметка карточек релиза: на телефоне две карточки в ряд, и раньше блок оценки
+   «скакал» вверх-вниз (у синглов со строкой «к альбому …» и подписью про
+   неподтверждённые оценки карточка получалась выше), а счётчик «12 треков»
+   переносился на вторую строку, тогда как «3 трека» — нет.
+   Проверяем на обоих проектах (телефон и десктоп): карточки ряда одинаковой
+   высоты, блок оценки прижат к нижнему краю, счётчик строго в одну строку. */
+test('карточки релизов: балл на одной линии, счётчик в одну строку', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await demoLogin(page);
+
+  const cards = page.locator('#albums .album:not(.album--add)');
+  const measure = async () => {
+    // дожидаемся конца анимации появления, чтобы мерить установившуюся разметку
+    await expect(cards.last()).not.toHaveClass(/reveal/);
+    return cards.evaluateAll((els) => els.map((el) => {
+      const card = el.getBoundingClientRect();
+      const ratingEl = el.querySelector('.album__rating');
+      const countEl = el.querySelector('.album__count');
+      const rating = ratingEl ? ratingEl.getBoundingClientRect() : card;
+      const count = countEl ? countEl.getBoundingClientRect() : null;
+      const line = countEl ? parseFloat(getComputedStyle(countEl).lineHeight) : 0;
+      return {
+        title: (el.querySelector('.album__title')?.textContent ?? '').trim(),
+        top: Math.round(card.top),
+        bottom: Math.round(card.bottom),
+        gap: Math.round(card.bottom - rating.bottom),
+        lines: count && line > 0 ? Math.round(count.height / line) : 0,
+      };
+    }));
+  };
+
+  const check = (rows: Array<{ title: string; top: number; bottom: number; gap: number; lines: number }>) => {
+    expect(rows.length, JSON.stringify(rows)).toBeGreaterThan(2);
+    // блок оценки у всех карточек на одинаковом расстоянии от нижнего края
+    const gaps = rows.map((r) => r.gap);
+    expect(Math.max(...gaps) - Math.min(...gaps), JSON.stringify(rows)).toBeLessThanOrEqual(1);
+    // счётчик («12 треков», «2 оценки») никогда не переносится
+    expect(Math.max(...rows.map((r) => r.lines)), JSON.stringify(rows)).toBeLessThanOrEqual(1);
+    // карточки одного ряда одинаковой высоты — значит, и балл у них на одной линии
+    const byRow = new Map<number, number[]>();
+    for (const r of rows) byRow.set(r.top, [...(byRow.get(r.top) ?? []), r.bottom]);
+    for (const bottoms of byRow.values()) expect(Math.max(...bottoms) - Math.min(...bottoms), JSON.stringify(rows)).toBeLessThanOrEqual(1);
+    return gaps[0];
+  };
+
+  const albumGap = check(await measure());
+
+  // синглы: у карточек разная «начинка» (строка «к альбому …», «1 без подтверждения»,
+  // пустая подпись у релиза без оценок) — линия балла от этого не меняется
+  await page.locator('#seg-singles').click();
+  const singleGap = check(await measure());
+  expect(Math.abs(singleGap - albumGap)).toBeLessThanOrEqual(1);
+
+  // подпись про неподтверждённую оценку видна и не ломает выравнивание
+  await expect(page.locator('#albums .album__votes-count').first()).toBeVisible();
+  expect(errors).toEqual([]);
+});

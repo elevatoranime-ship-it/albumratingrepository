@@ -535,8 +535,14 @@ body {
   margin-top: 34px;
 }
 
-/* карточка альбома */
+/* карточка альбома
+   Колонка: обложка фиксированной высоты, тело растягивается на всю карточку.
+   В сетке карточки одного ряда всегда одинаковой высоты (stretch), а блок
+   оценки внутри прижат к нижнему краю — поэтому балл у соседей стоит на одной
+   линии и не «скачет» вверх-вниз из-за разной длины подписей. */
 .album {
+  display: flex;
+  flex-direction: column;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -552,6 +558,7 @@ body {
 
 .album__cover {
   position: relative;
+  flex: none;
   aspect-ratio: 1 / 1;
   overflow: hidden;
   background: #0d0d10;
@@ -576,9 +583,16 @@ body {
   border-radius: 999px;
 }
 
-.album__body { padding: 14px 16px 16px; }
+.album__body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  padding: 14px 16px 16px;
+}
 
 .album__title {
+  flex: none;
   font-family: var(--serif);
   font-size: 17px;
   font-weight: 400;
@@ -586,22 +600,28 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .album__artist {
+  flex: none;
   margin-top: 4px;
   font-size: 12.5px;
   color: var(--text-faint);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
+/* Минимальный отступ между текстом карточки и линией оценки — он остаётся даже
+   тогда, когда свободного места в карточке нет (самая «высокая» карточка ряда).
+   Предпоследний ребёнок — это артист или строка «к альбому …». */
+.album__body > :nth-last-child(2) { margin-bottom: 14px; }
+
 .album__rating {
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
   gap: 12px;
-  margin-top: 14px;
+  margin-top: auto;      /* оценка всегда у нижнего края карточки */
   padding-top: 12px;
   border-top: 1px solid var(--line);
 }
-.album__avg { display: flex; align-items: baseline; gap: 3px; white-space: nowrap; }
+.album__avg { display: flex; flex: none; align-items: baseline; gap: 3px; white-space: nowrap; }
 .album__avg-num {
   font-family: inherit;
   font-size: 26px;
@@ -613,7 +633,28 @@ body {
 }
 .album__avg-of { font-size: 11px; color: var(--text-faint); }
 
-.album__votes { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.album__votes {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+}
+/* Счётчик («12 треков», «2 оценки») — строго в одну строку и своим мелким
+   шрифтом: без этого правила он наследовал 16px, на узкой карточке часть
+   подписей переносилась на вторую строку, а часть — нет. */
+.album__count {
+  max-width: 100%;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-variant-numeric: tabular-nums;
+}
 .vote { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-faint); white-space: nowrap; }
 .vote__who {
   display: grid; place-items: center;
@@ -937,6 +978,16 @@ body {
   .albums { grid-template-columns: repeat(2, 1fr); gap: 12px; }
   .album__body { padding: 12px 12px 14px; }
   .album__avg-num { font-size: 22px; }
+  /* Две карточки в ряд: справа от балла остаётся примерно 70px. Подписи мельче,
+     зазор и отступ до линии оценки компактнее, но счётчик по-прежнему в одну
+     строку, а балл — на одной высоте у всех карточек ряда. */
+  .album__rating { gap: 8px; padding-top: 10px; }
+  .album__body > :nth-last-child(2) { margin-bottom: 12px; }
+  .album__title { font-size: 16px; }
+  .album__artist { font-size: 12px; }
+  .album__count { font-size: 10.5px; line-height: 1.35; }
+  .album__votes-count { font-size: 10px; line-height: 1.3; }
+  .album__parent { margin-top: 4px; font-size: 11px; }
 }
 
 @media (max-height: 640px) {
@@ -2666,7 +2717,17 @@ body { -webkit-tap-highlight-color: transparent; }
   white-space: normal; overflow-wrap: anywhere;
 }
 .album__parent b { color: var(--text-dim); font-weight: 500; font-style: normal; }
-.album__votes-count { font-size: 11.5px; color: var(--text-faint); }
+/* Вторая подпись справа («1 без подтверждения»): в одну строку она не всегда
+   помещается, поэтому перенос разрешён, но выравнивание и высота строки
+   фиксированы — балл слева остаётся на месте. */
+.album__votes-count {
+  max-width: 100%;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-faint);
+  text-align: right;
+  overflow-wrap: break-word;
+}
 
 /* --- компактные карточки синглов (страница альбома) --- */
 .av__singles { margin-top: 40px; position: relative; z-index: 1; }
@@ -3005,8 +3066,6 @@ body { -webkit-tap-highlight-color: transparent; }
 .track__btn.is-on { color: var(--accent-strong); border-color: var(--accent-line); }
 .track__slider.is-locked,
 .track__numinput.is-locked { opacity: 0.55; }
-
-.artist__feat-singles { margin-top: 14px; }
 
 /* --- карточка сингла в общей сетке: акцентная рамка обложки --- */
 .album--single .album__cover::after {

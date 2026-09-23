@@ -6611,6 +6611,9 @@ addBack.addEventListener('click', () => void goBack());
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
+  /* Escape в поле переименования трека отменяет только переименование: свой
+     обработчик поля уже снял правку, «назад» с экрана уводить не нужно. */
+  if ((e.target as HTMLElement).classList?.contains('track__rename-input')) return;
   if (albumCoverDialog.open) {
     e.preventDefault();
     closeAlbumCoverEditor();

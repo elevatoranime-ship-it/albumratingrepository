@@ -93,6 +93,8 @@ test('отмена переименования оставляет прежне�
   await expect(input).toBeVisible();
   await input.fill('Черновик');
   await input.press('Escape');          // press фокусирует поле сам — фокус не «уезжает»
+  // Escape отменяет правку, но НЕ уводит с альбома (регресс: раньше уходил назад)
+  await expect(page.locator('#view-album')).toHaveClass(/is-visible/);
   await expect(page.locator('#track-list .track[data-id="track-free"] .track__title')).toHaveText('Первый трек');
 
   // пустое название не сохраняется

@@ -25788,6 +25788,7 @@ ${suffix}`;
   addBack.addEventListener("click", () => void goBack());
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
+    if (e.target.classList?.contains("track__rename-input")) return;
     if (albumCoverDialog.open) {
       e.preventDefault();
       closeAlbumCoverEditor();

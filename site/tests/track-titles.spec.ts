@@ -66,7 +66,7 @@ test('количество треков зафиксировано — назв�
   await expect(input).toBeVisible();
   await expect(input).toHaveValue('Первый трек');
   await input.fill('Переименованный трек');
-  await page.keyboard.press('Enter');
+  await input.press('Enter');
 
   const row = page.locator('#track-list .track[data-id="track-free"]');
   await expect(row.locator('.track__title')).toHaveText('Переименованный трек');
@@ -87,15 +87,18 @@ test('личная фиксация названия по-прежнему за�
 
 test('отмена переименования оставляет прежнее название (Escape и пустое значение)', async ({ page }) => {
   const free = page.locator('#track-list .track[data-id="track-free"]');
+  const input = page.locator('#track-list .track__rename-input');
 
   await free.locator('[data-act="rename"]').click();
-  await page.locator('#track-list .track__rename-input').fill('Черновик');
-  await page.keyboard.press('Escape');
+  await expect(input).toBeVisible();
+  await input.fill('Черновик');
+  await input.press('Escape');          // press фокусирует поле сам — фокус не «уезжает»
   await expect(page.locator('#track-list .track[data-id="track-free"] .track__title')).toHaveText('Первый трек');
 
   // пустое название не сохраняется
   await page.locator('#track-list .track[data-id="track-free"] [data-act="rename"]').click();
-  await page.locator('#track-list .track__rename-input').fill('   ');
-  await page.keyboard.press('Enter');
+  await expect(input).toBeVisible();
+  await input.fill('   ');
+  await input.press('Enter');
   await expect(page.locator('#track-list .track[data-id="track-free"] .track__title')).toHaveText('Первый трек');
 });

@@ -174,29 +174,32 @@ test('карточки релизов: балл на одной линии, сч
     await expect(cards.last()).not.toHaveClass(/reveal/);
     return cards.evaluateAll((els) => els.map((el) => {
       const card = el.getBoundingClientRect();
-      const rating = el.querySelector('.album__rating') as HTMLElement;
-      const count = el.querySelector('.album__count') as HTMLElement | null;
-      const line = count ? parseFloat(getComputedStyle(count).lineHeight) : 0;
+      const ratingEl = el.querySelector('.album__rating');
+      const countEl = el.querySelector('.album__count');
+      const rating = ratingEl ? ratingEl.getBoundingClientRect() : card;
+      const count = countEl ? countEl.getBoundingClientRect() : null;
+      const line = countEl ? parseFloat(getComputedStyle(countEl).lineHeight) : 0;
       return {
+        title: (el.querySelector('.album__title')?.textContent ?? '').trim(),
         top: Math.round(card.top),
         bottom: Math.round(card.bottom),
-        gap: card.bottom - rating.bottom,
-        lines: count && line > 0 ? Math.round(count.getBoundingClientRect().height / line) : 0,
+        gap: Math.round(card.bottom - rating.bottom),
+        lines: count && line > 0 ? Math.round(count.height / line) : 0,
       };
     }));
   };
 
-  const check = (rows: Array<{ top: number; bottom: number; gap: number; lines: number }>) => {
-    expect(rows.length).toBeGreaterThan(2);
+  const check = (rows: Array<{ title: string; top: number; bottom: number; gap: number; lines: number }>) => {
+    expect(rows.length, JSON.stringify(rows)).toBeGreaterThan(2);
     // блок оценки у всех карточек на одинаковом расстоянии от нижнего края
     const gaps = rows.map((r) => r.gap);
-    expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThanOrEqual(1);
+    expect(Math.max(...gaps) - Math.min(...gaps), JSON.stringify(rows)).toBeLessThanOrEqual(1);
     // счётчик («12 треков», «2 оценки») никогда не переносится
-    expect(Math.max(...rows.map((r) => r.lines))).toBeLessThanOrEqual(1);
+    expect(Math.max(...rows.map((r) => r.lines)), JSON.stringify(rows)).toBeLessThanOrEqual(1);
     // карточки одного ряда одинаковой высоты — значит, и балл у них на одной линии
     const byRow = new Map<number, number[]>();
     for (const r of rows) byRow.set(r.top, [...(byRow.get(r.top) ?? []), r.bottom]);
-    for (const bottoms of byRow.values()) expect(Math.max(...bottoms) - Math.min(...bottoms)).toBeLessThanOrEqual(1);
+    for (const bottoms of byRow.values()) expect(Math.max(...bottoms) - Math.min(...bottoms), JSON.stringify(rows)).toBeLessThanOrEqual(1);
     return gaps[0];
   };
 

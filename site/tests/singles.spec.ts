@@ -282,8 +282,15 @@ test('фит из названия сингла показывается в бл
   await guest.click();
   await expect(page.locator('#view-artist')).toHaveClass(/is-visible/);
   await expect(page.locator('#artist-name')).toHaveText('Гость');
-  // гость видит совместный сингл в разделе «при участии» — с чистым названием
-  await expect(page.locator('#artist-feat')).toContainText('Мегахит');
+  /* Сингл с совместкой у гостя лежит в разделе «синглы», а не «при участии»:
+     раздел «при участии» — для альбомов с фит-треками, а тип релиза не зависит
+     от того, соло это, фит или совместка. */
+  const guestSingle = page.locator('#artist-singles .album')
+    .filter({ has: page.locator('.album__title', { hasText: 'Мегахит' }) });
+  await expect(guestSingle).toHaveCount(1);
+  await expect(guestSingle.locator('.album__artist')).toHaveText('Основной & Гость');
+  await expect(page.locator('#artist-feat-section')).toBeHidden();
+  await expect(page.locator('#artist-feat')).not.toContainText('Мегахит');
 
   // «ft.» в названии на экране сингла автоматически показывается как «feat.»
   await page.locator('#artist-back').click();   // со страницы артиста — назад, на страницу сингла
@@ -436,10 +443,15 @@ test('рейтинг синглов: только релизы, подтверж
   await expect(rows.nth(0)).toContainText('Отдельный сингл');
   await expect(rows.nth(0)).toContainText('оценок пока нет');
   await expect(rows.nth(0).locator('.rank__score')).toHaveText('—');
+  // у сингла без привязки в подписи нет «вне альбома» — только год, артист и причина
+  await expect(rows.nth(0)).not.toContainText('вне альбома');
+  await expect(rows.nth(0).locator('.rank__meta')).toHaveText('2024 · Другой артист · оценок пока нет');
   // у «Первого сингла» второй участник не подтвердил оценку — релиз вне рейтинга
   await expect(rows.nth(1)).toContainText('Первый сингл');
   await expect(rows.nth(1).locator('.rank__score')).toHaveText('—');
   await expect(rows.nth(1)).toContainText('ждём подтверждения всех оценок');
+  // привязка к альбому в подписи остаётся
+  await expect(rows.nth(1).locator('.rank__meta')).toHaveText('2025 · Артист · к альбому «Общий альбом» · ждём подтверждения всех оценок');
 
   // как только оценки подтвердили оба участника, релиз попадает в рейтинг
   await page.locator('#srank-back').click();
@@ -1063,3 +1075,70 @@ for (const kind of ['album', 'single'] as const) {
     await expect(page.locator(kind === 'album' ? '#av-evaluator' : '#sv-evaluator')).toContainText('Оценивает только Второй');
   });
 }
+
+test('страница артиста: в карточке сингла — оценки, а не «0 треков»', async ({ page }) => {
+  const cloud = backend();
+  await cloud.install(page);
+  await login(page);
+  await page.locator('#seg-singles').click();
+  // карточка сингла на главной: подписи те же, что и на странице артиста
+  await expect(cardByTitle(page, SINGLE.title).locator('.album__count')).toHaveText('2 оценки');
+  await cardByTitle(page, SINGLE.title).locator('.album__artist-link').first().click();
+  await expect(page.locator('#view-artist')).toHaveClass(/is-visible/);
+  await expect(page.locator('#artist-name')).toHaveText('Артист');
+
+  // свой сингл: треков у сингла нет, поэтому «0 треков» не пишем — показываем оценки
+  const card = page.locator('#artist-singles .album')
+    .filter({ has: page.locator('.album__title', { hasText: 'Первый сингл' }) });
+  await expect(card).toHaveCount(1);
+  await expect(card).not.toContainText('трек');
+  await expect(card.locator('.album__count')).toHaveText('2 оценки');
+  await expect(card.locator('.album__votes-count')).toHaveText('1 без подтверждения');
+  // альбомы остались в своём разделе — с количеством треков
+  await expect(page.locator('#artist-own .album').locator('.album__count')).toHaveText('2 трека');
+
+  // у сингла без оценок подписи справа нет вовсе
+  await page.locator('#artist-back').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  await cardByTitle(page, SOLO.title).locator('.album__artist-link').first().click();
+  await expect(page.locator('#artist-name')).toHaveText('Другой артист');
+  const solo = page.locator('#artist-singles .album')
+    .filter({ has: page.locator('.album__title', { hasText: 'Отдельный сингл' }) });
+  await expect(solo).toHaveCount(1);
+  await expect(solo.locator('.album__count')).toHaveCount(0);
+  await expect(solo).not.toContainText('трек');
+});
+
+test('рейтинг артистов: обложка — с лучшей работы, синглы тоже считаются', async ({ page }) => {
+  const cloud = backend();
+  // У «Синглового» альбомов нет вообще — только сингл со своей обложкой:
+  // раньше в рейтинге оставалась пустая картинка.
+  cloud.state.albums.push({ ...SOLO, id: 'single-only', title: 'Единственный сингл', artist: 'Сингловый', year: 2025, cover_url: 'covers/not-like-us.jpg' });
+  cloud.state.singleRatings.push({ album_id: 'single-only', profile_id: ME.id, score: 9, confirmed: true });
+  // У «Без картинок» лучший сингл без обложки, а у следующего по баллу обложка есть.
+  cloud.state.albums.push({ ...SOLO, id: 'single-noart', title: 'Лучший без обложки', artist: 'Без картинок', year: 2025 });
+  cloud.state.albums.push({ ...SOLO, id: 'single-art', title: 'С обложкой', artist: 'Без картинок', year: 2024, cover_url: 'covers/blonde.jpg' });
+  cloud.state.singleRatings.push({ album_id: 'single-noart', profile_id: ME.id, score: 10, confirmed: true });
+  cloud.state.singleRatings.push({ album_id: 'single-art', profile_id: ME.id, score: 5, confirmed: true });
+  // У «Фит-гостя» своих релизов нет — обложка берётся из альбома, где он на фите.
+  cloud.state.albums.push({ ...ALBUM, id: 'album-feat', title: 'Чужой альбом', artist: 'Другой исполнитель', year: 2024, cover_url: 'covers/music.jpg' });
+  cloud.state.tracks.push({ id: 'track-feat-guest', album_id: 'album-feat', title: 'Совместный трек', position: 0, locked: false, feat_artist: 'Фит-гость', single_id: null });
+  cloud.state.ratings.push({ track_id: 'track-feat-guest', profile_id: ME.id, score: 8, confirmed: true });
+  await cloud.install(page);
+  await login(page);
+  await openRank(page, 'artists');
+
+  const cover = (name: string) => page.locator('#artist-rank-list .rank')
+    .filter({ has: page.locator('.rank__name', { hasText: name }) })
+    .locator('.rank__ava img');
+  await expect(cover('Сингловый')).toHaveAttribute('src', 'covers/not-like-us.jpg');
+  // своя работа без картинки — берём следующую с настоящей обложкой, пустышки нет
+  await expect(cover('Без картинок')).toHaveAttribute('src', 'covers/blonde.jpg');
+  // своих релизов нет — обложка из альбомного фита
+  await expect(cover('Фит-гость')).toHaveAttribute('src', 'covers/music.jpg');
+  // пустых src в рейтинге не остаётся ни у кого
+  const empty = await page.locator('#artist-rank-list .rank__ava img').evaluateAll(
+    (imgs) => imgs.filter((img) => !img.getAttribute('src')).length,
+  );
+  expect(empty).toBe(0);
+});

@@ -20735,15 +20735,21 @@ ${suffix}`;
     if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "\u043E\u0446\u0435\u043D\u043A\u0438";
     return "\u043E\u0446\u0435\u043D\u043E\u043A";
   }
+  function letterCover(text) {
+    const initial = (text.trim().charAt(0) || "?").toUpperCase();
+    const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><rect width='600' height='600' fill='#15151a'/><circle cx='300' cy='300' r='210' fill='none' stroke='rgba(183,168,239,0.16)' stroke-width='1.5'/><text x='300' y='345' font-family='Georgia, serif' font-size='210' fill='rgba(243,241,236,0.8)' text-anchor='middle'>" + esc(initial) + "</text></svg>";
+    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+  }
   function coverSrc(a) {
     if (a.cover) return a.cover;
     if (a.kind === "single") {
       const p = parentOf(a);
       if (p && p.cover) return p.cover;
     }
-    const initial = (a.title.trim().charAt(0) || "?").toUpperCase();
-    const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='600' height='600'><rect width='600' height='600' fill='#15151a'/><circle cx='300' cy='300' r='210' fill='none' stroke='rgba(183,168,239,0.16)' stroke-width='1.5'/><text x='300' y='345' font-family='Georgia, serif' font-size='210' fill='rgba(243,241,236,0.8)' text-anchor='middle'>" + esc(initial) + "</text></svg>";
-    return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svg);
+    return letterCover(a.title);
+  }
+  function hasCoverArt(a) {
+    return Boolean(a.cover || a.kind === "single" && parentOf(a)?.cover);
   }
   var FEAT_RE = /(\bfeat\b\.?|\bft\b\.?|&)/i;
   function featNameOf(title) {
@@ -22024,7 +22030,7 @@ ${suffix}`;
       const tavg = trackScoreOf(t.id);
       const tavgStr = tavg === null ? "\u2014" : fmt(tavg);
       const mineStr = typeof mineScore === "number" ? fmt(mineScore) : "";
-      const canRename = !locked && !t.locked;
+      const canRename = !t.locked;
       const canOrder = !locked;
       const single = singleOfTrack(t);
       const li = document.createElement("li");
@@ -22662,6 +22668,9 @@ ${suffix}`;
     const n = trackCountOf(a.id);
     const parent = single ? parentOf(a) : void 0;
     const title = single ? singleDisplayTitle(a) : a.title;
+    const votes = single ? singleVotesOf(a.id) : 0;
+    const pending = single ? pendingCountOf(a.id) : 0;
+    const countHTML = single ? votes ? `<span class="album__count">${votes} ${votesPlural(votes)}</span>${pending ? `<span class="album__votes-count">${pending} \u0431\u0435\u0437 \u043F\u043E\u0434\u0442\u0432\u0435\u0440\u0436\u0434\u0435\u043D\u0438\u044F</span>` : ""}` : "" : `<span class="album__count">${n} ${tracksPlural(n)}</span>`;
     el.innerHTML = `
     <div class="album__cover">
       <img src="${esc(coverSrc(a))}" alt="${esc(singleArtistText(a))} \u2014 ${esc(title)}" loading="lazy">
@@ -22679,9 +22688,7 @@ ${suffix}`;
           <span class="album__avg-num">${avgStr}</span>
           <span class="album__avg-of">/10</span>
         </div>
-        <div class="album__votes">
-          <span class="album__count">${n} ${tracksPlural(n)}</span>
-        </div>
+        <div class="album__votes">${countHTML}</div>
       </div>
     </div>`;
     el.addEventListener("click", (ev) => {
@@ -22770,36 +22777,43 @@ ${suffix}`;
     artistOwn.innerHTML = "";
     for (const a of own) artistOwn.appendChild(makeAlbumCard(a));
     const ownSingles = artistOwnSingles(name);
-    artistSinglesSection.hidden = ownSingles.length === 0;
+    const featSingles = artistFeatureSingles(name);
+    artistSinglesSection.hidden = ownSingles.length === 0 && featSingles.length === 0;
     artistSingles.innerHTML = "";
     for (const s of ownSingles) artistSingles.appendChild(makeAlbumCard(s));
+    for (const f of featSingles) artistSingles.appendChild(makeAlbumCard(f.single));
     const feats = artistFeatureAlbums(name);
-    const featSingles = artistFeatureSingles(name);
-    artistFeatSection.hidden = feats.length === 0 && featSingles.length === 0;
+    artistFeatSection.hidden = feats.length === 0;
     artistFeat.innerHTML = "";
     for (const f of feats) artistFeat.appendChild(makeAlbumCard(f.album, f.score));
-    if (featSingles.length) {
-      const grid = document.createElement("div");
-      grid.className = "sgrid artist__feat-singles";
-      for (const f of featSingles) grid.appendChild(makeSingleRow(f.single));
-      artistFeat.appendChild(grid);
+  }
+  function artistRankCover(name) {
+    const groups = [
+      [
+        ...artistOwnAlbums(name).map((a) => ({ release: a, score: albumScoreOf(a.id) })),
+        ...artistOwnSingles(name).map((s) => ({ release: s, score: singleScoreOf(s.id) }))
+      ],
+      artistFeatureAlbums(name).map((f) => ({ release: f.album, score: f.score })),
+      artistFeatureSingles(name).map((f) => ({ release: f.single, score: singleScoreOf(f.single.id) }))
+    ];
+    for (const group of groups) {
+      if (!group.length) continue;
+      const sorted = [...group].sort((x, y) => (y.score ?? -1) - (x.score ?? -1));
+      const withArt = sorted.find((c) => hasCoverArt(c.release));
+      return coverSrc((withArt ?? sorted[0]).release);
     }
+    return letterCover(name);
   }
   function artistRanks() {
     return allArtistNames().map((name) => {
       const own = artistOwnAlbums(name);
       const feats = artistFeatureAlbums(name);
-      const cands = [];
-      for (const a of own) cands.push({ album: a, score: albumScoreOf(a.id) });
-      for (const f of feats) cands.push({ album: f.album, score: f.score });
-      cands.sort((x, y) => (y.score ?? -1) - (x.score ?? -1));
-      const best = cands[0];
       return {
         name,
         score: artistScoreOf(name),
         ownCount: own.length,
         featCount: feats.length,
-        cover: best ? coverSrc(best.album) : ""
+        cover: artistRankCover(name)
       };
     }).sort((a, b) => {
       if (a.score === null && b.score === null) return a.name.localeCompare(b.name, "ru");
@@ -22965,7 +22979,7 @@ ${suffix}`;
       li.className = "rank" + (pos <= 3 && r.score !== null ? ` rank--${pos}` : "") + (r.score === null ? " is-unranked" : "");
       const parent = parentOf(r.single);
       const meta = [String(r.single.year), singleArtistText(r.single)];
-      meta.push(parent ? `\u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443 \xAB${parent.title}\xBB` : "\u0432\u043D\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430");
+      if (parent) meta.push(`\u043A \u0430\u043B\u044C\u0431\u043E\u043C\u0443 \xAB${parent.title}\xBB`);
       if (r.score === null) meta.push(singleRankReason(r.single.id));
       li.innerHTML = `
       <span class="rank__pos">${pos}</span>

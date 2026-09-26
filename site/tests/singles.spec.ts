@@ -37,7 +37,7 @@ function backend(adminMode = false) {
       return route.abort();
     });
         await page.route('**/api/genius/**', (route) => route.fulfill({ status: 502, contentType: 'application/json', body: '{"error":"genius off in tests"}' }));
-    await page.route('**/config.js', (route) => route.fulfill({
+    await page.route('**/config.js*', (route) => route.fulfill({
       contentType: 'application/javascript',
       body: `window.APP_CONFIG = ${JSON.stringify({
         supabaseUrl: ORIGIN,
@@ -629,7 +629,7 @@ test('подсказки появляются с анимацией, фон за
 
 test('если миграция не выполнена, раздел синглов честно сообщает об этом', async ({ page }) => {
   await page.route('**/*', (route) => (new URL(route.request().url()).origin === 'http://127.0.0.1:8080' ? route.continue() : route.abort()));
-  await page.route('**/config.js', (route) => route.fulfill({
+  await page.route('**/config.js*', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
       supabaseUrl: ORIGIN, supabaseAnonKey: 'sb_publishable_mock-only', allowedUsers: [ME, PEER].map((u) => ({ ...u, admin: false })),

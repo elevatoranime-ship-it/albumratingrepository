@@ -28,7 +28,7 @@ test.afterEach(async ({ page }) => {
 });
 
 async function config(page: Page, cloud = false): Promise<void> {
-  await page.route('**/config.js', (route) => route.fulfill({
+  await page.route('**/config.js*', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
       supabaseUrl: cloud ? cloudOrigin : '',
@@ -103,7 +103,7 @@ test('file cover persists without changing tracks, ratings or final album choice
   const saved = await storedAlbum(page);
   expect(saved.cover).toMatch(/^data:image\/jpeg;base64,/);
   // Старый релиз нормализуется в совместный режим; остальные поля не меняются.
-  expect({ ...saved, cover: '' }).toEqual({ ...album, evaluatorId: null });
+  expect({ ...saved, cover: '' }).toEqual({ ...album, evaluatorId: null, geniusId: null, isMaxi: false });
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('tracks_local_v1')!))).toEqual([track]);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('track_ratings_local_v1')!))).toEqual(ratings);
   await expect(page.locator('#av-cover-img')).toHaveAttribute('src', saved.cover);

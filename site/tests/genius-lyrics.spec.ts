@@ -70,7 +70,7 @@ async function base(page: Page, opts: GeniusOptions = {}): Promise<void> {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:8080') return route.continue();
     return route.abort();
   });
-  await page.route('**/config.js', (route) => route.fulfill({
+  await page.route('**/config.js*', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
       supabaseUrl: '',
@@ -282,7 +282,7 @@ test('сингл: ручная подстановка по ссылке, адм�
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:8080') return route.continue();
     return route.abort();
   });
-  await page.route('**/config.js', (route) => route.fulfill({
+  await page.route('**/config.js*', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
       supabaseUrl: cloudOrigin,

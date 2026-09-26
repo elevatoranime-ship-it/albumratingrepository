@@ -44,11 +44,11 @@ test('тач: меню «рейтинги» раскрывается вправ�
   expect(box!.x).toBeGreaterThanOrEqual(0);
   expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
 
-  // четыре пункта, «альбомы» — первый, со счётчиком (в демо 7 альбомов)
+  // четыре пункта, «альбомы» — первый, со счётчиком (в демо 8 альбомов)
   await expect(page.locator('.rank-menu__item')).toHaveCount(4);
   const albums = page.locator('.rank-menu__item[data-rank="albums"]');
   await expect(albums.locator('.rank-menu__label')).toHaveText('альбомы');
-  await expect(albums.locator('.rank-menu__count')).toHaveText('7');
+  await expect(albums.locator('.rank-menu__count')).toHaveText('8');
   expect(errors).toEqual([]);
 });
 
@@ -63,9 +63,9 @@ test('рейтинг альбомов: в чарт попадают только
   await expect(page.locator('#view-arank')).toHaveClass(/is-visible/);
   await expect(page.locator('#view-arank .rank__title')).toHaveText('рейтинг альбомов');
 
-  // в демо 7 альбомов; в чарт попал только Blonde — там трек «Nikes»
+  // в демо 8 альбомов; в чарт попал только Blonde — там трек «Nikes»
   // подтверждён обоими участниками (9.4 и 8.6 → 9)
-  await expect(page.locator('#album-rank-list .rank')).toHaveCount(7);
+  await expect(page.locator('#album-rank-list .rank')).toHaveCount(8);
   const first = page.locator('#album-rank-list .rank').first();
   await expect(first.locator('.rank__name')).toHaveText('Blonde');
   await expect(first.locator('.rank__score')).toHaveText('9');
@@ -74,7 +74,7 @@ test('рейтинг альбомов: в чарт попадают только
 
   // остальные — внизу с честной подписью
   const unranked = page.locator('#album-rank-list .rank.is-unranked');
-  await expect(unranked).toHaveCount(6);
+  await expect(unranked).toHaveCount(7);
   await expect(unranked.first().locator('.rank__score')).toHaveText('—');
   await expect(unranked.first().locator('.rank__meta')).toContainText('оценок пока нет');
   await expect(unranked.last().locator('.rank__meta')).toContainText('оценок пока нет');

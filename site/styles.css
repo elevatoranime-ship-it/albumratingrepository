@@ -2503,6 +2503,14 @@ body { -webkit-tap-highlight-color: transparent; }
     padding-right: max(18px, env(safe-area-inset-right));
   }
 
+  /* Страховка строки трека для широких телефонов (641–700px): кнопкам действий
+     разрешено переноситься, поэтому они не выталкивают друг друга (и крестик
+     удаления) за край карточки. На ≤ 640px кнопки вынесены отдельной строкой
+     и делят её ширину поровну — правила ниже. */
+  .track__row1 { flex-wrap: wrap; row-gap: 8px; }
+  .track__title { min-width: 0; }
+  .track__actions { min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+
   /* --- главная: шапка в столбик --- */
   .hdr { flex-direction: column; gap: 18px; }
   .hdr__right { align-items: flex-start; width: 100%; gap: 12px; }
@@ -2556,14 +2564,49 @@ body { -webkit-tap-highlight-color: transparent; }
           max(14px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left)); }
 
   /* --- трек: карточка в «стопку» --- */
-  .track { padding: 12px 12px 12px 10px; }
-  .track__row1 { flex-wrap: wrap; row-gap: 8px; }
-  .track__title { font-size: 14.5px; }
-  .track__avg { margin-left: auto; }
+  .track { padding: 12px 12px 12px 10px; min-width: 0; }
+  .track__row1 { flex-wrap: wrap; row-gap: 8px; min-width: 0; }
+  /* Название трека показываем целиком: на узком экране оно переносится
+     по словам (при необходимости — и внутри длинного слова), а не обрезается
+     троеточием, как на десктопе. Строка трека от этого просто становится выше. */
+  .track__title {
+    font-size: 14.5px;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    line-height: 1.35;
+  }
+  .track__avg { margin-left: auto; flex: none; }
 
-  /* действия трека — отдельной строкой, крупные тач-кнопки */
-  .track__actions { order: 9; flex-basis: 100%; justify-content: flex-end; gap: 6px; }
-  .track__btn { width: 40px; height: 40px; border-radius: 10px; }
+  /* Действия трека — своей строкой под названием, крупные тач-кнопки.
+     Кнопок в строке бывает много: у админа на треке альбома их восемь
+     (переименовать, выше, ниже, «сингл», Genius, фиксация названия, пропуск,
+     удалить), на макси-сингле — пять. Поэтому строка действий занимает всю
+     ширину карточки (flex-basis/width 100%), а кнопки делят её поровну:
+     свободное место разбирают grow'ом (до 44px), нехватку — shrink'ом
+     (но не уже 30px). База flex намеренно меньше минимума: перенос строки
+     во флексе считается по базе, поэтому все восемь кнопок встают в одну
+     линию даже на узком экране. Крайний случай (очень узкий экран) —
+     кнопки переносятся на вторую линию, а не выезжают за край карточки. */
+  .track__actions {
+    order: 9;
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .track__btn {
+    flex: 1 1 28px;
+    width: auto;
+    min-width: 30px;
+    max-width: 44px;
+    height: 40px;
+    border-radius: 10px;
+  }
   .track__btn svg { width: 17px; height: 17px; }
 
   /* контролы оценки — аккуратная сетка: ярлык+число+галочка сверху,
@@ -2627,8 +2670,9 @@ body { -webkit-tap-highlight-color: transparent; }
   /* действия трека всегда видны */
   .track__actions { opacity: 1; }
 
-  /* подсказка, как активировать строку */
-  .av__tracks-hint { display: block; }
+  /* подсказка, как активировать строку; отступ снизу — чтобы она не липла
+     к полю добавления трека (на десктопе подсказки нет вовсе) */
+  .av__tracks-hint { display: block; margin-bottom: 18px; }
 
   /* защита ползунка от случайных касаний: пока строка не выделена тапом,
      слайдер не ловит пальцы (тап по его месту подсвечивает строку);
@@ -2662,6 +2706,9 @@ body { -webkit-tap-highlight-color: transparent; }
   .artist__score-num { font-size: 42px; }
   .track__row2 { column-gap: 8px; row-gap: 8px; }
   .track__numinput { width: 62px; }
+  /* совсем узкий экран: все восемь кнопок трека по-прежнему в одну линию */
+  .track__actions { gap: 4px; }
+  .track__btn { min-width: 28px; }
 }
 
 /* ==========================================================================
@@ -4215,9 +4262,5 @@ body { -webkit-tap-highlight-color: transparent; }
 .view--single.is-maxi #vinyl-section { display: none !important; }
 .view--single.is-maxi .sv__tracks { display: block; }
 
-/* Скрыть пластинку для макси-сингла если он открыт как альбом - уже без пластинки, но на всякий */
+/* Скрыть пластинку для макси-сингла, если он открыт как альбом — уже без пластинки, но на всякий случай */
 .is-maxi .vinyl { display: none !important; }
-
-�ластинки, но на всякий */
-.is-maxi .vinyl { display: none !important; }
-

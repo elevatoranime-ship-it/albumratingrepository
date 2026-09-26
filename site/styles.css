@@ -2566,7 +2566,17 @@ body { -webkit-tap-highlight-color: transparent; }
   /* --- трек: карточка в «стопку» --- */
   .track { padding: 12px 12px 12px 10px; min-width: 0; }
   .track__row1 { flex-wrap: wrap; row-gap: 8px; min-width: 0; }
-  .track__title { font-size: 14.5px; min-width: 0; }
+  /* Название трека показываем целиком: на узком экране оно переносится
+     по словам (при необходимости — и внутри длинного слова), а не обрезается
+     троеточием, как на десктопе. Строка трека от этого просто становится выше. */
+  .track__title {
+    font-size: 14.5px;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    line-height: 1.35;
+  }
   .track__avg { margin-left: auto; flex: none; }
 
   /* Действия трека — своей строкой под названием, крупные тач-кнопки.
@@ -2660,8 +2670,9 @@ body { -webkit-tap-highlight-color: transparent; }
   /* действия трека всегда видны */
   .track__actions { opacity: 1; }
 
-  /* подсказка, как активировать строку */
-  .av__tracks-hint { display: block; }
+  /* подсказка, как активировать строку; отступ снизу — чтобы она не липла
+     к полю добавления трека (на десктопе подсказки нет вовсе) */
+  .av__tracks-hint { display: block; margin-bottom: 18px; }
 
   /* защита ползунка от случайных касаний: пока строка не выделена тапом,
      слайдер не ловит пальцы (тап по его месту подсвечивает строку);

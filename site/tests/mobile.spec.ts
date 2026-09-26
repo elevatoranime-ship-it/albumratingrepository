@@ -309,3 +309,63 @@ test('кнопки действий трека: альбом (8 кнопок) и
 
   expect(errors).toEqual([]);
 });
+
+/* Название трека на телефоне: раньше оно резалось троеточием (white-space: nowrap
+   + text-overflow: ellipsis), и длинное название нельзя было прочитать.
+   Теперь на ≤ 640px название переносится по словам и видно целиком.
+   Проверяем на обоих проектах, сузив окно до телефонных 390px. */
+test('на телефоне длинное название трека переносится целиком, без троеточия', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await demoLogin(page);
+  await openMusicAlbum(page);
+  await page.setViewportSize({ width: 390, height: 780 });
+
+  const longTitle = 'MOJO JOJO (remix) — очень длинное название трека, которое не помещается в одну строку';
+  await page.locator('#track-input').fill(longTitle);
+  await page.locator('#track-add-btn').click();
+  const row = page.locator('#track-list .track')
+    .filter({ has: page.locator('.track__title', { hasText: 'очень длинное название' }) });
+  await expect(row.locator('.track__title')).toHaveText(longTitle);
+
+  const m = await row.locator('.track__title').evaluate((el) => ({
+    whiteSpace: getComputedStyle(el).whiteSpace,
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+    height: el.getBoundingClientRect().height,
+    lineHeight: parseFloat(getComputedStyle(el).lineHeight) || 0,
+  }));
+  // перенос по словам вместо обрезки: нет ни nowrap, ни горизонтального переполнения
+  expect(m.whiteSpace).toBe('normal');
+  expect(m.scrollWidth).toBeLessThanOrEqual(m.clientWidth + 1);
+  // название заняло больше одной строки — значит, показано целиком, а не «…строку»
+  expect(m.lineHeight).toBeGreaterThan(0);
+  expect(m.height).toBeGreaterThan(m.lineHeight * 1.5);
+
+  // строка трека от переноса не разъезжается вбок
+  const line = await row.locator('.track__row1').evaluate((el) => ({
+    scrollWidth: el.scrollWidth, clientWidth: el.clientWidth,
+  }));
+  expect(line.scrollWidth).toBeLessThanOrEqual(line.clientWidth + 1);
+  expect(errors).toEqual([]);
+});
+
+/* Подсказка «нажмите на трек, чтобы выделить строку…» видна только на тач-экранах
+   и не должна липнуть к полю добавления трека. */
+test('тач: между подсказкой про выделение строки и формой добавления трека есть отступ', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const touch = await touchUi(page);
+  test.skip(!touch, 'подсказка показывается только на тач-экране (мобильный проект)');
+  await demoLogin(page);
+  await openMusicAlbum(page);
+
+  const hint = page.locator('#tracks-touch-hint');
+  await expect(hint).toBeVisible();
+  const gap = await hint.evaluate((el) => {
+    const form = document.querySelector('#track-form');
+    return form ? form.getBoundingClientRect().top - el.getBoundingClientRect().bottom : -1;
+  });
+  expect(gap).toBeGreaterThanOrEqual(12);
+  expect(errors).toEqual([]);
+});

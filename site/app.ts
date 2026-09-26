@@ -341,8 +341,30 @@ async function refreshData(signal?: AbortSignal): Promise<void> {
         tracksLocked: Boolean(x.tracks_locked), cohesion: x.cohesion ?? null, albumType: x.album_type ?? null,
       }));
 
-    tracks = ((ta.data ?? []) as Array<{ id: string; album_id: string; title: string; position: number; locked: boolean | null; feat_artist: string | null; single_id?: string | null; genius_song_id?: number | null }>)
-      .map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null, singleId: t.single_id ?? null, geniusId: t.genius_song_id != null ? String(t.genius_song_id) : null }));
+    tracks = ((ta.data ?? []) as Array<{
+      id: string;
+      album_id: string;
+      title: string;
+      position: number;
+      locked: boolean | null;
+      feat_artist: string | null;
+      single_id?: string | null;
+      genius_song_id?: number | null;
+      is_skipped?: boolean | null;
+      skip_reason?: string | null;
+    }>)
+      .map((t) => ({
+        id: t.id,
+        albumId: t.album_id,
+        title: t.title,
+        position: t.position,
+        locked: Boolean(t.locked),
+        featArtist: t.feat_artist ?? null,
+        singleId: t.single_id ?? null,
+        geniusId: t.genius_song_id != null ? String(t.genius_song_id) : null,
+        isSkipped: Boolean(t.is_skipped),
+        skipReason: t.skip_reason ?? null,
+      }));
 
     const incoming: RatingMap = {};
     for (const r of (ra.data ?? []) as Array<{ track_id: string; profile_id: string; score: number; confirmed: boolean | null }>) {
@@ -4202,11 +4224,7 @@ async function handleEditRelease(): Promise<void> {
 
 editJointCheck.addEventListener('change', () => {
   setJointReveal(editJointBox, editJointCheck.checked);
-  if (editJointCheck.checked) {
-    pulseCheckbox(editJointCheck);
-    // фокус после выкатывания поля, чтобы подсказка не обрезалась анимацией
-    window.setTimeout(() => editJointInput.focus(), 560);
-  }
+  if (editJointCheck.checked) pulseCheckbox(editJointCheck);
 });
 
 editArtistInput.addEventListener('input', () => {
@@ -6910,7 +6928,6 @@ jointCheck.addEventListener('change', () => {
   setJointReveal(jointBox, jointCheck.checked);
   if (jointCheck.checked) {
     pulseCheckbox(jointCheck);
-    window.setTimeout(() => jointInput.focus(), 560);
   } else {
     jointInput.value=''; jointList.hidden=true;
   }
@@ -6929,7 +6946,6 @@ maxiCheck.addEventListener('change', () => {
     window.clearTimeout(maxiHideTimer);
     maxiTracks.classList.remove('is-hiding');
     maxiTracks.hidden = false;
-    maxiTrack1.focus();
   } else {
     // мягко уводим блок: сначала анимация скрытия, потом hidden
     maxiTracks.classList.remove('is-hiding');

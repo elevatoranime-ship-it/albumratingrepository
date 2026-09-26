@@ -3035,19 +3035,10 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 
 /* --- диалог привязки сингла к альбому --- */
-.linkdlg .combobox { margin-bottom: 6px; position: relative; z-index: 60; }
+.linkdlg .combobox { margin-bottom: 6px; }
 .linkdlg .confirm__actions { margin-top: 22px; flex-wrap: wrap; }
 .linkdlg #single-link-unlink { margin-right: auto; }
-.linkdlg .combo__list {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  right: 0;
-  z-index: 70;
-  margin-top: 0;
-  max-height: 190px;
-  overflow-y: auto;
-}
+.linkdlg .combo__list { position: static; margin-top: 6px; max-height: 190px; overflow-y: auto; }
 
 /* --- дополнительно к v9: мелочи страницы сингла --- */
 .home__notice {

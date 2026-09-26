@@ -28,7 +28,7 @@ test.afterEach(async ({ page }) => {
 });
 
 async function config(page: Page, cloud = false): Promise<void> {
-  await page.route('**/config.js', (route) => route.fulfill({
+  await page.route('**/config.js*', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
       supabaseUrl: cloud ? cloudOrigin : '',

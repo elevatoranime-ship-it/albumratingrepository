@@ -76,7 +76,7 @@ async function baseMocks(page: Page, cloud = false): Promise<{ queries: string[]
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:8080') return route.continue();
     return route.abort();
   });
-  await page.route('**/config.js', (route) => route.fulfill({
+  await page.route('**/config.js*', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
       supabaseUrl: cloud ? 'https://cover-search-cloud.supabase.co' : '',

@@ -63,9 +63,9 @@ test('рейтинг альбомов: в чарт попадают только
   await expect(page.locator('#view-arank')).toHaveClass(/is-visible/);
   await expect(page.locator('#view-arank .rank__title')).toHaveText('рейтинг альбомов');
 
-  // в демо 7 альбомов; в чарт попал только Blonde — там трек «Nikes»
+  // в демо 8 альбомов; в чарт попал только Blonde — там трек «Nikes»
   // подтверждён обоими участниками (9.4 и 8.6 → 9)
-  await expect(page.locator('#album-rank-list .rank')).toHaveCount(7);
+  await expect(page.locator('#album-rank-list .rank')).toHaveCount(8);
   const first = page.locator('#album-rank-list .rank').first();
   await expect(first.locator('.rank__name')).toHaveText('Blonde');
   await expect(first.locator('.rank__score')).toHaveText('9');

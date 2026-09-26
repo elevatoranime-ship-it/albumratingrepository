@@ -20285,7 +20285,18 @@ ${suffix}`;
         cohesion: x.cohesion ?? null,
         albumType: x.album_type ?? null
       }));
-      tracks = (ta.data ?? []).map((t) => ({ id: t.id, albumId: t.album_id, title: t.title, position: t.position, locked: Boolean(t.locked), featArtist: t.feat_artist ?? null, singleId: t.single_id ?? null, geniusId: t.genius_song_id != null ? String(t.genius_song_id) : null }));
+      tracks = (ta.data ?? []).map((t) => ({
+        id: t.id,
+        albumId: t.album_id,
+        title: t.title,
+        position: t.position,
+        locked: Boolean(t.locked),
+        featArtist: t.feat_artist ?? null,
+        singleId: t.single_id ?? null,
+        geniusId: t.genius_song_id != null ? String(t.genius_song_id) : null,
+        isSkipped: Boolean(t.is_skipped),
+        skipReason: t.skip_reason ?? null
+      }));
       const incoming = {};
       for (const r of ra.data ?? []) {
         (incoming[_a = r.track_id] ?? (incoming[_a] = {}))[r.profile_id] = { score: Number(r.score), confirmed: Boolean(r.confirmed) };
@@ -23684,10 +23695,7 @@ ${suffix}`;
   }
   editJointCheck.addEventListener("change", () => {
     setJointReveal(editJointBox, editJointCheck.checked);
-    if (editJointCheck.checked) {
-      pulseCheckbox(editJointCheck);
-      window.setTimeout(() => editJointInput.focus(), 560);
-    }
+    if (editJointCheck.checked) pulseCheckbox(editJointCheck);
   });
   editArtistInput.addEventListener("input", () => {
     updateJointList(editArtistInput, editArtistList, (n) => {
@@ -26069,7 +26077,6 @@ ${suffix}`;
     setJointReveal(jointBox, jointCheck.checked);
     if (jointCheck.checked) {
       pulseCheckbox(jointCheck);
-      window.setTimeout(() => jointInput.focus(), 560);
     } else {
       jointInput.value = "";
       jointList.hidden = true;
@@ -26095,7 +26102,6 @@ ${suffix}`;
       window.clearTimeout(maxiHideTimer);
       maxiTracks.classList.remove("is-hiding");
       maxiTracks.hidden = false;
-      maxiTrack1.focus();
     } else {
       maxiTracks.classList.remove("is-hiding");
       void maxiTracks.offsetWidth;

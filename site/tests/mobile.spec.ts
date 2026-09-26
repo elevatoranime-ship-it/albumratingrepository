@@ -8,9 +8,9 @@ import { expect, test, type Page } from '@playwright/test';
 const touchUi = (page: Page) =>
   page.evaluate(() => window.matchMedia('(hover: none) and (pointer: coarse)').matches);
 
-async function demoLogin(page: Page): Promise<void> {
+async function demoLogin(page: Page, email = 'killmiplag@demo.local'): Promise<void> {
   await page.goto('/?demo=1');
-  await page.locator('#email-input').fill('killmiplag@demo.local');
+  await page.locator('#email-input').fill(email);
   await page.locator('#password').fill('demo');
   await page.locator('#submit-btn').click();
   await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
@@ -213,5 +213,99 @@ test('карточки релизов: балл на одной линии, сч
 
   // подпись про неподтверждённую оценку видна и не ломает выравнивание
   await expect(page.locator('#albums .album__votes-count').first()).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+/* Кнопки действий трека. У админа на треке альбома их восемь: переименовать,
+   выше, ниже, «сингл», Genius, фиксация названия, пропуск, удалить;
+   на макси-сингле — пять (без «выше/ниже» и без метки «сингл»).
+   Раньше на телефоне они не помещались в строку трека: кнопки сжимались,
+   а крестик удаления выезжал за правый край карточки. Проверяем на телефоне
+   и на десктопе, на обычном и на самом узком экране: все кнопки целиком
+   внутри карточки трека, стоят в одну линию и остаются крупными,
+   а карточка не растягивается вбок. */
+async function measureTrackRows(page: Page) {
+  return page.locator('#track-list .track').evaluateAll((rows) => rows.map((row) => {
+    const card = row.getBoundingClientRect();
+    const btns = [...row.querySelectorAll<HTMLElement>('.track__btn')].map((b) => {
+      const r = b.getBoundingClientRect();
+      return {
+        act: b.dataset.act ?? '?',
+        left: r.left, right: r.right, top: r.top,
+        width: r.width, height: r.height,
+      };
+    });
+    // первая строка карточки (название + кнопки): именно она не должна растягиваться вбок
+    const line = row.querySelector('.track__row1') as HTMLElement | null;
+    return {
+      title: (row.querySelector('.track__title')?.textContent ?? '').trim(),
+      left: card.left, right: card.right,
+      scrollWidth: line ? line.scrollWidth : row.scrollWidth,
+      clientWidth: line ? line.clientWidth : row.clientWidth,
+      btns,
+    };
+  }));
+}
+
+type TrackRow = Awaited<ReturnType<typeof measureTrackRows>>[number];
+
+function checkTrackRows(rows: TrackRow[], label: string, touch: boolean): void {
+  expect(rows.length, label).toBeGreaterThan(0);
+  for (const row of rows) {
+    const where = `${label} · «${row.title}»`;
+    expect(row.btns.length, where).toBeGreaterThan(0);
+    // все кнопки в одну линию — строка действий не «рвётся»
+    const tops = row.btns.map((b) => Math.round(b.top));
+    expect(Math.max(...tops) - Math.min(...tops), where).toBeLessThanOrEqual(1);
+    for (const b of row.btns) {
+      // целиком внутри карточки: крестик не выходит за её рамки
+      expect(b.left, `${where} → ${b.act}`).toBeGreaterThanOrEqual(row.left - 0.5);
+      expect(b.right, `${where} → ${b.act}`).toBeLessThanOrEqual(row.right + 0.5);
+      // кнопка остаётся крупной и удобной для пальца (не сплющена в «гармошку»)
+      expect(b.width, `${where} → ${b.act}`).toBeGreaterThanOrEqual(touch ? 28 : 26);
+      expect(b.height, `${where} → ${b.act}`).toBeGreaterThanOrEqual(touch ? 38 : 28);
+    }
+    // строка «название + кнопки» не растягивается вбок за границы карточки
+    expect(row.scrollWidth, where).toBeLessThanOrEqual(row.clientWidth + 1);
+  }
+}
+
+test('кнопки действий трека: альбом (8 кнопок) и макси-сингл (5) — внутри карточки, в одну линию', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const touch = await touchUi(page);
+
+  // входим админом — он видит полный набор кнопок трека
+  await demoLogin(page, 'elevator@demo.local');
+
+  // --- альбом: восемь кнопок на треке ---
+  await openMusicAlbum(page);
+  await expect(page.locator('#track-list .track').first()).toBeVisible();
+  await expect(page.locator('#track-list .track').first().locator('.track__btn')).toHaveCount(8);
+  checkTrackRows(await measureTrackRows(page), 'альбом', touch);
+
+  // --- макси-сингл открывается как альбом: кнопок пять ---
+  await page.locator('#album-back').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  await page.locator('#seg-singles').click();
+  await page.locator('#albums .album')
+    .filter({ has: page.getByRole('heading', { name: 'GNX — макси демо', exact: true }) })
+    .click();
+  await expect(page.locator('#view-album')).toHaveClass(/is-visible/);
+  await expect(page.locator('#view-album')).toHaveClass(/is-maxi/);
+  await expect(page.locator('#track-list .track')).toHaveCount(3);
+  await expect(page.locator('#track-list .track').first().locator('.track__btn')).toHaveCount(5);
+  checkTrackRows(await measureTrackRows(page), 'макси-сингл', touch);
+
+  // --- самый узкий экран: восемь кнопок альбома по-прежнему в карточке ---
+  await page.setViewportSize({ width: 320, height: 700 });
+  checkTrackRows(await measureTrackRows(page), 'макси-сингл 320px', touch);
+  await page.locator('#album-back').click();
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
+  await page.locator('#seg-albums').click();
+  await openMusicAlbum(page);
+  await expect(page.locator('#track-list .track').first()).toBeVisible();
+  checkTrackRows(await measureTrackRows(page), 'альбом 320px', touch);
+
   expect(errors).toEqual([]);
 });

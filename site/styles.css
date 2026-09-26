@@ -767,6 +767,14 @@ body {
    рисоваться поверх следующего поля, а не просвечивать сквозь него
    (иначе курсор попадает в поле обложки, а не в подсказку) */
 .field--parent { position: relative; z-index: 40; }
+/* Поле в фокусе (список подсказок открыт) — поверх соседей, включая
+   выехавшее поле второго артиста с его z 65 */
+.field--artist:focus-within,
+.field--parent:focus-within,
+.field--joint:focus-within {
+  position: relative;
+  z-index: 78;
+}
 
 /* подтверждение выбора артиста: подсветка рамки + галочка */
 .field--artist .field__input {
@@ -914,6 +922,9 @@ body {
 }
 .cover-pick__remove:hover { color: var(--danger); background: rgba(255,255,255,0.12); }
 .cover-pick__note { margin-top: 8px; font-size: 12px; color: var(--text-faint); }
+/* Подсказка про «оба артиста» — только когда галочка совместного альбома включена */
+#joint-field .cover-pick__note { display: none; }
+#joint-field:has(#joint-check:checked) .cover-pick__note { display: block; }
 
 /* поле для вставки ссылки на обложку */
 .cover-url { margin-top: 10px; }
@@ -3024,10 +3035,19 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 
 /* --- диалог привязки сингла к альбому --- */
-.linkdlg .combobox { margin-bottom: 6px; }
+.linkdlg .combobox { margin-bottom: 6px; position: relative; z-index: 60; }
 .linkdlg .confirm__actions { margin-top: 22px; flex-wrap: wrap; }
 .linkdlg #single-link-unlink { margin-right: auto; }
-.linkdlg .combo__list { position: static; margin-top: 6px; max-height: 190px; overflow-y: auto; }
+.linkdlg .combo__list {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 70;
+  margin-top: 0;
+  max-height: 190px;
+  overflow-y: auto;
+}
 
 /* --- дополнительно к v9: мелочи страницы сингла --- */
 .home__notice {
@@ -3667,3 +3687,546 @@ body { -webkit-tap-highlight-color: transparent; }
   .evaluator *, .evaluator.is-open .evaluator__option { transition: none !important; animation: none !important; }
   .evaluator.is-picked .evaluator__check path { stroke-dashoffset: 0; }
 }
+
+/* ===== Совместный альбом & Макси-сингл — fancy checkbox ===== */
+.field__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+  padding: 6px 0;
+}
+.field__checkbox input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.field__checkbox--fancy {
+  display: block;
+  padding: 10px 0;
+}
+.field__checkbox--fancy .cb {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: relative;
+  cursor: pointer;
+}
+.field__checkbox--fancy .cb__box {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 6px;
+  border: 1.5px solid rgba(255,255,255,0.16);
+  background: rgba(255,255,255,0.045);
+  box-shadow: 0 1px 6px rgba(0,0,0,0.22);
+  display: grid;
+  place-items: center;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 0.4s cubic-bezier(0.22,1,0.36,1),
+              background 0.45s cubic-bezier(0.22,1,0.36,1),
+              box-shadow 0.45s cubic-bezier(0.22,1,0.36,1),
+              transform 0.45s cubic-bezier(0.34,1.2,0.64,1);
+  will-change: transform, box-shadow;
+}
+.field__checkbox--fancy .cb__box::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at center, rgba(160,140,255,0.7) 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(0.3);
+}
+.field__checkbox--fancy .cb__icon {
+  width: 13px;
+  height: 13px;
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
+  opacity: 0;
+  transform: scale(0.5) rotate(-18deg);
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.22,1,0.36,1) 0.08s,
+              opacity 0.3s ease,
+              transform 0.55s cubic-bezier(0.34,1.4,0.64,1);
+  position: relative;
+  z-index: 1;
+}
+@keyframes cbPop {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.18); }
+  60% { transform: scale(0.92); }
+  100% { transform: scale(1.04); }
+}
+@keyframes cbRipple {
+  0% { transform: scale(0.3); opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+.field__checkbox--fancy input:checked + .cb .cb__box {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(183,168,239,0.14)),
+              0 2px 8px -2px rgba(0,0,0,0.35);
+}
+.field__checkbox--fancy input:checked + .cb .cb__box::after {
+  opacity: 0;
+  transform: scale(0.3);
+}
+.field__checkbox--fancy input:checked + .cb .cb__icon {
+  stroke-dashoffset: 0;
+  opacity: 1;
+  transform: scale(1) rotate(0);
+  color: #101014;
+}
+/* Пульс только при реальном клике (класс ставит JS в change) */
+.cb--pulse .cb__box {
+  animation: cbPop 0.55s cubic-bezier(0.34,1.4,0.64,1);
+}
+.cb--pulse .cb__box::after {
+  animation: cbRipple 0.7s cubic-bezier(0.22,1,0.36,1) 0.05s both;
+}
+.field__checkbox--fancy .cb__label {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-dim);
+  transition: color 0.35s ease, transform 0.45s cubic-bezier(0.22,1,0.36,1), letter-spacing 0.35s ease;
+  letter-spacing: 0.01em;
+}
+.field__checkbox--fancy input:checked + .cb .cb__label {
+  color: var(--text);
+  transform: translateX(2px);
+  letter-spacing: 0.015em;
+}
+.field__checkbox--fancy:hover .cb__box {
+  border-color: rgba(255,255,255,0.26);
+  transform: scale(1.03) translateY(-0.5px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.32);
+}
+.field__checkbox--fancy:hover input:checked + .cb .cb__box {
+  box-shadow: 0 0 0 2.5px var(--accent-soft, rgba(183,168,239,0.18)),
+              0 3px 10px -2px rgba(0,0,0,0.4);
+}
+.field__checkbox--fancy:active .cb__box {
+  transform: scale(0.94);
+}
+.field__checkbox--fancy input:focus-visible + .cb .cb__box {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* Плавное выкатывание поля второго артиста */
+.cb__reveal {
+  margin-top: 0;
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-10px) scale(0.98);
+  overflow: hidden;
+  pointer-events: none;
+  transition: max-height 0.55s cubic-bezier(0.22,1,0.36,1),
+              opacity 0.4s ease,
+              transform 0.5s cubic-bezier(0.22,1,0.36,1),
+              margin-top 0.4s ease;
+}
+.cb__reveal[hidden] { display: block !important; }
+.cb__reveal:not([hidden]) {
+  max-height: 120px;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+  margin-top: 14px;
+  z-index: 65;
+}
+/* После окончания выкатывания (JS добавляет класс) — не обрезаем выпадающие подсказки */
+.cb__reveal.is-revealed {
+  overflow: visible;
+  max-height: none;
+}
+.field--joint .combobox:not(.cb__reveal),
+.field--maxi #maxi-tracks {
+  margin-top: 10px;
+}
+/* Равные зазоры между чекбоксом и двумя строками артистов (24px вверх и вниз) */
+#edit-release-dialog .cb__reveal:not([hidden]) {
+  margin-top: 22px;
+}
+.form--add .cb__reveal:not([hidden]) {
+  margin-top: 24px;
+}
+#maxi-tracks .field__input { width: 100%; }
+#maxi-tracks { padding: 8px 0; }
+
+/* ===== Макси-сингл: тогл-кнопка в форме добавления ===== */
+.field__checkbox--pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 16px 9px 11px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: rgba(255,255,255,0.035);
+  font-size: 13.5px;
+  line-height: 1.3;
+  color: var(--text-dim);
+  transition: transform 0.18s var(--ease-out), border-color 0.25s ease,
+              background-color 0.25s ease, box-shadow 0.25s ease, color 0.25s ease;
+}
+.field__checkbox--pill:hover {
+  border-color: rgba(183,168,239,0.45);
+  background: rgba(255,255,255,0.055);
+  color: var(--text);
+  box-shadow: 0 8px 20px -12px rgba(0,0,0,0.6);
+  transform: translateY(-1px);
+}
+.field__checkbox--pill:active {
+  transform: translateY(0) scale(0.96);
+  box-shadow: none;
+}
+.field__checkbox--pill:has(input:checked) {
+  color: var(--text);
+  border-color: rgba(183,168,239,0.55);
+  background: rgba(183,168,239,0.1);
+}
+.pill__box {
+  width: 17px;
+  height: 17px;
+  flex: none;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 5px;
+  background: rgba(255,255,255,0.04);
+  display: grid;
+  place-items: center;
+  transition: background-color 0.25s ease, border-color 0.25s ease, transform 0.3s var(--ease-out);
+}
+.field__checkbox--pill:hover .pill__box { transform: scale(1.06); }
+.pill__icon {
+  width: 11px;
+  height: 11px;
+  stroke-dasharray: 28;
+  stroke-dashoffset: 28;
+  opacity: 0;
+  transition: stroke-dashoffset 0.4s var(--ease-out) 0.04s, opacity 0.15s ease;
+}
+.field__checkbox--pill input:checked + .pill__box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.field__checkbox--pill input:checked + .pill__box .pill__icon {
+  stroke-dashoffset: 0;
+  opacity: 1;
+  color: #101014;
+}
+/* Макси-блоки: мягкий S-вход (без резкого старта и без «затянутости») + скрытие */
+#maxi-tracks:not([hidden]) { animation: maxiIn 0.34s var(--ease-inout) both; }
+#maxi-track-3-wrap:not([hidden]) { animation: maxiIn 0.3s var(--ease-inout) both; }
+@keyframes maxiIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+/* Скрытие: короткое затухание — JS ставит hidden после анимации */
+#maxi-tracks.is-hiding { animation: maxiOut 0.22s var(--ease-inout) both; }
+@keyframes maxiOut {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translateY(-6px); }
+}
+/* Кнопка «Добавить ещё один трек» — явная кнопка с нормальным нажатием */
+.maxi-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  transition: transform 0.18s var(--ease-out), background-color 0.25s ease,
+              border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.maxi-add:hover {
+  background: rgba(255,255,255,0.085);
+  border-color: rgba(183,168,239,0.4);
+  color: var(--text);
+  box-shadow: 0 10px 22px -12px rgba(0,0,0,0.65);
+  transform: translateY(-1px);
+}
+.maxi-add:active { transform: scale(0.96); box-shadow: none; }
+.maxi-add__plus { width: 12px; height: 12px; flex: none; }
+
+/* Одинаковые отступы между всеми полями модалки редактирования, без капса */
+/* Дыхание для первых трёх строк: заголовок → «Альбом: …» → метка «Артист» */
+#edit-release-dialog .cover-editor__album {
+  margin-top: 12px;
+  margin-bottom: 18px;
+}
+#edit-release-dialog .field {
+  margin-bottom: 22px;
+}
+/* Пустая строка ошибки не резервирует высоту (год → кнопки: обычный зазор вместо ~62px) */
+#edit-release-dialog .form__error:empty {
+  min-height: 0;
+  margin: 0;
+}
+#edit-release-dialog .field:last-of-type {
+  margin-bottom: 8px;
+}
+#edit-release-dialog .field__label {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+#edit-release-dialog .field__input {
+  width: 100%;
+}
+#edit-release-dialog .field--joint {
+  margin-bottom: 22px;
+  padding: 0;
+}
+#edit-release-dialog .field--joint .field__checkbox--fancy {
+  margin-bottom: 0;
+  padding: 2px 0;
+}
+
+/* Модалка пропуска: та же ритмика отступов, что в модалке редактирования —
+   заголовок → «Трек: …» 12px → текст 18px → поле 22px → кнопки 30px (8+22) */
+#skip-dialog .cover-editor__album {
+  margin-top: 12px;
+  margin-bottom: 18px;
+}
+#skip-dialog .confirm__text {
+  margin-top: 0;
+  margin-bottom: 22px;
+}
+#skip-dialog .field {
+  margin-bottom: 8px;
+}
+#skip-dialog .form__error:empty {
+  min-height: 0;
+  margin: 0;
+}
+#skip-dialog .field__label {
+  display: block;
+  margin-bottom: 9px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+#skip-dialog .field__input {
+  width: 100%;
+}
+
+/* Форма добавления — те же ровные отступы */
+.form--add .field--joint {
+  margin-bottom: 24px;
+}
+.form--add .field--joint .field__checkbox--fancy {
+  margin-bottom: 0;
+  padding: 2px 0;
+}
+
+/* ===== Пропущенный трек: лента «срез» вместо перечёркивания ===== */
+.track.is-skipped {
+  position: relative;
+  opacity: 1;
+  background-color: rgba(255,255,255,0.015);
+  background-image: repeating-linear-gradient(-45deg, rgba(240,168,160,0.026) 0 14px, transparent 14px 30px);
+  border-color: rgba(240,168,160,0.18);
+}
+.track.is-skipped:hover { background-color: rgba(255,255,255,0.035); }
+.track.is-skipped .track__title { color: var(--text-faint); }
+.track.is-skipped .track__num,
+.track.is-skipped .track__handle { opacity: 0.65; }
+.track.is-skipped .track__avg { color: rgba(240,168,160,0.55); }
+.track.is-skipped .track__row2 { display: none !important; }
+
+/* лента причины: во всю ширину строки, с «опасной» кромкой и внятным текстом */
+.track__cut {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 7px 12px 7px 10px;
+  overflow: hidden;
+  border: 1px solid rgba(240,168,160,0.22);
+  border-left: 3px solid var(--danger);
+  border-radius: 9px;
+  background: linear-gradient(90deg, rgba(240,168,160,0.13), rgba(240,168,160,0.045) 60%, rgba(240,168,160,0.015));
+}
+.track__cut-ic { display: grid; place-items: center; color: var(--danger); flex: none; }
+.track__cut-ic svg { display: block; width: 15px; height: 15px; }
+.track__cut-tag {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+/* «причина» — компактная serif-подпись (в духе .av__mine-label): меньше, легче, вплотную к тексту */
+.track__cut-why {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-faint);
+  margin-right: -3px;
+}
+.track__cut-reason { font-size: 13.5px; color: var(--text); }
+/* одинаковый межстрочный бокс у всех подписей — базовые линии в одну линию */
+.track__cut-tag,
+.track__cut-why,
+.track__cut-reason,
+.track__cut-note { line-height: 18px; }
+.track__cut-note { margin-left: auto; font-size: 11.5px; color: var(--text-faint); white-space: nowrap; }
+
+/* пропуск и возврат — в духе кнопки Genius: цветной hover-отклик, мягкое нажатие */
+.track__btn:active { transform: scale(0.92); }
+.track__btn--skip:hover { color: var(--danger); background: rgba(240,168,160,0.12); }
+.track__btn--unskip:hover { color: var(--accent); background: rgba(183,168,239,0.13); }
+
+/* ===== Фирменный приём пропуска: вспышка → глитч → световой срез → штамп → шиммер ===== */
+.track--skip-fx {
+  z-index: 1;
+  animation: skipFx 0.62s var(--ge-ease) both;
+}
+@keyframes skipFx {
+  0%   { transform: none; filter: brightness(1); }
+  8%   { transform: translateX(-5px) skewX(-1.2deg); filter: brightness(1.9) saturate(1.6); }
+  22%  { transform: translateX(6px) skewX(1.4deg); filter: brightness(1.35) saturate(1.3); }
+  36%  { transform: translateX(-4px) skewX(-0.8deg); filter: brightness(1.15); }
+  50%  { transform: translateX(3px); filter: brightness(1.05); }
+  66%  { transform: translateX(-1.5px); filter: none; }
+  82%  { transform: translateX(1px); }
+  100% { transform: none; filter: none; }
+}
+/* световой срез, прошивающий строку насквозь */
+.track--skip-fx::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; left: 0;
+  width: 46%;
+  background: linear-gradient(100deg, transparent, rgba(240,168,160,0.22) 42%, rgba(255,255,255,0.65) 50%, rgba(240,168,160,0.22) 58%, transparent);
+  animation: skipSlash 0.55s 0.1s cubic-bezier(0.65, 0, 0.35, 1) both;
+  pointer-events: none;
+}
+@keyframes skipSlash {
+  0%   { transform: translateX(-110%) skewX(-16deg); opacity: 0; }
+  12%  { opacity: 1; }
+  88%  { opacity: 1; }
+  100% { transform: translateX(280%) skewX(-16deg); opacity: 0; }
+}
+/* RGB-разрыв названия в такт глитчу, затем всё стихает */
+.track--skip-fx .track__title {
+  animation: skipGlitchText 0.5s 0.06s steps(1, end) both;
+}
+@keyframes skipGlitchText {
+  0%   { text-shadow: -3px 0 rgba(240,80,80,0.75), 3px 0 rgba(120,220,255,0.75); }
+  25%  { text-shadow: 3px 0 rgba(240,80,80,0.6), -3px 0 rgba(120,220,255,0.6); }
+  50%  { text-shadow: -2px 0 rgba(240,80,80,0.45), 2px 0 rgba(120,220,255,0.45); }
+  75%  { text-shadow: 1px 0 rgba(240,80,80,0.25), -1px 0 rgba(120,220,255,0.25); }
+  100% { text-shadow: none; }
+}
+/* лента: выезжает маской, contents каскадом, иконка «штампуется» */
+.track--skip-fx .track__cut {
+  animation: cutWipe 0.5s 0.34s var(--ge-ease) both;
+}
+@keyframes cutWipe {
+  0%   { clip-path: inset(0 100% 0 0); opacity: 0; transform: translateY(7px); }
+  35%  { opacity: 1; }
+  100% { clip-path: inset(0 0 0 0); opacity: 1; transform: none; }
+}
+/* каскад без вертикальных сдвигов: подписи всегда на одной высоте, всплывают только светом */
+.track--skip-fx .track__cut > * { animation: cutIn 0.45s var(--ge-ease) both; }
+@keyframes cutIn {
+  from { opacity: 0; filter: blur(5px); }
+  to   { opacity: 1; filter: none; }
+}
+.track--skip-fx .track__cut > :nth-child(1) { animation-delay: 0.62s; }
+.track--skip-fx .track__cut > :nth-child(2) { animation-delay: 0.70s; }
+.track--skip-fx .track__cut > :nth-child(3) { animation-delay: 0.76s; }
+.track--skip-fx .track__cut > :nth-child(4) { animation-delay: 0.84s; }
+.track--skip-fx .track__cut > :nth-child(5) { animation-delay: 0.94s; }
+.track--skip-fx .track__cut-ic svg { animation: ge-stamp 0.6s var(--ge-ease) 0.66s both; }
+/* финальный шиммер по ленте — свет пробегает один раз */
+.track--skip-fx .track__cut::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 32%, rgba(255,255,255,0.16) 50%, transparent 68%);
+  transform: translateX(-100%);
+  animation: cutShimmer 0.75s 1.05s var(--ge-ease) both;
+  pointer-events: none;
+}
+@keyframes cutShimmer {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+.track__btn--skip {
+  color: var(--text-dim);
+}
+.track__btn--skip:hover {
+  color: var(--accent-strong);
+}
+.track__btn--unskip {
+  color: var(--accent);
+}
+
+/* ===== Бейдж макси-сингла ===== */
+.album__badge--maxi {
+  background: rgba(242,207,94,0.18);
+  border-color: rgba(242,207,94,0.32);
+  color: #f2cf5e;
+}
+
+/* ===== Совместный альбом: оба артиста ссылками ===== */
+.av__artist-link + .av__artist-sep,
+.sv__artist-link + .av__artist-sep {
+  margin: 0 4px;
+  color: var(--text-faint);
+}
+
+/* ===== Кнопки редактирования релиза ===== */
+.av__danger, .sv__danger {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+.av__danger .btn--ghost, .sv__danger .btn--ghost {
+  margin-top: 0;
+  padding: 9px 16px;
+  font-size: 13px;
+  line-height: 1;
+  border-radius: 10px;
+  gap: 8px;
+}
+.av__danger .btn--ghost svg, .sv__danger .btn--ghost svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+.view--album.is-maxi .av__finalize {
+  display: none !important;
+}
+
+/* ===== Модалки пропуска и редактирования ===== */
+#skip-dialog, #edit-release-dialog {
+  max-width: 520px;
+}
+
+/* ===== Треклист макси-сингла: без фиксации количества скрываем кнопку ===== */
+.view--album.is-maxi .av__lockcount { display: none !important; }
+.view--album.is-maxi #tracks-locked-note { display: none !important; }
+.view--single.is-maxi #vinyl-section { display: none !important; }
+.view--single.is-maxi .sv__tracks { display: block; }
+
+/* Скрыть пластинку для макси-сингла если он открыт как альбом - уже без пластинки, но на всякий */
+.is-maxi .vinyl { display: none !important; }
+
+�ластинки, но на всякий */
+.is-maxi .vinyl { display: none !important; }
+

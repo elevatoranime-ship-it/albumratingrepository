@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="color-scheme" content="dark" />
   <title>Пространство · альбомы и синглы</title>
-  <link rel="stylesheet" href="styles.css?v=46" />
+  <link rel="stylesheet" href="styles.css?v=71" />
 </head>
 <body>
 
@@ -324,6 +324,11 @@
         </div>
 
         <div class="av__danger reveal" style="--d:.36s">
+          <button class="btn btn--ghost btn--sm" id="album-edit-btn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l4 4L8 20l-5 1 1-5L17 3z"/></svg>
+            <span>редактировать релиз</span>
+          </button>
           <button class="btn btn--danger" id="album-delete-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -372,6 +377,24 @@
               <p class="cover-pick__note" id="artist-note" hidden></p>
             </div>
 
+            <div class="field field--joint reveal" id="joint-field" style="--d:.15s" hidden>
+              <label class="field__checkbox field__checkbox--fancy">
+                <input type="checkbox" id="joint-check" />
+                <span class="cb">
+                  <span class="cb__box">
+                    <svg class="cb__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13.5l4.2 4.2L19 7.5"/></svg>
+                  </span>
+                  <span class="cb__label">Совместный альбом — оба артиста на каждом треке</span>
+                </span>
+              </label>
+              <div class="combobox cb__reveal" id="joint-box" hidden>
+                <input class="field__input field__input--plain" id="joint-input" type="text"
+                       autocomplete="off" spellcheck="false" placeholder="второй артист…" />
+                <ul class="combo__list" id="joint-list" hidden></ul>
+              </div>
+              <p class="cover-pick__note">Оба артиста будут указаны на каждом треке, в названиях не указывать</p>
+            </div>
+
             <div class="field reveal" style="--d:.18s">
               <span class="field__label" id="title-label">Название альбома *</span>
               <input class="field__input field__input--plain" id="title-input" type="text"
@@ -416,6 +439,23 @@
                 <ul class="combo__list" id="parent-list" hidden></ul>
               </div>
               <p class="cover-pick__note" id="parent-note">перечислите альбомы через запятую; сингл будет виден на каждом из них</p>
+            </div>
+
+            <div class="field field--maxi reveal" id="maxi-field" style="--d:.28s" hidden>
+              <label class="field__checkbox field__checkbox--pill">
+                <input type="checkbox" id="maxi-check" />
+                <span class="pill__box" aria-hidden="true">
+                  <svg class="pill__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13.5l4.2 4.2L19 7.5"/></svg>
+                </span>
+                <span class="pill__label">Макси-сингл (до 3 треков)</span>
+              </label>
+              <div id="maxi-tracks" hidden>
+                <input class="field__input field__input--plain" id="maxi-track-1" type="text" placeholder="трек 1" autocomplete="off" spellcheck="false" />
+                <input class="field__input field__input--plain" id="maxi-track-2" type="text" placeholder="трек 2" autocomplete="off" spellcheck="false" style="margin-top:8px" />
+                <div id="maxi-track-3-wrap" hidden style="margin-top:8px"><input class="field__input field__input--plain" id="maxi-track-3" type="text" placeholder="трек 3" autocomplete="off" spellcheck="false" /></div>
+                <button class="btn btn--ghost btn--sm maxi-add" id="maxi-add-track" type="button" style="margin-top:8px"><svg class="maxi-add__plus" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M6 1.5v9M1.5 6h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>Добавить ещё один трек</button>
+                <p class="cover-pick__note">Фит можно указать в названии: «Трек ft. Артист» — гость попадёт в блок артистов</p>
+              </div>
             </div>
 
             <div class="field reveal" style="--d:.3s">
@@ -644,6 +684,25 @@
           <div class="av__chips" id="sv-chips"></div>
         </div>
 
+        <div class="tracks sv__tracks" id="sv-tracks" hidden>
+          <div class="tracks__head">
+            <span class="tracks__title">треки макси-сингла</span>
+            <span class="tracks__count" id="sv-tracks-count"></span>
+          </div>
+          <form class="tracks__form" id="sv-track-form">
+            <div class="tracks__inputs">
+              <input class="field__input" id="sv-track-input" type="text" placeholder="название трека — можно «Название feat. Гость»" autocomplete="off" />
+              <div class="combo__box" id="sv-track-feat-box" hidden>
+                <input class="field__input" id="sv-track-feat-input" type="text" placeholder="фит: имя гостя" autocomplete="off" />
+                <ul class="combo__list" id="sv-track-feat-list" hidden></ul>
+              </div>
+            </div>
+            <button class="btn btn--sm" id="sv-track-add" type="submit">добавить</button>
+          </form>
+          <p class="tracks__locked-note" id="sv-tracks-locked-note" hidden></p>
+          <ol class="tracks__list" id="sv-track-list"></ol>
+        </div>
+
         <!-- «пластинка» с текстом песни: диск ищет (вращается), текст печатается посимвольно -->
         <section class="vinyl reveal" id="vinyl-section" style="--d:.3s" hidden>
           <div class="vinyl__stage">
@@ -707,6 +766,11 @@
         </section>
 
         <div class="sv__danger reveal" style="--d:.34s">
+          <button class="btn btn--ghost btn--sm" id="single-edit-btn" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3l4 4L8 20l-5 1 1-5L17 3z"/></svg>
+            <span>редактировать релиз</span>
+          </button>
           <button class="btn btn--danger" id="single-delete-btn" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
                  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -889,6 +953,67 @@
     </form>
   </dialog>
 
+  <!-- ===== ПРОПУСК ТРЕКА ===== -->
+  <dialog class="cover-editor linkdlg" id="skip-dialog" aria-labelledby="skip-title">
+    <form id="skip-form" novalidate>
+      <h2 class="confirm__title" id="skip-title">Пропустить трек</h2>
+      <p class="cover-editor__album" id="skip-track-name"></p>
+      <p class="confirm__text">Этот трек не будет оцениваться и не войдёт в средний балл. Оценки будут удалены. Укажите причину — она останется в строке трека.</p>
+      <div class="field">
+        <span class="field__label">Причина пропуска *</span>
+        <input class="field__input field__input--plain" id="skip-reason-input" type="text" placeholder="например, ремикс, интерлюдия…" autocomplete="off" spellcheck="false" />
+      </div>
+      <p class="form__error" id="skip-error" role="alert" aria-live="polite"></p>
+      <div class="confirm__actions">
+        <button class="btn btn--ghost" id="skip-cancel" type="button">отмена</button>
+        <button class="btn" id="skip-save" type="submit"><span class="btn__label">пропустить</span><span class="btn__spinner" aria-hidden="true"></span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== РЕДАКТИРОВАНИЕ РЕЛИЗА ===== -->
+  <dialog class="cover-editor linkdlg" id="edit-release-dialog" aria-labelledby="edit-release-title">
+    <form id="edit-release-form" novalidate>
+      <h2 class="confirm__title" id="edit-release-title">Редактировать релиз</h2>
+      <p class="cover-editor__album" id="edit-release-name"></p>
+      <div class="field">
+        <span class="field__label">Артист *</span>
+        <div class="combobox" id="edit-artist-box">
+          <input class="field__input field__input--plain" id="edit-artist-input" type="text" autocomplete="off" spellcheck="false" placeholder="артист…" />
+          <ul class="combo__list" id="edit-artist-list" hidden></ul>
+        </div>
+      </div>
+      <div class="field field--joint" id="edit-joint-field">
+        <label class="field__checkbox field__checkbox--fancy">
+          <input type="checkbox" id="edit-joint-check" />
+          <span class="cb">
+            <span class="cb__box">
+              <svg class="cb__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13.5l4.2 4.2L19 7.5"/></svg>
+            </span>
+            <span class="cb__label">Совместный альбом</span>
+          </span>
+        </label>
+        <div class="combobox cb__reveal" id="edit-joint-box" hidden>
+          <input class="field__input field__input--plain" id="edit-joint-input" type="text" autocomplete="off" spellcheck="false" placeholder="второй артист…" />
+          <ul class="combo__list" id="edit-joint-list" hidden></ul>
+        </div>
+      </div>
+      <div class="field">
+        <span class="field__label">Название *</span>
+        <input class="field__input field__input--plain" id="edit-title-input" type="text" autocomplete="off" spellcheck="false" placeholder="название…" />
+      </div>
+      <div class="field">
+        <span class="field__label">Год *</span>
+        <input class="field__input field__input--plain field__input--year" id="edit-year-input" type="text" inputmode="numeric" maxlength="4" placeholder="2024" autocomplete="off" />
+      </div>
+      <p class="form__error" id="edit-release-error" role="alert" aria-live="polite"></p>
+      <div class="confirm__actions">
+        <button class="btn btn--ghost" id="edit-release-cancel" type="button">отмена</button>
+        <button class="btn" id="edit-release-save" type="submit"><span class="btn__label">сохранить</span><span class="btn__spinner" aria-hidden="true"></span></button>
+      </div>
+    </form>
+  </dialog>
+
   <!-- ===== МОДАЛЬНОЕ ПОДТВЕРЖДЕНИЕ ФИНАЛЬНОГО ВЫБОРА ===== -->
   <div class="confirm" id="confirm-modal" hidden>
     <div class="confirm__backdrop" data-confirm-close></div>
@@ -902,7 +1027,7 @@
     </div>
   </div>
 
-  <script src="config.js"></script>
-  <script src="app.js?v=48"></script>
+  <script src="config.js?v=71"></script>
+  <script src="app.js?v=71"></script>
 </body>
 </html>

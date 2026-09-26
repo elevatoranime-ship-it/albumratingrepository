@@ -50,8 +50,9 @@ interface UiAlbum {
   cohesion: number | null;      // целостность/концептуальность: 1..5, финально (только альбомы)
   geniusId?: string | null;     // ID песни Genius с текстом (у синглов)
   albumType: string | null;     // 'album' | 'ep' | 'compilation', финально (только альбомы)
+  isMaxi?: boolean;             // true — макси-сингл до 3 треков (только для kind='single')
 }
-interface UiTrack { id: string; albumId: string; title: string; position: number; locked: boolean; featArtist: string | null; singleId: string | null; geniusId: string | null; }
+interface UiTrack { id: string; albumId: string; title: string; position: number; locked: boolean; featArtist: string | null; singleId: string | null; geniusId: string | null; isSkipped?: boolean; skipReason?: string | null; }
 interface TrackRating { score: number; confirmed: boolean; }
 type RatingMap = Record<string, Record<string, TrackRating>>;
 interface PendingRating { value: TrackRating | null; savedAfterRead?: number; failed?: boolean; }
@@ -62,6 +63,8 @@ interface AddInput {
   coverUrl: string | null;
   kind?: ReleaseKind;        // по умолчанию — альбом
   parentIds?: string[];      // альбомы сингла
+  isMaxi?: boolean;
+  maxiTracks?: Array<{ title: string; featArtist: string | null }>;
 }
 
 /* ---------- Демо-сид (локальный режим) ---------- */
@@ -73,6 +76,7 @@ const SEED_ALBUMS: UiAlbum[] = [
   { id: 'gnx', title: 'GNX', artist: 'Kendrick Lamar', year: 2024, cover: 'covers/gnx.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
   { id: 'hurry-up-tomorrow', title: 'Hurry Up Tomorrow', artist: 'The Weeknd', year: 2025, cover: 'covers/hurry-up-tomorrow.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
   { id: 'blonde', title: 'Blonde', artist: 'Frank Ocean', year: 2016, cover: 'covers/blonde.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
+  { id: 'joint-demo', title: 'HEROES & VILLAINS (демо)', artist: 'Metro Boomin & Future', year: 2022, cover: 'covers/chromakopia.jpg', kind: 'album', parentId: null, tracksLocked: false, cohesion: null, albumType: 'album' },
 ];
 
 /* синглы: один самостоятельный (со своей обложкой) и три, привязанных к альбомам */
@@ -81,6 +85,7 @@ const SEED_SINGLES: UiAlbum[] = [
   { id: 's-timeless', title: 'Timeless & Playboi Carti', artist: 'The Weeknd', year: 2024, cover: '', kind: 'single', parentId: 'hurry-up-tomorrow', tracksLocked: false, cohesion: null, albumType: null },
   { id: 's-mojo-jojo', title: 'MOJO JOJO', artist: 'Playboi Carti', year: 2025, cover: '', kind: 'single', parentId: 'music', parentIds: ['music', 'music-demo'], tracksLocked: false, cohesion: null, albumType: null },
   { id: 's-not-like-us', title: 'Not Like Us', artist: 'Kendrick Lamar', year: 2024, cover: 'covers/not-like-us.jpg', kind: 'single', parentId: null, tracksLocked: false, cohesion: null, albumType: null },
+  { id: 's-maxi-demo', title: 'GNX — макси демо', artist: 'Kendrick Lamar', year: 2024, cover: 'covers/gnx.jpg', kind: 'single', parentId: null, tracksLocked: false, cohesion: null, albumType: null, isMaxi: true },
 ];
 
 /* демо-треки: чтобы в демо-режиме было видно связку «трек с меткой сингла ↔ сам сингл»,
@@ -89,6 +94,14 @@ const SEED_TRACKS: UiTrack[] = [
   { id: 'mojo-music', albumId: 'music', title: 'MOJO JOJO', position: 0, locked: false, featArtist: null, singleId: 's-mojo-jojo', geniusId: null },
   { id: 'mojo-demo', albumId: 'music-demo', title: 'MOJO JOJO', position: 0, locked: false, featArtist: null, singleId: 's-mojo-jojo', geniusId: null },
   { id: 'nike-track', albumId: 'blonde', title: 'Nikes', position: 0, locked: false, featArtist: null, singleId: 's-nikes', geniusId: null },
+  // Совместный альбом демо — оба артиста на каждом треке
+  { id: 'joint-1', albumId: 'joint-demo', title: 'Superhero', position: 0, locked: false, featArtist: null, singleId: null, geniusId: null },
+  { id: 'joint-2', albumId: 'joint-demo', title: 'Too Many Nights', position: 1, locked: false, featArtist: null, singleId: null, geniusId: null },
+  { id: 'joint-3', albumId: 'joint-demo', title: 'On Time', position: 2, locked: false, featArtist: null, singleId: null, geniusId: null, isSkipped: true, skipReason: 'интро / скит' },
+  // Макси-сингл демо — до 3 треков
+  { id: 'maxi-1', albumId: 's-maxi-demo', title: 'squabble up', position: 0, locked: false, featArtist: null, singleId: null, geniusId: null },
+  { id: 'maxi-2', albumId: 's-maxi-demo', title: 'tv off', position: 1, locked: false, featArtist: null, singleId: null, geniusId: null },
+  { id: 'maxi-3', albumId: 's-maxi-demo', title: 'luther', position: 2, locked: false, featArtist: 'SZA', singleId: null, geniusId: null },
 ];
 
 /* демо-оценки синглов: подтверждённые участвуют в рейтинге, неподтверждённые — нет */
@@ -169,6 +182,8 @@ function normalizeAlbum(a: Partial<UiAlbum> & { id: string; artist: string; titl
     tracksLocked: Boolean(a.tracksLocked),
     cohesion: a.cohesion ?? null,
     albumType: a.albumType ?? null,
+    geniusId: a.geniusId ?? null,
+    isMaxi: Boolean(a.isMaxi),
   };
 }
 
@@ -195,11 +210,13 @@ function loadLocalTracks(): UiTrack[] {
           featArtist: t.featArtist ?? null,
           geniusId: (t as { geniusId?: string | null }).geniusId ?? null,
           singleId: t.singleId ?? null,
+          isSkipped: Boolean((t as { isSkipped?: boolean }).isSkipped),
+          skipReason: (t as { skipReason?: string | null }).skipReason ?? null,
         }));
       }
     }
   } catch { /* ignore */ }
-  return SEED_TRACKS.map((t) => ({ ...t }));
+  return SEED_TRACKS.map((t) => ({ ...t, isSkipped: (t as UiTrack).isSkipped ?? false, skipReason: (t as UiTrack).skipReason ?? null }));
 }
 
 function parseRatingRows(parsed: Record<string, Record<string, number | TrackRating>>): RatingMap {
@@ -534,9 +551,11 @@ function renderSynchronizedData(changed: boolean): void {
     if (al) {
       renderEvaluator(al, '#av-evaluator');
       avTitle.textContent = al.title;
-      if (avArtist.querySelector<HTMLElement>('[data-artist]')?.dataset.artist !== al.artist) {
-        avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
-      }
+      // Сравниваем с ожидаемым HTML (как у синглов): для совместного альбома
+      // albumArtistHTML даёт ДВЕ отдельные ссылки — прежняя проверка по первому
+      // data-artist затирала их одной ссылкой «A & B» и вела в совместный профиль.
+      const avArtistHtml = albumArtistHTML(al, 'av__artist-link');
+      if (avArtist.innerHTML !== avArtistHtml) avArtist.innerHTML = avArtistHtml;
       avYear.textContent = String(al.year);
       if (avCoverImg.getAttribute('src') !== coverSrc(al)) {
         maybePlayCoverFresh(avCoverImg, coverSrc(al)); // до смены src: сравниваем со старой
@@ -719,6 +738,7 @@ function albumScoreOf(albumId: string): number | null {
   const vals: number[] = [];
   for (const t of tracks) {
     if (t.albumId !== albumId) continue;
+    if (t.isSkipped) continue;
     const r = trackRatings[t.id];
     if (r) for (const v of Object.values(r)) vals.push(v.score);
   }
@@ -736,6 +756,7 @@ function albumConfirmedScoreOf(albumId: string): number | null {
   const vals: number[] = [];
   for (const t of tracks) {
     if (t.albumId !== albumId) continue;
+    if (t.isSkipped) continue;
     const r = trackRatings[t.id];
     if (r) for (const v of Object.values(r)) if (v.confirmed) vals.push(v.score);
   }
@@ -756,6 +777,12 @@ function singleRankedScoreOf(singleId: string): number | null {
 
 /** Подсказка в рейтинге для сингла, который в него пока не попал. */
 function singleRankReason(singleId: string): string {
+  const s = singleById(singleId);
+  if (s && isMaxiSingle(s)) {
+    const votes = tracks.some((t) =>
+      t.albumId === singleId && !t.isSkipped && Object.keys(trackRatings[t.id] ?? {}).length > 0);
+    return votes ? 'ждём подтверждения всех оценок' : 'оценок пока нет';
+  }
   return singleVotesOf(singleId) === 0 ? 'оценок пока нет' : 'ждём подтверждения всех оценок';
 }
 
@@ -794,7 +821,7 @@ function singleAllConfirmed(singleId: string): boolean {
 function albumAllConfirmed(albumId: string): boolean {
   const release = albums.find((a) => a.id === albumId);
   return Boolean(release && allRatingsConfirmed(release, profileCache.keys(),
-    tracks.filter((t) => t.albumId === albumId).map((t) => trackRatings[t.id])));
+    tracks.filter((t) => t.albumId === albumId && !t.isSkipped).map((t) => trackRatings[t.id])));
 }
 
 function trackRelease(trackId: string): UiAlbum | undefined {
@@ -802,6 +829,8 @@ function trackRelease(trackId: string): UiAlbum | undefined {
   return albums.find((a) => a.id === track?.albumId);
 }
 function canRateTrack(trackId: string): boolean {
+  const t = tracks.find((x) => x.id === trackId);
+  if (t?.isSkipped) return false;
   return canEvaluate(trackRelease(trackId), currentUser?.id);
 }
 function renderEvaluator(release: UiAlbum, selector: string): void {
@@ -905,6 +934,15 @@ function featNameOf(title: string): string | null {
   return after || null;
 }
 
+function parseTrackTitleForAdd(raw: string): { title: string; featArtist: string | null } {
+  const m = FEAT_RE.exec(raw);
+  if (!m) return { title: raw.trim(), featArtist: null };
+  const title = raw.slice(0, m.index ?? 0).replace(/[\s([]+$/, '').trim();
+  const feat = raw.slice((m.index ?? 0) + m[0].length).replace(/[),.\s]+$/, '').trim();
+  if (!title || !feat) return { title: raw.trim(), featArtist: null };
+  return { title, featArtist: canonicalArtistName(feat) };
+}
+
 /* --- фит в названии сингла: название остаётся чистым, гостя показываем в блоке артиста --- */
 interface SingleTitleInfo { title: string; featArtist: string | null; featAmp: boolean; }
 
@@ -958,11 +996,38 @@ function releaseFullName(a: UiAlbum): string {
 }
 
 /* все артисты: основные из альбомов и синглов + фиты из треков и названий синглов */
+function splitJointArtists(artist: string): string[] {
+  const raw = artist.trim();
+  if (!raw) return [];
+  if (raw.includes(' & ')) return raw.split(' & ').map((s) => s.trim()).filter(Boolean);
+  return [raw];
+}
+function isJointAlbum(a: UiAlbum): boolean {
+  return a.kind === 'album' && a.artist.includes(' & ');
+}
+function isMaxiSingle(a: UiAlbum): boolean {
+  return a.kind === 'single' && Boolean(a.isMaxi);
+}
+function albumArtistHTML(a: UiAlbum, linkClass: string): string {
+  if (isJointAlbum(a)) {
+    const parts = splitJointArtists(a.artist);
+    return parts.map((name) => `<a class="${linkClass}" data-artist="${esc(name)}">${esc(name)}</a>`).join(' &amp; ');
+  }
+  if (a.kind === 'single') return singleArtistHTML(a, linkClass);
+  return `<a class="${linkClass}" data-artist="${esc(a.artist)}">${esc(a.artist)}</a>`;
+}
+function albumArtistText(a: UiAlbum): string {
+  if (a.kind === 'single') return singleArtistText(a);
+  return a.artist;
+}
+
 function allArtistNames(): string[] {
   const map = new Map<string, string>();
   for (const a of albums) {
-    const n = a.artist.trim();
-    if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), n);
+    for (const part of splitJointArtists(a.artist)) {
+      const n = part.trim();
+      if (n && !map.has(n.toLowerCase())) map.set(n.toLowerCase(), n);
+    }
   }
   for (const t of tracks) {
     const n = (t.featArtist ?? '').trim();
@@ -981,16 +1046,16 @@ function canonicalArtistName(raw: string): string {
   return existing ?? raw.trim();
 }
 
-/* альбомы, где артист — основной исполнитель */
+/* альбомы, где артист — основной исполнитель (включая совместные) */
 function artistOwnAlbums(name: string): UiAlbum[] {
   const k = name.toLowerCase();
-  return albums.filter((a) => a.kind === 'album' && a.artist.toLowerCase() === k);
+  return albums.filter((a) => a.kind === 'album' && splitJointArtists(a.artist).some((part) => part.toLowerCase() === k));
 }
 
-/* синглы, где артист — основной исполнитель */
+/* синглы, где артист — основной исполнитель (включая совместные если будут) */
 function artistOwnSingles(name: string): UiAlbum[] {
   const k = name.toLowerCase();
-  return albums.filter((a) => a.kind === 'single' && a.artist.toLowerCase() === k);
+  return albums.filter((a) => a.kind === 'single' && splitJointArtists(a.artist).some((part) => part.toLowerCase() === k));
 }
 
 /* фит артиста в названии сингла («Song ft. X») — балл идёт в профиль артиста */
@@ -1010,8 +1075,8 @@ function artistFeatureAlbums(name: string): Array<{ album: UiAlbum; score: numbe
   const k = name.toLowerCase();
   const out: Array<{ album: UiAlbum; score: number | null; count: number }> = [];
   for (const a of albums) {
-    if (a.artist.toLowerCase() === k) continue;
-    const ft = tracks.filter((t) => t.albumId === a.id && (t.featArtist ?? '').toLowerCase() === k);
+    if (splitJointArtists(a.artist).some((part) => part.toLowerCase() === k)) continue;
+    const ft = tracks.filter((t) => t.albumId === a.id && !t.isSkipped && (t.featArtist ?? '').toLowerCase() === k);
     if (ft.length) {
       const vals = ft.map((t) => trackScoreOf(t.id)).filter((s): s is number => s !== null);
       out.push({
@@ -1053,6 +1118,7 @@ function confirmedFeatureAlbumScoreOf(album: UiAlbum, artistName: string): numbe
   const vals: number[] = [];
   for (const t of tracks) {
     if (t.albumId !== album.id) continue;
+    if (t.isSkipped) continue;
     if ((t.featArtist ?? '').toLowerCase() !== k) continue;
     const r = trackRatings[t.id];
     if (r) for (const v of Object.values(r)) if (v.confirmed) vals.push(v.score);
@@ -1063,18 +1129,69 @@ function confirmedFeatureAlbumScoreOf(album: UiAlbum, artistName: string): numbe
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 let toastTimer: number | undefined;
+
+/* Пульс-анимация чекбокса — только при реальном клике пользователя,
+   не при программной установке checked (открытие модалки). */
+
+/* Выкатывание поля: после окончания transitionmax-height снимаем clip,
+   чтобы combo__list (выпадающие подсказки) не обрезался overflow:hidden. */
+const revealTimers = new WeakMap<HTMLElement, number>();
+function setJointReveal(box: HTMLElement, show: boolean): void {
+  box.classList.remove('is-revealed');
+  const prev = revealTimers.get(box);
+  if (prev) window.clearTimeout(prev);
+  if (!show) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  const finish = () => {
+    const t = revealTimers.get(box);
+    if (t) window.clearTimeout(t);
+    if (!box.hidden) box.classList.add('is-revealed');
+  };
+  const done = (ev: TransitionEvent) => {
+    if (ev.propertyName !== 'max-height') return;
+    box.removeEventListener('transitionend', done);
+    finish();
+  };
+  box.addEventListener('transitionend', done);
+  // fallback, если transitionend не пришёл (вкладка в фоне и т.п.)
+  revealTimers.set(box, window.setTimeout(finish, 750));
+}
+
+function pulseCheckbox(input: HTMLInputElement): void {
+  const cb = input.nextElementSibling as HTMLElement | null;
+  if (!cb || !cb.classList.contains('cb')) return;
+  cb.classList.remove('cb--pulse');
+  void cb.offsetWidth; // рестарт animation
+  cb.classList.add('cb--pulse');
+  window.setTimeout(() => cb.classList.remove('cb--pulse'), 800);
+}
+
 function toast(text: string): void {
-  let el = document.querySelector<HTMLDivElement>('.toast');
+  // Убираем возможные дубликаты, оставляем один элемент
+  const all = document.querySelectorAll<HTMLDivElement>('.toast');
+  let el: HTMLDivElement | null = all[0] ?? null;
+  for (let i = 1; i < all.length; i++) all[i].remove();
   if (!el) {
     el = document.createElement('div');
     el.className = 'toast';
     el.setAttribute('role', 'status');
     document.body.appendChild(el);
   }
-  el.textContent = text;
-  requestAnimationFrame(() => el.classList.add('is-visible'));
+  const node = el;
+  node.textContent = text;
+  // Синхронное показывание + двойная страховка на скрытие
+  node.classList.remove('is-visible');
+  void node.offsetHeight;
+  node.classList.add('is-visible');
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => el.classList.remove('is-visible'), 2600);
+  toastTimer = window.setTimeout(() => {
+    node.classList.remove('is-visible');
+    // fallback: если что-то снова добавило класс — снимем ещё раз
+    window.setTimeout(() => node.classList.remove('is-visible'), 600);
+  }, 2600);
 }
 
 function dataUrlToBlob(dataUrl: string): Blob {
@@ -1192,6 +1309,7 @@ const avConfirmState = q<HTMLSpanElement>('#av-confirm-state');
 const cohesionControl = q<HTMLDivElement>('#cohesion-control');
 const typeControl = q<HTMLDivElement>('#type-control');
 const albumDeleteBtn = q<HTMLButtonElement>('#album-delete-btn');
+const albumEditBtn = q<HTMLButtonElement>('#album-edit-btn');
 
 /* артист */
 const artistBack = q<HTMLButtonElement>('#artist-back');
@@ -1258,6 +1376,7 @@ const svConfirmBtn = q<HTMLButtonElement>('#sv-confirm-btn');
 const svSave = q<HTMLSpanElement>('#sv-save');
 const svNote = q<HTMLParagraphElement>('#sv-note');
 const singleDeleteBtn = q<HTMLButtonElement>('#single-delete-btn');
+const singleEditBtn = q<HTMLButtonElement>('#single-edit-btn');
 
 /* рейтинг синглов */
 const viewSrank = q<HTMLElement>('#view-srank');
@@ -1288,6 +1407,36 @@ const singleLinkCancel = q<HTMLButtonElement>('#single-link-cancel');
 const singleLinkSave = q<HTMLButtonElement>('#single-link-save');
 const singleLinkError = q<HTMLParagraphElement>('#single-link-error');
 
+/* пропуск трека */
+const skipDialog = q<HTMLDialogElement>('#skip-dialog');
+const skipForm = q<HTMLFormElement>('#skip-form');
+const skipTrackName = q<HTMLParagraphElement>('#skip-track-name');
+const skipReasonInput = q<HTMLInputElement>('#skip-reason-input');
+const skipError = q<HTMLParagraphElement>('#skip-error');
+const skipCancel = q<HTMLButtonElement>('#skip-cancel');
+const skipSave = q<HTMLButtonElement>('#skip-save');
+void skipSave;
+
+/* редактирование релиза */
+const editReleaseDialog = q<HTMLDialogElement>('#edit-release-dialog');
+const editReleaseForm = q<HTMLFormElement>('#edit-release-form');
+const editReleaseName = q<HTMLParagraphElement>('#edit-release-name');
+const editArtistBox = q<HTMLDivElement>('#edit-artist-box');
+const editArtistInput = q<HTMLInputElement>('#edit-artist-input');
+const editArtistList = q<HTMLUListElement>('#edit-artist-list');
+const editJointField = q<HTMLDivElement>('#edit-joint-field');
+void editJointField;
+const editJointCheck = q<HTMLInputElement>('#edit-joint-check');
+const editJointBox = q<HTMLDivElement>('#edit-joint-box');
+const editJointInput = q<HTMLInputElement>('#edit-joint-input');
+const editJointList = q<HTMLUListElement>('#edit-joint-list');
+const editTitleInput = q<HTMLInputElement>('#edit-title-input');
+const editYearInput = q<HTMLInputElement>('#edit-year-input');
+const editReleaseError = q<HTMLParagraphElement>('#edit-release-error');
+const editReleaseCancel = q<HTMLButtonElement>('#edit-release-cancel');
+const editReleaseSave = q<HTMLButtonElement>('#edit-release-save');
+void editReleaseSave;
+
 /* модальное подтверждение */
 const confirmModal = q<HTMLDivElement>('#confirm-modal');
 const confirmTitle = q<HTMLHeadingElement>('#confirm-title');
@@ -1311,6 +1460,19 @@ const artistBox = q<HTMLDivElement>('#artist-box');
 const artistField = q<HTMLDivElement>('#artist-field');
 const artistInput = q<HTMLInputElement>('#artist-input');
 const artistList = q<HTMLUListElement>('#artist-list');
+const jointField = q<HTMLDivElement>('#joint-field');
+const jointCheck = q<HTMLInputElement>('#joint-check');
+const jointBox = q<HTMLDivElement>('#joint-box');
+const jointInput = q<HTMLInputElement>('#joint-input');
+const jointList = q<HTMLUListElement>('#joint-list');
+const maxiField = q<HTMLDivElement>('#maxi-field');
+const maxiCheck = q<HTMLInputElement>('#maxi-check');
+const maxiTracks = q<HTMLDivElement>('#maxi-tracks');
+const maxiTrack1 = q<HTMLInputElement>('#maxi-track-1');
+const maxiTrack2 = q<HTMLInputElement>('#maxi-track-2');
+const maxiTrack3 = q<HTMLInputElement>('#maxi-track-3');
+const maxiTrack3Wrap = q<HTMLDivElement>('#maxi-track-3-wrap');
+const maxiAddTrack = q<HTMLButtonElement>('#maxi-add-track');
 const evaluatorField = q<HTMLDivElement>('#evaluator-field');
 const evaluatorPicker = q<HTMLDivElement>('#evaluator-picker');
 const evaluatorInput = q<HTMLInputElement>('#evaluator-input');
@@ -1572,17 +1734,33 @@ function renderAlbumCover(al: UiAlbum): void {
 function renderAlbumPage(al: UiAlbum): void {
   renderEvaluator(al, '#av-evaluator');
   avTitle.textContent = al.title;
-  avArtist.innerHTML = `<a class="av__artist-link" data-artist="${esc(al.artist)}">${esc(al.artist)}</a>`;
+  avArtist.innerHTML = albumArtistHTML(al, 'av__artist-link');
   avYear.textContent = String(al.year);
   renderAlbumCover(al);
   const score = albumScoreOf(al.id);
   avAvg.textContent = score === null ? '—' : fmt(score);
   delete avAvg.dataset.val;
+  const maxi = isMaxiSingle(al);
+  viewAlbum.classList.toggle('is-maxi', maxi);
+  viewAlbum.classList.toggle('is-joint', isJointAlbum(al));
   renderTracks();
   renderAlbumSingles();
   renderImpact();
   renderConfirmState();
-  renderFinalize();
+  if (maxi) {
+    // Макси-сингл не имеет концептуальности и типа релиза
+    cohesionControl.innerHTML = '';
+    typeControl.innerHTML = '';
+    const finalizeEl = document.querySelector('.av__finalize') as HTMLElement | null;
+    if (finalizeEl) finalizeEl.hidden = true;
+  } else {
+    const finalizeEl = document.querySelector('.av__finalize') as HTMLElement | null;
+    if (finalizeEl) finalizeEl.hidden = false;
+    renderFinalize();
+  }
+  // Кнопка редактирования доступна обоим участникам
+  const editBtn = document.getElementById('album-edit-btn') as HTMLButtonElement | null;
+  if (editBtn) editBtn.hidden = !currentUser;
 }
 
 /* --- обложка существующего альбома --- */
@@ -2301,6 +2479,12 @@ const DEL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stro
 const LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>';
 const UNLOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7a4 4 0 0 1 7.8-1.4"/></svg>';
 const PENCIL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3l4 4L8 20l-5 1 1-5L17 3z"/></svg>';
+const SKIP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 5l8 7-8 7V5z"/><path d="M14 5l8 7-8 7V5z"/></svg>';
+/* «звук вырезан»: эквалайзер, перечёркнутый диагональю — эмблема пропуска */
+const CUT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 10v4M8.5 7.5v9M13 10v4M17.5 6.5v11"/><path d="M4.5 19.5 19.5 4.5" stroke-width="2.2"/></svg>';
+/* строка, для которой после подтверждения пропуска проигрывается фирменный fx */
+let skipFxTargetId: string | null = null;
+const UNSKIP_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 8H5V4"/><path d="M5 8a9 9 0 0 1 10.2-3.6"/><path d="M15 16h4v4"/><path d="M19 16a9 9 0 0 1-10.2 3.6"/></svg>';
 const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.5l5 5 10-11"/></svg>';
 const PENDING_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/></svg>';
 const SINGLE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.6v3M12 18.4v3M2.6 12h3M18.4 12h3M5.4 5.4l2.1 2.1M16.5 16.5l2.1 2.1M18.6 5.4l-2.1 2.1M7.5 16.5l-2.1 2.1"/></svg>';
@@ -2361,6 +2545,8 @@ function renderTracks(enterId?: string): void {
   tracksRenderDeferred = false;
   const al = currentAlbum();
   const locked = al?.tracksLocked ?? false;
+  const maxi = al ? isMaxiSingle(al) : false;
+  const joint = al ? isJointAlbum(al) : false;
   const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
   const myId = currentUser?.id ?? '';
 
@@ -2371,14 +2557,12 @@ function renderTracks(enterId?: string): void {
     const mineScore = typeof mine?.score === 'number' ? mine.score : undefined;
     const mineConfirmed = mine?.confirmed === true;
     const permitted = canRateTrack(t.id);
-    const tavg = trackScoreOf(t.id);
-    const tavgStr = tavg === null ? '—' : fmt(tavg);
+    const skipped = Boolean(t.isSkipped);
+    const tavg = skipped ? null : trackScoreOf(t.id);
+    const tavgStr = skipped ? '—' : (tavg === null ? '—' : fmt(tavg));
     const mineStr = typeof mineScore === 'number' ? fmt(mineScore) : '';
-    /* Фиксация количества треков запрещает добавлять, удалять и менять порядок,
-       но названия править можно и при ней. Переименование запрещает только
-       личная фиксация названия трека (t.locked). */
     const canRename = !t.locked;
-    const canOrder = !locked;               // только фиксация количества запрещает порядок/удаление
+    const canOrder = !locked && !maxi;
     const single = singleOfTrack(t);
 
     const li = document.createElement('li');
@@ -2387,21 +2571,41 @@ function renderTracks(enterId?: string): void {
     if (locked) li.classList.add('is-frozen');
     if (mineConfirmed || !permitted) li.classList.add('is-rated-locked');
     if (single) li.classList.add('track--single');
+    if (skipped) li.classList.add('is-skipped');
+    if (joint) li.classList.add('is-joint');
     li.dataset.id = t.id;
     if (single) li.dataset.singleId = single.id;
+
+    const skipBtn = isAdmin()
+      ? (skipped
+        ? `<button class="track__btn track__btn--unskip" data-act="unskip" type="button" title="Вернуть трек в оценку" aria-label="Вернуть">${UNSKIP_SVG}</button>`
+        : `<button class="track__btn track__btn--skip" data-act="skip" type="button" title="Пропустить трек (ремикс и т.п.)" aria-label="Пропустить">${SKIP_SVG}</button>`)
+      : '';
 
     const actions = [
       canRename ? `<button class="track__btn" data-act="rename" type="button" aria-label="Переименовать">${PENCIL_SVG}</button>` : '',
       canOrder ? `<button class="track__btn" data-act="up" type="button" aria-label="Выше"${i === 0 ? ' disabled' : ''}>${UP_SVG}</button>` : '',
       canOrder ? `<button class="track__btn" data-act="down" type="button" aria-label="Ниже"${i === list.length - 1 ? ' disabled' : ''}>${DOWN_SVG}</button>` : '',
-      `<button class="track__btn${single ? ' is-on' : ''}" data-act="${single ? 'unsingle' : 'single'}" type="button" title="${single ? 'Снять метку «сингл»' : 'Отметить как сингл'}" aria-label="${single ? 'Снять метку «сингл»' : 'Отметить как сингл'}">${single ? UNMARK_SINGLE_SVG : SINGLE_SVG}</button>`,
+      !maxi ? `<button class="track__btn${single ? ' is-on' : ''}" data-act="${single ? 'unsingle' : 'single'}" type="button" title="${single ? 'Снять метку «сингл»' : 'Отметить как сингл'}" aria-label="${single ? 'Снять метку «сингл»' : 'Отметить как сингл'}">${single ? UNMARK_SINGLE_SVG : SINGLE_SVG}</button>` : '',
       `<button class="track__btn track__genius${t.geniusId ? ' is-on' : ''}" data-act="genius" type="button" title="Текст песни с Genius" aria-label="Текст песни с Genius">${GENIUS_MARK_SVG}</button>`,
       isAdmin() ? `<button class="track__btn" data-act="lock" type="button" aria-label="${t.locked ? 'Снять фиксацию названия' : 'Зафиксировать название'}" title="${t.locked ? 'Снять фиксацию названия' : 'Зафиксировать название'}">${t.locked ? UNLOCK_SVG : LOCK_SVG}</button>` : '',
-      canOrder ? `<button class="track__btn track__btn--del" data-act="del" type="button" aria-label="Удалить">${DEL_SVG}</button>` : '',
+      skipBtn,
+      canOrder || maxi ? `<button class="track__btn track__btn--del" data-act="del" type="button" aria-label="Удалить">${DEL_SVG}</button>` : '',
     ].join('');
 
-    const peerBadge = peerRatingHTML(t.id);
+    const peerBadge = skipped ? '' : peerRatingHTML(t.id);
     li.dataset.peerHtml = peerBadge;
+
+    /* Лента причины: заметный «срез» во всю ширину строки — вместо плашки-бейджа */
+    const cutStrip = skipped
+      ? `<div class="track__cut">
+          <span class="track__cut-ic">${CUT_SVG}</span>
+          <span class="track__cut-tag">пропущен</span>
+          <span class="track__cut-why">причина</span>
+          <span class="track__cut-reason">«${esc(t.skipReason ?? 'без причины')}»</span>
+          <span class="track__cut-note">в рейтинг не войдёт</span>
+        </div>`
+      : '';
 
     li.innerHTML = `
       <div class="track__row1">
@@ -2414,25 +2618,43 @@ function renderTracks(enterId?: string): void {
         <span class="track__avg" data-tid="${t.id}" title="средняя по треку">${tavgStr}</span>
         <span class="track__actions">${actions}</span>
       </div>
+      ${cutStrip}
+      ${skipped ? '' : `
       <div class="track__row2">
         <span class="track__rate-label">${permitted ? 'моя оценка' : 'без права оценки'}</span>
         <input class="track__slider" type="range" min="0" max="10" step="0.01" value="${typeof mineScore === 'number' ? mineScore : 5}" aria-label="Моя оценка"${mineConfirmed || !permitted ? ' disabled' : ''} />
         <input class="track__numinput" type="number" min="0" max="10" step="0.01" inputmode="decimal" placeholder="—" value="${mineStr}"${mineConfirmed || !permitted ? ' disabled' : ''} />
         <button class="track__confirm-btn" type="button"${permitted && typeof mineScore === 'number' ? '' : ' disabled'} aria-label="${mineConfirmed ? 'Изменить оценку' : 'Подтвердить оценку'}" title="${mineConfirmed ? 'Изменить оценку' : 'Подтвердить оценку'}">${mineConfirmed ? PENCIL_SVG : CHECK_SVG}</button>
         <span class="track__save" aria-live="polite"></span>
-      </div>`;
+      </div>`}
+    `;
 
     trackList.appendChild(li);
+    if (skipFxTargetId === t.id) {
+      skipFxTargetId = null;
+      if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        li.classList.add('track--skip-fx');
+        window.setTimeout(() => li.classList.remove('track--skip-fx'), 1900);
+      }
+    }
     const pending = pendingRatings.get(t.id);
     if (pending) setTrackSave(t.id, pending.failed ? 'err' : pending.savedAfterRead !== undefined ? 'done' : 'save');
   });
 
-  avTracksCount.textContent = `${list.length} ${tracksPlural(list.length)}`;
+  avTracksCount.textContent = `${list.length} ${tracksPlural(list.length)}${joint ? ' · совместный' : ''}${maxi ? ' · макси-сингл' : ''}`;
 
-  trackForm.hidden = locked;
-  tracksLockedNote.hidden = !locked;
-  tracksLockBtn.hidden = !isAdmin();
-  if (isAdmin()) tracksLockLabel.textContent = locked ? 'разблокировать' : 'зафиксировать количество';
+  // Для макси-сингла треки добавляются только при создании, в форме добавления релиза
+  const isMaxi = Boolean(maxi);
+  trackForm.hidden = locked || isMaxi;
+  tracksLockedNote.hidden = !locked && !isMaxi;
+  if (isMaxi) {
+    tracksLockedNote.hidden = false;
+    tracksLockedNote.textContent = 'Макси-сингл: треки добавляются только при создании релиза (до 3)';
+  } else if (!locked) {
+    tracksLockedNote.hidden = true;
+  }
+  tracksLockBtn.hidden = !isAdmin() || isMaxi;
+  if (isAdmin() && !isMaxi) tracksLockLabel.textContent = locked ? 'разблокировать' : 'зафиксировать количество';
 
   if (enterId) {
     const el = trackList.querySelector<HTMLLIElement>(`[data-id="${enterId}"]`);
@@ -2577,28 +2799,38 @@ trackForm.addEventListener('submit', (e) => {
   void handleAddTrack();
 });
 
+async function addTrackInternal(albumId: string, title: string, featArtist: string | null, positionOverride?: number): Promise<string> {
+  const pos = positionOverride ?? tracks.filter((t) => t.albumId === albumId).length;
+  if (CLOUD) {
+    const { data, error } = await getSB().from('tracks').insert({
+      album_id: albumId, title, position: pos, locked: false, feat_artist: featArtist,
+    }).select();
+    if (error) throw error;
+    const nid = (data?.[0] as { id: string }).id;
+    await refreshData();
+    return nid;
+  } else {
+    const nid = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2,5);
+    tracks.push({ id: nid, albumId, title, position: pos, locked: false, featArtist, singleId: null, geniusId: null, isSkipped: false, skipReason: null });
+    saveLocalTracks();
+    return nid;
+  }
+}
+
 async function handleAddTrack(): Promise<void> {
   const al = currentAlbum();
   const title = trackInput.value.trim();
   if (!title || !al || !currentAlbumId) return;
   if (al.tracksLocked) return;
+  const maxi = isMaxiSingle(al);
+  if (maxi && tracks.filter((t) => t.albumId === currentAlbumId).length >= 3) {
+    toast('Макси-сингл — максимум 3 трека');
+    return;
+  }
   const featRaw = trackFeatBox.hidden ? '' : trackFeatInput.value.trim();
   const featArtist = featRaw ? canonicalArtistName(featRaw) : null;
-  const position = tracks.filter((t) => t.albumId === currentAlbumId).length;
-  let newId: string;
   try {
-    if (CLOUD) {
-      const { data, error } = await getSB().from('tracks').insert({
-        album_id: currentAlbumId, title, position, locked: false, feat_artist: featArtist,
-      }).select();
-      if (error) throw error;
-      newId = (data?.[0] as { id: string }).id;
-    } else {
-      newId = 't' + Date.now().toString(36);
-      tracks.push({ id: newId, albumId: currentAlbumId, title, position, locked: false, featArtist, singleId: null, geniusId: null });
-      saveLocalTracks();
-    }
-    if (CLOUD) await refreshData();
+    const newId = await addTrackInternal(currentAlbumId, title, featArtist);
     resetTrackForm();
     renderTracks(newId);
   } catch (err) {
@@ -2699,6 +2931,125 @@ async function toggleTrackLock(id: string): Promise<void> {
     toast(messageOf(err));
   }
 }
+
+/* пропуск трека (админ): ремиксы и т.п. */
+let skipTargetId: string | null = null;
+
+function openSkipDialog(t: UiTrack): void {
+  if (!isAdmin()) return;
+  skipTargetId = t.id;
+  skipTrackName.textContent = `Трек: «${t.title}»`;
+  skipReasonInput.value = t.skipReason ?? '';
+  skipError.textContent = '';
+  skipError.classList.remove('is-visible');
+  if (skipDialog.open) return;
+  skipDialog.showModal();
+  void skipDialog.offsetWidth;
+  skipDialog.classList.add('is-open');
+}
+
+function closeSkipDialog(): void {
+  if (!skipDialog.open) return;
+  skipDialog.classList.remove('is-open');
+  const anims = skipDialog.getAnimations({ subtree: true }).filter((a) => (a.effect as KeyframeEffect | null)?.target === skipDialog);
+  if (anims.length) {
+    Promise.allSettled(anims.map((a) => a.finished)).then(() => {
+      if (!skipDialog.classList.contains('is-open')) skipDialog.close();
+    });
+  } else {
+    skipDialog.close();
+  }
+  skipTargetId = null;
+}
+
+async function skipTrack(id: string, reason: string): Promise<void> {
+  const t = tracks.find((x) => x.id === id);
+  if (!t) return;
+  const prevSkipped = t.isSkipped;
+  const prevReason = t.skipReason;
+  t.isSkipped = true;
+  t.skipReason = reason;
+  try {
+    if (CLOUD) {
+      const s = getSB();
+      const { error: updErr } = await s.from('tracks').update({ is_skipped: true, skip_reason: reason }).eq('id', id);
+      if (updErr) throw updErr;
+      // Удаляем все оценки этого трека
+      const { error: delErr } = await s.from('ratings').delete().eq('track_id', id);
+      if (delErr) throw delErr;
+      // Если трек — основа сингла, его оценки уходят из рейтинга синглов
+      if (t.singleId) {
+        const { error: sdErr } = await s.from('single_ratings').delete().eq('album_id', t.singleId);
+        if (sdErr) throw sdErr;
+      }
+      await refreshData();
+    } else {
+      // Удаляем локальные оценки
+      delete trackRatings[id];
+      if (t.singleId) {
+        delete singleRatings[t.singleId];
+        saveLocalSingleRatings();
+      }
+      saveLocalTracks();
+      saveLocalRatings();
+    }
+    skipFxTargetId = id;
+    renderTracks();
+    updateRatingDisplays();
+    toast('Трек пропущен');
+  } catch (err) {
+    t.isSkipped = prevSkipped;
+    t.skipReason = prevReason;
+    toast(messageOf(err));
+  }
+}
+
+async function unskipTrack(id: string): Promise<void> {
+  if (!isAdmin()) return;
+  const t = tracks.find((x) => x.id === id);
+  if (!t) return;
+  const prevSkipped = t.isSkipped;
+  const prevReason = t.skipReason;
+  t.isSkipped = false;
+  t.skipReason = null;
+  try {
+    if (CLOUD) {
+      const { error } = await getSB().from('tracks').update({ is_skipped: false, skip_reason: null }).eq('id', id);
+      if (error) throw error;
+      await refreshData();
+    } else {
+      saveLocalTracks();
+    }
+    renderTracks();
+    updateRatingDisplays();
+    toast('Трек возвращён в оценку');
+  } catch (err) {
+    t.isSkipped = prevSkipped;
+    t.skipReason = prevReason;
+    toast(messageOf(err));
+  }
+}
+
+skipForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (!skipTargetId) return;
+  const reason = skipReasonInput.value.trim();
+  if (!reason) {
+    skipError.textContent = 'Укажите причину пропуска';
+    skipError.classList.add('is-visible');
+    return;
+  }
+  void skipTrack(skipTargetId, reason).then(() => closeSkipDialog());
+});
+
+skipCancel.addEventListener('click', () => closeSkipDialog());
+skipDialog.addEventListener('cancel', (e) => { e.preventDefault(); closeSkipDialog(); });
+skipDialog.addEventListener('click', (e) => {
+  if (e.target !== skipDialog) return;
+  const rect = skipDialog.getBoundingClientRect();
+  const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+  if (!inside) closeSkipDialog();
+});
 
 /* блокировка количества треков (админ) */
 tracksLockBtn.addEventListener('click', () => void toggleTracksLock());
@@ -2826,6 +3177,8 @@ trackList.addEventListener('click', (e) => {
   else if (act === 'rename') startRename(li);
   else if (act === 'single' && track) void markTrackAsSingle(track);
   else if (act === 'unsingle' && track) void unmarkTrackAsSingle(track);
+  else if (act === 'skip' && track) openSkipDialog(track);
+  else if (act === 'unskip' && track) void unskipTrack(track.id);
 });
 
 /* drag & drop треков (FLIP-анимации).
@@ -3026,31 +3379,35 @@ function makeAlbumCard(a: UiAlbum, featScore: number | null = null, animate = fa
   el.className = animate ? 'album reveal' : 'album';
   if (animate) el.style.setProperty('--d', `${(0.2 + index * 0.07).toFixed(2)}s`);
   const single = a.kind === 'single';
-  const avg = single ? singleScoreOf(a.id) : albumScoreOf(a.id);
+  const maxi = isMaxiSingle(a);
+  const avg = single ? (maxi ? albumScoreOf(a.id) : singleScoreOf(a.id)) : albumScoreOf(a.id);
   const avgStr = avg === null ? '—' : fmt(avg);
   const n = trackCountOf(a.id);
   const parent = single ? parentOf(a) : undefined;
   const title = single ? singleDisplayTitle(a) : a.title;
-  /* У сингла треков нет (макси-синглы не ведём), поэтому «0 треков» не пишем:
-     показываем количество оценок релиза, а пока оценок нет — ничего. */
-  const votes = single ? singleVotesOf(a.id) : 0;
-  const pending = single ? pendingCountOf(a.id) : 0;
+  const votes = single && !maxi ? singleVotesOf(a.id) : 0;
+  const pending = single && !maxi ? pendingCountOf(a.id) : 0;
   const countHTML = single
-    ? (votes
-      ? `<span class="album__count">${votes} ${votesPlural(votes)}</span>${pending ? `<span class="album__votes-count">${pending} без подтверждения</span>` : ''}`
-      : '')
+    ? (maxi
+      ? `<span class="album__count">${n} ${tracksPlural(n)} · макси-сингл</span>`
+      : (votes
+        ? `<span class="album__count">${votes} ${votesPlural(votes)}</span>${pending ? `<span class="album__votes-count">${pending} без подтверждения</span>` : ''}`
+        : ''))
     : `<span class="album__count">${n} ${tracksPlural(n)}</span>`;
+  const badge = single
+    ? (maxi ? '<span class="album__badge">макси-сингл</span>' : '<span class="album__badge">сингл</span>')
+    : '';
   el.innerHTML = `
     <div class="album__cover">
-      <img src="${esc(coverSrc(a))}" alt="${esc(singleArtistText(a))} — ${esc(title)}" loading="lazy">
+      <img src="${esc(coverSrc(a))}" alt="${esc(albumArtistText(a))} — ${esc(title)}" loading="lazy">
       <span class="album__year">${a.year}</span>
-      ${single ? '<span class="album__badge">сингл</span>' : ''}
+      ${badge}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ''}
       ${featScore !== null ? `<span class="album__featbadge">фит ${fmt(featScore)}</span>` : ''}
     </div>
     <div class="album__body">
       <h3 class="album__title">${esc(title)}</h3>
-      <p class="album__artist">${singleArtistHTML(a, 'album__artist-link')}</p>
+      <p class="album__artist">${albumArtistHTML(a, 'album__artist-link')}</p>
       ${parent ? `<div class="album__parent">${parentLinksHtml(a)}</div>` : ''}
       <div class="album__rating">
         <div class="album__avg">
@@ -3078,25 +3435,31 @@ function makeAlbumCard(a: UiAlbum, featScore: number | null = null, animate = fa
   return el;
 }
 
-/* карточка сингла: без треков, с баллом релиза и ссылкой на артиста */
+/* карточка сингла: без треков, с баллом релиза и ссылкой на артиста (макси — гибрид) */
 function makeSingleCard(s: UiAlbum, animate = false, index = 0): HTMLElement {
   const el = document.createElement('article');
   el.className = animate ? 'album album--single reveal' : 'album album--single';
   if (animate) el.style.setProperty('--d', `${(0.2 + index * 0.07).toFixed(2)}s`);
-  const avg = singleScoreOf(s.id);
+  const maxi = isMaxiSingle(s);
+  const avg = maxi ? albumScoreOf(s.id) : singleScoreOf(s.id);
   const parent = parentOf(s);
-  const votes = singleVotesOf(s.id);
-  const pending = pendingCountOf(s.id);
+  const votes = maxi ? 0 : singleVotesOf(s.id);
+  const pending = maxi ? 0 : pendingCountOf(s.id);
   const title = singleDisplayTitle(s);
+  const n = trackCountOf(s.id);
+  const badge = maxi ? '<span class="album__badge">макси-сингл</span>' : '<span class="album__badge">сингл</span>';
+  const countHTML = maxi
+    ? `<span class="album__count">${n} ${tracksPlural(n)}</span>`
+    : `<span class="album__count">${votes} ${votesPlural(votes)}</span>${pending ? `<span class="album__votes-count">${pending} без подтверждения</span>` : ''}`;
   el.innerHTML = `
     <div class="album__cover">
       <img src="${esc(coverSrc(s))}" alt="${esc(singleArtistText(s))} — ${esc(title)}" loading="lazy">
       <span class="album__year">${s.year}</span>
-      <span class="album__badge">сингл</span>
+      ${badge}
     </div>
     <div class="album__body">
       <h3 class="album__title">${esc(title)}</h3>
-      <p class="album__artist">${singleArtistHTML(s, 'album__artist-link')}</p>
+      <p class="album__artist">${albumArtistHTML(s, 'album__artist-link')}</p>
       ${parent ? `<div class="album__parent">${parentLinksHtml(s)}</div>` : ''}
       <div class="album__rating">
         <div class="album__avg">
@@ -3104,8 +3467,7 @@ function makeSingleCard(s: UiAlbum, animate = false, index = 0): HTMLElement {
           <span class="album__avg-of">/10</span>
         </div>
         <div class="album__votes">
-          <span class="album__count">${votes} ${votesPlural(votes)}</span>
-          ${pending ? `<span class="album__votes-count">${pending} без подтверждения</span>` : ''}
+          ${countHTML}
         </div>
       </div>
     </div>`;
@@ -3130,13 +3492,16 @@ function makeSingleRow(s: UiAlbum): HTMLElement {
   const el = document.createElement('button');
   el.type = 'button';
   el.className = 'scard';
-  const avg = singleScoreOf(s.id);
-  const votes = singleVotesOf(s.id);
+  const maxi = isMaxiSingle(s);
+  const avg = maxi ? albumScoreOf(s.id) : singleScoreOf(s.id);
+  const votes = maxi ? 0 : singleVotesOf(s.id);
+  const n = maxi ? trackCountOf(s.id) : 0;
+  const meta = maxi ? `${s.year} · ${n} ${tracksPlural(n)} · макси` : `${s.year} · ${votes} ${votesPlural(votes)}`;
   el.innerHTML = `
     <span class="scard__cover"><img src="${esc(coverSrc(s))}" alt="" loading="lazy"></span>
     <span class="scard__body">
       <span class="scard__title">${esc(singleDisplayTitle(s))}</span>
-      <span class="scard__meta">${s.year} · ${votes} ${votesPlural(votes)}</span>
+      <span class="scard__meta">${meta}</span>
     </span>
     <span class="scard__score">${avg === null ? '—' : fmt(avg)}</span>`;
   el.addEventListener('click', () => void openSingle(s.id));
@@ -3362,12 +3727,24 @@ interface SingleRank { single: UiAlbum; score: number | null; votes: number; pen
 
 function singleRanks(): SingleRank[] {
   return singlesOnly()
-    .map((s) => ({
-      single: s,
-      score: singleRankedScoreOf(s.id),
-      votes: singleVotesOf(s.id),
-      pending: pendingCountOf(s.id),
-    }))
+    .map((s) => {
+      if (isMaxiSingle(s)) {
+        /* Макси-сингл: как у альбома — «ликвиден» только при полном подтверждении
+           всех непропущенных треков (иначе балла в рейтинге нет, только «—») */
+        const rows = tracks
+          .filter((t) => t.albumId === s.id && !t.isSkipped)
+          .map((t) => trackRatings[t.id]);
+        const votes = new Set(rows.flatMap((r) => (r ? Object.keys(r) : []))).size;
+        const pending = rows.reduce((n, r) => n + (r ? Object.values(r).filter((v) => !v.confirmed).length : 0), 0);
+        return { single: s, score: albumAllConfirmed(s.id) ? albumConfirmedScoreOf(s.id) : null, votes, pending };
+      }
+      return {
+        single: s,
+        score: singleRankedScoreOf(s.id),
+        votes: singleVotesOf(s.id),
+        pending: pendingCountOf(s.id),
+      };
+    })
     .sort((a, b) => {
       const ta = singleDisplayTitle(a.single);
       const tb = singleDisplayTitle(b.single);
@@ -3446,9 +3823,13 @@ function trackRankReason(trackId: string): string {
 
 function trackRanks(): TrackRankEntry[] {
   const out: TrackRankEntry[] = [];
-  for (const a of albumsOnly()) {
+  /* Топ: треки альбомов и треки макси-синглов — каждый трек отдельной строкой */
+  const trackHosts: UiAlbum[] = [...albumsOnly(), ...singlesOnly().filter((x) => isMaxiSingle(x))];
+  for (const a of trackHosts) {
     for (const t of tracks) {
       if (t.albumId !== a.id) continue;
+      // пропущенный трек (ремикс и т.п.) не участвует в рейтинге
+      if (t.isSkipped) continue;
       // трек, отмеченный синглом, представлен своей карточкой сингла — без дубля
       if (t.singleId && singleById(t.singleId)) continue;
       out.push({
@@ -3461,6 +3842,8 @@ function trackRanks(): TrackRankEntry[] {
     }
   }
   for (const s of singlesOnly()) {
+    // макси-сингл в топе уже представлен своими треками выше — карточкой не дублируем
+    if (isMaxiSingle(s)) continue;
     out.push({ kind: 'single', single: s, score: singleRankedScoreOf(s.id), name: singleDisplayTitle(s) });
   }
   return out.sort((a, b) => {
@@ -3493,7 +3876,7 @@ function renderTrackRank(): void {
       const a = r.album!;
       cover = coverSrc(a);
       artistText = t.featArtist ? `${a.artist} ft. ${t.featArtist}` : a.artist;
-      meta = `№${t.position + 1} · из альбома «${a.title}»`;
+      meta = `№${t.position + 1} · ${isMaxiSingle(a) ? `из макси-сингла «${singleDisplayTitle(a)}»` : `из альбома «${a.title}»`}`;
     } else {
       const s = r.single!;
       cover = coverSrc(s);
@@ -3527,6 +3910,13 @@ async function openTrackRank(): Promise<void> {
 
 async function openArtist(name: string): Promise<void> {
   if (!name) return;
+  // «A & B» из альбома-соввестки — не профиль: таких имён нет в списке артистов
+  // (allArtistNames разбивает совместки). Открываем профиль первого участника,
+  // а не пустую страницу с двумя именами в заголовке.
+  if (name.includes(' & ') && !allArtistNames().some((n) => n.toLowerCase() === name.toLowerCase())) {
+    name = splitJointArtists(name)[0] ?? name;
+    if (!name) return;
+  }
   currentArtistName = name;
   renderArtistPage();
   await navigateTo(viewArtist, { view: 'artist' });
@@ -3670,6 +4060,189 @@ profSave.addEventListener('click', () => void saveNickname());
 
 /* --- удаление альбома --- */
 albumDeleteBtn.addEventListener('click', () => void handleDeleteAlbum());
+
+let editTargetId: string | null = null;
+let editTargetKind: ReleaseKind = 'album';
+
+function openEditRelease(al: UiAlbum): void {
+  if (!currentUser) return;
+  editTargetId = al.id;
+  editTargetKind = al.kind as ReleaseKind;
+  const parts = splitJointArtists(al.artist);
+  const first = parts[0] ?? al.artist;
+  const second = parts[1] ?? '';
+  const joint = isJointAlbum(al);
+  const isSingleEdit = al.kind === 'single';
+  editReleaseName.textContent = `${al.kind === 'single' ? 'Сингл' : 'Альбом'}: «${al.title}»`;
+  // Совместка — только для альбомов (как в форме добавления); у синглов блок скрыт
+  editJointField.hidden = isSingleEdit;
+  editArtistInput.value = first;
+  editJointCheck.checked = joint && !isSingleEdit;
+  editJointBox.hidden = !editJointCheck.checked;
+  editJointBox.classList.toggle('is-revealed', editJointCheck.checked);
+  editJointInput.value = second;
+  editTitleInput.value = al.title;
+  editYearInput.value = String(al.year);
+  editReleaseError.textContent = '';
+  editReleaseError.classList.remove('is-visible');
+  editArtistList.hidden = true;
+  editJointList.hidden = true;
+  if (editReleaseDialog.open) return;
+  editReleaseDialog.showModal();
+  void editReleaseDialog.offsetWidth;
+  editReleaseDialog.classList.add('is-open');
+}
+
+function closeEditRelease(): void {
+  if (!editReleaseDialog.open) return;
+  editReleaseDialog.classList.remove('is-open');
+  const anims = editReleaseDialog.getAnimations({ subtree: true }).filter((a) => (a.effect as KeyframeEffect | null)?.target === editReleaseDialog);
+  if (anims.length) {
+    Promise.allSettled(anims.map((a) => a.finished)).then(() => {
+      if (!editReleaseDialog.classList.contains('is-open')) editReleaseDialog.close();
+    });
+  } else {
+    editReleaseDialog.close();
+  }
+  editTargetId = null;
+}
+
+async function handleEditRelease(): Promise<void> {
+  if (!editTargetId) return;
+  const firstRaw = editArtistInput.value.trim();
+  const titleRaw = editTitleInput.value.trim();
+  const yearRaw = editYearInput.value.trim();
+  const jointChecked = editTargetKind === 'album' && editJointCheck.checked;
+  const secondRaw = editJointInput.value.trim();
+  if (!firstRaw) {
+    editReleaseError.textContent = 'Укажите артиста';
+    editReleaseError.classList.add('is-visible');
+    return;
+  }
+  if (FEAT_RE.test(firstRaw)) {
+    editReleaseError.textContent = 'В первом поле — только один артист, без & / feat. Второго указывайте отдельно';
+    editReleaseError.classList.add('is-visible');
+    return;
+  }
+  if (!titleRaw) {
+    editReleaseError.textContent = 'Укажите название';
+    editReleaseError.classList.add('is-visible');
+    return;
+  }
+  if (!/^\d{4}$/.test(yearRaw)) {
+    editReleaseError.textContent = 'Год — четыре цифры';
+    editReleaseError.classList.add('is-visible');
+    return;
+  }
+  const y = Number(yearRaw);
+  if (y < 1900 || y > new Date().getFullYear()) {
+    editReleaseError.textContent = `Год — от 1900 до ${new Date().getFullYear()}`;
+    editReleaseError.classList.add('is-visible');
+    return;
+  }
+  if (jointChecked && !secondRaw) {
+    editReleaseError.textContent = 'Укажите второго артиста для совместного';
+    editReleaseError.classList.add('is-visible');
+    return;
+  }
+  if (jointChecked && FEAT_RE.test(secondRaw)) {
+    editReleaseError.textContent = 'Во втором поле — только имя артиста, без & / feat';
+    editReleaseError.classList.add('is-visible');
+    return;
+  }
+  if (jointChecked && secondRaw.toLowerCase() === firstRaw.toLowerCase()) {
+    editReleaseError.textContent = 'Второй артист должен отличаться';
+    editReleaseError.classList.add('is-visible');
+    return;
+  }
+  let finalArtist = normalizeArtist(firstRaw);
+  if (jointChecked) {
+    const secondNorm = normalizeArtist(secondRaw);
+    finalArtist = `${finalArtist} & ${secondNorm}`;
+  }
+
+  const existing = albums.find((a) => a.id === editTargetId);
+  if (!existing) return;
+
+  const dup = albums.some((a) => a.id !== editTargetId && a.kind === existing.kind && a.artist.toLowerCase() === finalArtist.toLowerCase() && a.title.toLowerCase() === titleRaw.toLowerCase());
+  if (dup) {
+    editReleaseError.textContent = 'Такой релиз у этого артиста уже есть';
+    editReleaseError.classList.add('is-visible');
+    return;
+  }
+
+  const savedId = editTargetId;
+  const savedKind = editTargetKind;
+  try {
+    if (CLOUD) {
+      const { error } = await getSB().from('albums').update({ artist: finalArtist, title: titleRaw, year: y }).eq('id', savedId);
+      if (error) throw error;
+      await refreshData();
+    } else {
+      existing.artist = finalArtist;
+      existing.title = titleRaw;
+      existing.year = y;
+      saveLocalAlbums();
+    }
+    closeEditRelease();
+    if (savedKind === 'album') {
+      const al = albums.find((a) => a.id === savedId);
+      if (al) renderAlbumPage(al);
+    } else {
+      const s = albums.find((a) => a.id === savedId);
+      if (s) renderSinglePage(s);
+    }
+    renderAlbums();
+    toast('Релиз обновлён');
+  } catch (err) {
+    editReleaseError.textContent = messageOf(err);
+    editReleaseError.classList.add('is-visible');
+  }
+}
+
+editJointCheck.addEventListener('change', () => {
+  setJointReveal(editJointBox, editJointCheck.checked);
+  if (editJointCheck.checked) {
+    pulseCheckbox(editJointCheck);
+    // фокус после выкатывания поля, чтобы подсказка не обрезалась анимацией
+    window.setTimeout(() => editJointInput.focus(), 560);
+  }
+});
+
+editArtistInput.addEventListener('input', () => {
+  updateJointList(editArtistInput, editArtistList, (n)=>{ editArtistInput.value=n; }, editJointInput.value);
+  editReleaseError.textContent='';
+  editReleaseError.classList.remove('is-visible');
+});
+editArtistInput.addEventListener('focus', () => updateJointList(editArtistInput, editArtistList, (n)=>{ editArtistInput.value=n; }, editJointInput.value));
+editArtistInput.addEventListener('blur', () => { window.setTimeout(()=>{ if (!editArtistBox.contains(document.activeElement)) editArtistList.hidden=true; },120); });
+
+editJointInput.addEventListener('input', () => {
+  updateJointList(editJointInput, editJointList, (n)=>{ editJointInput.value=n; }, editArtistInput.value);
+  editReleaseError.textContent='';
+  editReleaseError.classList.remove('is-visible');
+});
+editJointInput.addEventListener('focus', () => updateJointList(editJointInput, editJointList, (n)=>{ editJointInput.value=n; }, editArtistInput.value));
+editJointInput.addEventListener('blur', () => { window.setTimeout(()=>{ if (!editJointBox.contains(document.activeElement)) editJointList.hidden=true; },120); });
+
+editReleaseForm.addEventListener('submit', (e) => { e.preventDefault(); void handleEditRelease(); });
+editReleaseCancel.addEventListener('click', () => closeEditRelease());
+editReleaseDialog.addEventListener('cancel', (e) => { e.preventDefault(); closeEditRelease(); });
+editReleaseDialog.addEventListener('click', (e) => {
+  if (e.target !== editReleaseDialog) return;
+  const rect = editReleaseDialog.getBoundingClientRect();
+  const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+  if (!inside) closeEditRelease();
+});
+
+albumEditBtn.addEventListener('click', () => {
+  const al = currentAlbum();
+  if (al) openEditRelease(al);
+});
+singleEditBtn.addEventListener('click', () => {
+  const s = currentSingle();
+  if (s) openEditRelease(s);
+});
 
 async function handleDeleteAlbum(): Promise<void> {
   const al = currentAlbum();
@@ -3913,7 +4486,7 @@ function handleParentClick(e: MouseEvent): boolean {
 function renderSinglePage(s: UiAlbum): void {
   renderEvaluator(s, '#sv-evaluator');
   svTitle.textContent = singleDisplayTitle(s);
-  svArtist.innerHTML = singleArtistHTML(s, 'sv__artist-link');
+  svArtist.innerHTML = albumArtistHTML(s, 'sv__artist-link');
   svYear.textContent = String(s.year);
   renderSingleCover(s);
 
@@ -3923,14 +4496,20 @@ function renderSinglePage(s: UiAlbum): void {
   svOrigin.hidden = !origin;
   svOrigin.textContent = origin;
 
-  const score = singleScoreOf(s.id);
+  const maxi = isMaxiSingle(s);
+  viewSingle.classList.toggle('is-maxi', maxi);
+  const score = maxi ? albumScoreOf(s.id) : singleScoreOf(s.id);
   svAvg.textContent = score === null ? '—' : fmt(score);
   delete svAvg.dataset.val;
+
+  const editBtn = document.getElementById('single-edit-btn') as HTMLButtonElement | null;
+  if (editBtn) editBtn.hidden = !currentUser;
 
   updateSingleDisplays();
   svNote.textContent = singlesUnavailable()
     ? 'раздел синглов не подключён к базе: выполните migrate.sql в Supabase'
     : !canEvaluate(s, currentUser?.id) ? 'Этот сингл оценивает назначенный участник. Его оценка видна вам на этой странице.'
+    : maxi ? 'макси-сингл: оцениваются отдельные треки, средний балл считается как у альбома'
     : 'передвиньте ползунок или введите число, затем подтвердите — до подтверждения балл не влияет на рейтинг';
 }
 
@@ -4062,6 +4641,8 @@ function syncSingleControls(): void {
 function setSingleRating(v: number): void {
   const s = currentSingle();
   if (!s || !currentUser || !canEvaluate(s, currentUser.id)) return;
+  // Трек-основа сингла пропущен — сингл не оценивается
+  if (tracks.some((t) => t.singleId === s.id && t.isSkipped)) return;
   const prev = singleRatings[s.id]?.[currentUser.id];
   (singleRatings[s.id] ??= {})[currentUser.id] = { score: v, confirmed: prev?.confirmed === true };
   if (!CLOUD) saveLocalSingleRatings();
@@ -4323,6 +4904,11 @@ svConfirmBtn.addEventListener('click', () => void toggleSingleConfirm());
 async function openSingle(id: string): Promise<void> {
   const s = singleById(id);
   if (!s) return;
+  if (isMaxiSingle(s)) {
+    // Макси-сингл открывается как альбом (гибрид): треклист как у альбома, без пластинки
+    await openAlbum(id);
+    return;
+  }
   if (currentSingleId !== id) delete svParentLabel.dataset.content;
   currentSingleId = id;
   currentAlbumId = null;
@@ -6126,10 +6712,24 @@ function showTitleError(text: string): void {
 }
 
 function artistNames(): string[] {
-  const set = new Set<string>();
-  for (const a of albums) set.add(a.artist.trim());
-  set.delete('');
-  return [...set].sort((a, b) => a.localeCompare(b, 'ru'));
+  const map = new Map<string, string>();
+  for (const a of albums) {
+    for (const part of splitJointArtists(a.artist)) {
+      const t = part.trim();
+      if (!t) continue;
+      // Не предлагаем совместные названия как единого артиста
+      if (t.includes(' & ')) continue;
+      if (!map.has(t.toLowerCase())) map.set(t.toLowerCase(), t);
+    }
+  }
+  // Также фит-артисты из треков, но только одиночные
+  for (const tr of tracks) {
+    const n = (tr.featArtist ?? '').trim();
+    if (!n) continue;
+    if (n.includes(' & ')) continue;
+    if (!map.has(n.toLowerCase())) map.set(n.toLowerCase(), n);
+  }
+  return [...map.values()].sort((a, b) => a.localeCompare(b, 'ru'));
 }
 
 function refreshDupHint(): void {
@@ -6244,6 +6844,110 @@ artistInput.addEventListener('blur', () => {
 });
 document.addEventListener('click', (e) => {
   if (!artistBox.contains(e.target as Node)) artistList.hidden = true;
+  if (!jointBox.contains(e.target as Node)) jointList.hidden = true;
+  if (!editArtistBox.contains(e.target as Node)) editArtistList.hidden = true;
+  if (!editJointBox.contains(e.target as Node)) editJointList.hidden = true;
+});
+
+function updateJointList(targetInput: HTMLInputElement, targetList: HTMLUListElement, onSelect: (name:string)=>void, excludeName?: string): void {
+  const q0 = targetInput.value.trim().toLowerCase();
+  const exclude = (excludeName ?? '').trim().toLowerCase();
+  let names = artistNames();
+  // Исключаем текущего артиста из подсказок второго поля и наоборот, и убираем совместные названия
+  if (exclude) names = names.filter((n) => n.toLowerCase() !== exclude);
+  // Дополнительно исключаем любые названия с " & " (совместные) — чтобы не предлагать "A & B" как одного артиста
+  names = names.filter((n) => !n.includes(' & ') && !n.includes(' feat') && !n.includes(' ft'));
+  // Исключаем комбинацию first & second, если она уже существует как совместный альбом
+  const firstVal = (document.getElementById('artist-input') as HTMLInputElement | null)?.value.trim() ?? '';
+  const secondVal = (document.getElementById('joint-input') as HTMLInputElement | null)?.value.trim() ?? '';
+  const editFirstVal = (document.getElementById('edit-artist-input') as HTMLInputElement | null)?.value.trim() ?? '';
+  const editSecondVal = (document.getElementById('edit-joint-input') as HTMLInputElement | null)?.value.trim() ?? '';
+  const combined = [firstVal, secondVal, editFirstVal, editSecondVal].filter(Boolean);
+  // Убираем любые подсказки, которые являются объединением двух артистов
+  names = names.filter((n) => {
+    const lower = n.toLowerCase();
+    // Если подсказка содержит " & " — уже отфильтровано выше, но на всякий
+    if (lower.includes(' & ')) return false;
+    // Если подсказка совпадает с комбинацией вида "A & B"
+    for (const a of combined) {
+      for (const b of combined) {
+        if (a && b && a.toLowerCase() !== b.toLowerCase()) {
+          const combo1 = `${a} & ${b}`.toLowerCase();
+          const combo2 = `${b} & ${a}`.toLowerCase();
+          if (lower === combo1 || lower === combo2) return false;
+        }
+      }
+    }
+    return true;
+  });
+  const matches = q0 ? names.filter((n) => n.toLowerCase().includes(q0)) : names;
+  targetList.innerHTML = '';
+  if (matches.length === 0 && q0) {
+    const li = document.createElement('li');
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'combo__item combo__item--new';
+    btn.innerHTML = `<span class="combo__name">новый артист: «${esc(targetInput.value.trim())}»</span>`;
+    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); targetList.hidden = true; onSelect(targetInput.value.trim()); });
+    li.appendChild(btn);
+    targetList.appendChild(li);
+  } else {
+    for (const n of matches.slice(0, 6)) {
+      const li = document.createElement('li');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'combo__item';
+      btn.innerHTML = `<span class="combo__name">${esc(n)}</span><span class="combo__tag">из коллекции</span>`;
+      btn.addEventListener('pointerdown', (e) => { e.preventDefault(); onSelect(n); targetList.hidden = true; });
+      li.appendChild(btn);
+      targetList.appendChild(li);
+    }
+  }
+  targetList.hidden = targetList.children.length === 0;
+}
+
+jointCheck.addEventListener('change', () => {
+  setJointReveal(jointBox, jointCheck.checked);
+  if (jointCheck.checked) {
+    pulseCheckbox(jointCheck);
+    window.setTimeout(() => jointInput.focus(), 560);
+  } else {
+    jointInput.value=''; jointList.hidden=true;
+  }
+});
+
+jointInput.addEventListener('input', () => {
+  updateJointList(jointInput, jointList, (n)=>{ jointInput.value=n; }, artistInput.value);
+  clearAddErrors();
+});
+jointInput.addEventListener('focus', () => updateJointList(jointInput, jointList, (n)=>{ jointInput.value=n; }, artistInput.value));
+jointInput.addEventListener('blur', () => { window.setTimeout(()=>{ if (!jointBox.contains(document.activeElement)) jointList.hidden=true; },120); });
+
+let maxiHideTimer = 0;
+maxiCheck.addEventListener('change', () => {
+  if (maxiCheck.checked) {
+    window.clearTimeout(maxiHideTimer);
+    maxiTracks.classList.remove('is-hiding');
+    maxiTracks.hidden = false;
+    maxiTrack1.focus();
+  } else {
+    // мягко уводим блок: сначала анимация скрытия, потом hidden
+    maxiTracks.classList.remove('is-hiding');
+    void maxiTracks.offsetWidth;
+    maxiTracks.classList.add('is-hiding');
+    window.clearTimeout(maxiHideTimer);
+    maxiHideTimer = window.setTimeout(() => {
+      if (!maxiCheck.checked) maxiTracks.hidden = true;
+      maxiTracks.classList.remove('is-hiding');
+    }, 230);
+  }
+});
+maxiAddTrack.addEventListener('click', () => {
+  if (maxiTrack3Wrap.hidden) {
+    maxiTrack3Wrap.hidden = false;
+    maxiAddTrack.hidden = true;
+    maxiTrack3.focus();
+  }
 });
 
 titleInput.addEventListener('input', () => {
@@ -6550,6 +7254,20 @@ function resetAddForm(): void {
   clearCoverUrlError();
   window.clearTimeout(coverUrlTimer);
   artistList.hidden = true;
+  jointList.hidden = true;
+  jointBox.hidden = true;
+  jointField.hidden = true;
+  jointCheck.checked = false;
+  maxiField.hidden = true;
+  maxiCheck.checked = false;
+  window.clearTimeout(maxiHideTimer);
+  maxiTracks.classList.remove('is-hiding');
+  maxiTracks.hidden = true;
+  maxiTrack3Wrap.hidden = true;
+  maxiTrack1.value = '';
+  maxiTrack2.value = '';
+  maxiTrack3.value = '';
+  maxiAddTrack.hidden = false;
   artistField.classList.remove('is-picked', 'pulse');
   addCoverSearch.reset();
   clearAddErrors();
@@ -6572,12 +7290,19 @@ function applyAddMode(kind: ReleaseKind): void {
   updateArtistFeatNote();
   titleInput.placeholder = single ? 'например, Not Like Us' : 'например, Blonde';
   parentField.hidden = !single;
+  jointField.hidden = single; // совместный только для альбомов
+  maxiField.hidden = !single;
   parentNote.textContent = single
     ? 'перечислите альбомы через запятую; сингл появится на каждом из них. Без своей обложки используется обложка первого альбома'
     : '';
   coverNote.textContent = single
     ? 'файл или ссылку можно заменить позже, на странице сингла; без своей обложки подставится обложка альбома'
     : 'файл или ссылка — обложку можно будет заменить и позже, на странице альбома';
+  if (!single) {
+    jointBox.hidden = !jointCheck.checked;
+  } else {
+    maxiTracks.hidden = !maxiCheck.checked;
+  }
 }
 
 function updateParentList(): void {
@@ -6639,6 +7364,9 @@ async function addAlbum(input: AddInput): Promise<string | null> {
   assertCompatibleParents({ evaluatorId }, parentIds);
   const parentId = parentIds[0] ?? null;
   const what = kind === 'single' ? 'сингл' : 'альбом';
+  const isMaxi = Boolean(input.isMaxi);
+  if (isMaxi && kind !== 'single') throw new Error('Макси-сингл может быть только синглом');
+  if (isMaxi && input.maxiTracks && input.maxiTracks.length > 3) throw new Error('Макси-сингл — максимум 3 трека');
   if (CLOUD) {
     const s = getSB();
     let coverUrlFinal = input.coverUrl ?? '';
@@ -6652,6 +7380,7 @@ async function addAlbum(input: AddInput): Promise<string | null> {
       kind,
       parent_album_id: parentId,
       ...(kind === 'single' ? { parent_album_ids: parentIds } : {}),
+      is_maxi: isMaxi,
       created_by: currentUser?.id ?? null,
       ...(evaluatorId ? { evaluator_id: evaluatorId } : {}),
     });
@@ -6686,6 +7415,7 @@ async function addAlbum(input: AddInput): Promise<string | null> {
     cohesion: null,
     albumType: null,
     geniusId: null,
+    isMaxi,
   });
   saveLocalAlbums();
   return id;
@@ -6727,12 +7457,64 @@ async function handleAdd(): Promise<void> {
     return;
   }
 
-  // Фит/совместка в поле артиста (только для синглов): «Артист & Гость» или
-  // «Артист feat. Гость». Основным исполнителем становится первый, гость
-  // записывается в название сингла и показывается в блоке артиста.
+  // Совместный альбом — артисты указываются раздельно, через чекбокс, а не через "&" в одном поле
+  if (!single) {
+    if (FEAT_RE.test(artistRaw)) {
+      showAddError('Для альбома указывайте одного артиста. Для совместного — включите чекбокс и заполните второе поле');
+      shakeEl(addPanel);
+      return;
+    }
+  }
+
+  let isJoint = false;
+  let jointSecondRaw = '';
+  if (!single && jointCheck.checked) {
+    jointSecondRaw = jointInput.value.trim();
+    if (!jointSecondRaw) {
+      showAddError('Укажите второго артиста для совместного альбома');
+      shakeEl(addPanel);
+      return;
+    }
+    if (FEAT_RE.test(jointSecondRaw)) {
+      showAddError('Во втором поле — только имя второго артиста, без & / feat');
+      shakeEl(addPanel);
+      return;
+    }
+    if (jointSecondRaw.toLowerCase() === artistRaw.toLowerCase()) {
+      showAddError('Второй артист должен отличаться от первого');
+      shakeEl(addPanel);
+      return;
+    }
+    isJoint = true;
+  }
+
+  // Макси-сингл
+  let isMaxi = false;
+  let maxiTracksParsed: Array<{ title: string; featArtist: string | null }> = [];
+  if (single && maxiCheck.checked) {
+    isMaxi = true;
+    const raws = [maxiTrack1.value.trim(), maxiTrack2.value.trim(), maxiTrack3Wrap.hidden ? '' : maxiTrack3.value.trim()].filter(Boolean);
+    if (raws.length === 0) {
+      showAddError('Укажите хотя бы один трек для макси-сингла');
+      shakeEl(addPanel);
+      return;
+    }
+    if (raws.length > 3) {
+      showAddError('Макси-сингл — максимум 3 трека');
+      shakeEl(addPanel);
+      return;
+    }
+    // Парсим фит из названия трека (аналогично трекам альбома)
+    maxiTracksParsed = raws.map((r) => {
+      const feat = parseTrackTitleForAdd(r);
+      return { title: feat.title, featArtist: feat.featArtist };
+    });
+  }
+
+  // Фит/совместка в поле артиста (только для обычных синглов, не макси): «Артист & Гость» или «Артист feat. Гость»
   let artist = normalizeArtist(artistRaw);
   let titleRecorded = titleRaw;
-  if (single) {
+  if (single && !isMaxi) {
     const m = FEAT_RE.exec(artistRaw);
     if (m) {
       const main = artistRaw.slice(0, m.index ?? 0).trim();
@@ -6742,6 +7524,12 @@ async function handleAdd(): Promise<void> {
         titleRecorded = m[0] === '&' ? `${titleRaw} & ${guest}` : `${titleRaw} (feat. ${guest})`;
       }
     }
+  }
+
+  if (isJoint) {
+    const first = normalizeArtist(artistRaw);
+    const second = normalizeArtist(jointSecondRaw);
+    artist = `${first} & ${second}`;
   }
 
   const dup = albums.some(
@@ -6768,16 +7556,29 @@ async function handleAdd(): Promise<void> {
       kind: addKind,
       evaluatorId: isAdmin() ? evaluatorInput.value || null : null,
       parentIds,
+      isMaxi: isMaxi || undefined,
+      maxiTracks: isMaxi ? maxiTracksParsed : undefined,
     });
-    // Сингл с привязкой сразу становится треком альбома (в конец списка).
-    const added = createdId ? await attachSingleTracks(createdId, parentIds) : null;
+    // Сингл с привязкой сразу становится треком альбома (в конец списка), но макси-сингл — нет (гибрид).
+    let added: string | null = null;
+    if (createdId) {
+      if (single && !isMaxi) {
+        added = await attachSingleTracks(createdId, parentIds);
+      } else if (single && isMaxi) {
+        // Создаём треки макси-сингла
+        for (let i = 0; i < maxiTracksParsed.length; i++) {
+          const mt = maxiTracksParsed[i];
+          await addTrackInternal(createdId, mt.title, mt.featArtist);
+        }
+      }
+    }
     addPending = false;
     addSubmit.classList.remove('is-loading');
     resetAddForm();
     setHomeMode(addKind, false);
     if (topEntry().view === 'add') viewStack.pop();
     renderAlbums();
-    toast(added ?? (single ? 'Сингл добавлен' : 'Альбом добавлен'));
+    toast(added ?? (single ? (isMaxi ? 'Макси-сингл добавлен' : 'Сингл добавлен') : (isJoint ? 'Совместный альбом добавлен' : 'Альбом добавлен')));
     await swapTo(viewAdd, viewHome, () => { viewHome.scrollTop = 0; });
   } catch (e) {
     addPending = false;

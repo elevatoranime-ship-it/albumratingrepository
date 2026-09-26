@@ -25,7 +25,8 @@ create policy "profiles_update" on public.profiles for update using (auth.uid() 
 
 -- 2) Релизы: альбомы и синглы в одной таблице (kind различает тип).
 --    Сингл — такая же строка, отличаются только поля kind / parent_album_id
---    и способ оценки (см. пункт 3c).
+--    и способ оценки (см. пункт 3c). Макси-сингл — сингл с флагом is_maxi,
+--    у которого до 3 треков, оценивается как альбом (по трекам).
 create table if not exists public.albums (
   id              uuid primary key default gen_random_uuid(),
   artist          text not null,
@@ -41,15 +42,22 @@ create table if not exists public.albums (
   parent_album_id uuid references public.albums(id) on delete set null,
                                                    -- для сингла: альбом, к которому он относится
   created_by      uuid references public.profiles(id) on delete set null,
-  created_at      timestamptz not null default now()
+  created_at      timestamptz not null default now(),
+  is_maxi         boolean not null default false   -- макси-сингл (только для kind='single')
 );
 
 -- Несколько альбомов одного сингла. Массив хранит порядок выбора;
 -- parent_album_id остаётся первым альбомом для совместимости со старым клиентом.
 alter table public.albums add column if not exists parent_album_ids uuid[];
+alter table public.albums add column if not exists is_maxi boolean not null default false;
 update public.albums
 set parent_album_ids = case when parent_album_id is null then '{}'::uuid[] else array[parent_album_id] end
 where parent_album_ids is null;
+
+-- Макси может быть только синглом
+do $$ begin
+  alter table public.albums add constraint albums_maxi_kind_check check (is_maxi = false or kind = 'single');
+exception when duplicate_object then null; end $$;
 
 create or replace function public.normalize_single_albums()
 returns trigger language plpgsql set search_path = public as $$
@@ -137,8 +145,22 @@ create trigger trg_album_meta_final
   before update on public.albums
   for each row execute function public.prevent_album_meta_change();
 
+-- флаг макси-сингла может быть только у сингла
+create or replace function public.guard_maxi_flag()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if new.is_maxi and new.kind <> 'single' then
+    raise exception 'Макси может быть только синглом';
+  end if;
+  return new;
+end $$;
 
--- 3) Треки альбомов (с порядком и блокировкой)
+drop trigger if exists guard_maxi_flag on public.albums;
+create trigger guard_maxi_flag before insert or update of is_maxi, kind on public.albums
+for each row execute function public.guard_maxi_flag();
+
+
+-- 3) Треки альбомов и макси-синглов (с порядком и блокировкой)
 create table if not exists public.tracks (
   id          uuid primary key default gen_random_uuid(),
   album_id    uuid not null references public.albums(id) on delete cascade,
@@ -149,6 +171,8 @@ create table if not exists public.tracks (
   feat_artist text,                             -- артист на фите (ft./feat./&), необязательно
   single_id   uuid references public.albums(id) on delete set null,
                                                 -- трек помечен как сингл → карточка сингла
+  is_skipped  boolean not null default false,   -- пропущен админом, не оценивается
+  skip_reason text,                             -- причина пропуска (ремикс, интро и т.д.)
   created_at  timestamptz not null default now()
 );
 
@@ -161,7 +185,7 @@ create policy "tracks_delete" on public.tracks for delete using (auth.role() = '
 
 
 -- 3b) Оценки ТРЕКОВ (одна запись на пару трек+участник)
---     Балл альбома = среднее арифметическое оценок его треков.
+--     Балл альбома = среднее арифметическое оценок его треков (без пропущенных).
 create table if not exists public.ratings (
   track_id   uuid not null references public.tracks(id) on delete cascade,
   profile_id uuid not null references public.profiles(id) on delete cascade,
@@ -180,7 +204,7 @@ create policy "ratings_delete" on public.ratings for delete using (auth.uid() = 
 
 
 -- 3c) Оценки СИНГЛОВ (одна оценка на релиз, а не на трек).
---     Таблица хранит только оценки строк с kind = 'single'.
+--     Таблица хранит только оценки строк с kind = 'single' и is_maxi = false.
 create table if not exists public.single_ratings (
   album_id   uuid not null references public.albums(id) on delete cascade,
   profile_id uuid not null references public.profiles(id) on delete cascade,
@@ -344,25 +368,46 @@ drop trigger if exists zz_guard_release_evaluator on public.albums;
 create trigger zz_guard_release_evaluator before insert or update on public.albums
 for each row execute function public.guard_release_evaluator();
 
+-- Треки могут принадлежать альбому или макси-синглу, с проверкой оценивающих
 create or replace function public.guard_track_evaluator()
 returns trigger language plpgsql set search_path = '' as $$
 declare
   target_evaluator uuid;
+  target_kind text;
+  target_is_maxi boolean;
 begin
-  select a.evaluator_id into target_evaluator from public.albums a
-    where a.id = new.album_id and a.kind = 'album';
-  if not found then raise exception 'Трек должен принадлежать альбому'; end if;
-  if TG_OP = 'UPDATE' and new.album_id is distinct from old.album_id then
-    if exists (select 1 from public.albums a where a.id = old.album_id
-               and a.evaluator_id is distinct from target_evaluator) then
-      raise exception 'Нельзя переносить трек между разными режимами оценивания';
-    end if;
+  select a.evaluator_id, a.kind, coalesce(a.is_maxi,false)
+    into target_evaluator, target_kind, target_is_maxi
+  from public.albums a where a.id = new.album_id;
+  if not found then raise exception 'Трек должен принадлежать альбому или макси-синглу'; end if;
+  if target_kind = 'album' then
+    -- ok
+  elsif target_kind = 'single' and target_is_maxi then
+    -- ok
+  else
+    raise exception 'Трек может принадлежать только альбому или макси-синглу';
   end if;
-  if new.single_id is not null and not exists (
-    select 1 from public.albums s where s.id = new.single_id and s.kind = 'single'
-      and s.evaluator_id is not distinct from target_evaluator
-  ) then
-    raise exception 'У сингла и альбома должны совпадать оценивающие участники';
+  if TG_OP = 'UPDATE' and new.album_id is distinct from old.album_id then
+    declare
+      old_evaluator uuid;
+    begin
+      select a.evaluator_id into old_evaluator from public.albums a where a.id = old.album_id;
+      if old_evaluator is distinct from target_evaluator then
+        raise exception 'Нельзя переносить трек между разными режимами оценивания';
+      end if;
+    end;
+  end if;
+  if new.single_id is not null then
+    if target_kind = 'single' and target_is_maxi then
+      raise exception 'Трек макси-сингла нельзя помечать как сингл';
+    end if;
+    if not exists (
+      select 1 from public.albums s where s.id = new.single_id and s.kind = 'single'
+        and s.evaluator_id is not distinct from target_evaluator
+        and coalesce(s.is_maxi,false) = false
+    ) then
+      raise exception 'У сингла и альбома должны совпадать оценивающие участники';
+    end if;
   end if;
   return new;
 end $$;
@@ -370,6 +415,84 @@ revoke all on function public.guard_track_evaluator() from public;
 drop trigger if exists guard_track_evaluator on public.tracks;
 create trigger guard_track_evaluator before insert or update of album_id, single_id on public.tracks
 for each row execute function public.guard_track_evaluator();
+
+-- Лимит треков в макси-сингле — до 3
+create or replace function public.guard_maxi_track_limit()
+returns trigger language plpgsql set search_path = public as $$
+declare
+  cnt int;
+  _is_maxi boolean;
+  k text;
+begin
+  select coalesce(a.is_maxi,false), a.kind into _is_maxi, k from public.albums a where a.id = new.album_id;
+  if k = 'single' and _is_maxi then
+    select count(*) into cnt from public.tracks where album_id = new.album_id and (TG_OP = 'INSERT' or id <> new.id);
+    if cnt >= 3 then
+      raise exception 'В макси-сингле не может быть больше 3 треков';
+    end if;
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists guard_maxi_track_limit on public.tracks;
+create trigger guard_maxi_track_limit before insert or update of album_id on public.tracks
+for each row execute function public.guard_maxi_track_limit();
+
+-- Пропускать треки может только админ, при снятии пропуска очищаем причину
+create or replace function public.guard_track_skip()
+returns trigger language plpgsql set search_path = '' as $$
+begin
+  if TG_OP = 'INSERT' then
+    if new.is_skipped and not public.is_release_admin() then
+      raise exception 'Пропускать треки может только админ';
+    end if;
+  else
+    if (new.is_skipped is distinct from old.is_skipped or new.skip_reason is distinct from old.skip_reason) then
+      if not public.is_release_admin() then
+        raise exception 'Пропускать треки может только админ';
+      end if;
+    end if;
+  end if;
+  if not new.is_skipped then
+    new.skip_reason := null;
+  end if;
+  return new;
+end $$;
+revoke all on function public.guard_track_skip() from public;
+drop trigger if exists guard_track_skip on public.tracks;
+create trigger guard_track_skip before insert or update of is_skipped, skip_reason on public.tracks
+for each row execute function public.guard_track_skip();
+
+-- При пропуске трека удаляем его оценки (по требованию: удалять)
+create or replace function public.cleanup_skipped_ratings()
+returns trigger language plpgsql set search_path = public as $$
+begin
+  if new.is_skipped and (TG_OP = 'INSERT' or old.is_skipped = false) then
+    delete from public.ratings where track_id = new.id;
+  end if;
+  return new;
+end $$;
+revoke all on function public.cleanup_skipped_ratings() from public;
+drop trigger if exists cleanup_skipped_ratings on public.tracks;
+create trigger cleanup_skipped_ratings after insert or update of is_skipped on public.tracks
+for each row execute function public.cleanup_skipped_ratings();
+
+-- Макси-сингл нельзя оценивать целиком через single_ratings
+create or replace function public.guard_single_rating_maxi()
+returns trigger language plpgsql set search_path = '' as $$
+declare
+  _is_maxi boolean;
+begin
+  select coalesce(a.is_maxi,false) into _is_maxi from public.albums a where a.id = new.album_id and a.kind = 'single';
+  if _is_maxi then
+    raise exception 'Макси-сингл оценивается по трекам, а не целиком';
+  end if;
+  return new;
+end $$;
+revoke all on function public.guard_single_rating_maxi() from public;
+drop trigger if exists guard_single_rating_maxi on public.single_ratings;
+create trigger guard_single_rating_maxi before insert or update on public.single_ratings
+for each row execute function public.guard_single_rating_maxi();
 
 -- SELECT остаётся общим: результаты видны обоим. Проверяем и старую, и новую
 -- строку UPDATE, чтобы нельзя было обойти ограничения заменой track_id/album_id.
@@ -396,11 +519,11 @@ drop policy if exists single_ratings_update on public.single_ratings;
 drop policy if exists single_ratings_delete on public.single_ratings;
 create policy single_ratings_insert on public.single_ratings for insert to authenticated
 with check (auth.uid() = profile_id and public.can_rate_release(album_id)
-  and exists (select 1 from public.albums a where a.id = album_id and a.kind = 'single'));
+  and exists (select 1 from public.albums a where a.id = album_id and a.kind = 'single' and coalesce(a.is_maxi,false) = false));
 create policy single_ratings_update on public.single_ratings for update to authenticated
 using (auth.uid() = profile_id and public.can_rate_release(album_id))
 with check (auth.uid() = profile_id and public.can_rate_release(album_id)
-  and exists (select 1 from public.albums a where a.id = album_id and a.kind = 'single'));
+  and exists (select 1 from public.albums a where a.id = album_id and a.kind = 'single' and coalesce(a.is_maxi,false) = false));
 create policy single_ratings_delete on public.single_ratings for delete to authenticated
 using (auth.uid() = profile_id and public.can_rate_release(album_id));
 

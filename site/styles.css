@@ -1305,8 +1305,15 @@ body {
 
 .av__addtrack { display: flex; gap: 10px; }
 .av__addtrack[hidden] { display: none; }
-.av__addtrack .av__track-input { flex: 1; }
+.av__addtrack .av__track-input { flex: 1; min-width: 0; }
 .av__addtrack .btn { margin-top: 0; flex: none; }
+/* необязательный номер позиции при добавлении трека */
+.av__track-pos {
+  width: 56px; flex: none;
+  text-align: center;
+  -moz-appearance: textfield; appearance: textfield;
+}
+.av__track-pos::-webkit-outer-spin-button, .av__track-pos::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* --- список треков --- */
 .tracklist { list-style: none; margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
@@ -1349,6 +1356,24 @@ body {
 .track.is-frozen .track__handle { opacity: 0.35; cursor: default; }
 
 .track__num { width: 22px; text-align: right; font-size: 12.5px; color: var(--text-faint); font-variant-numeric: tabular-nums; flex: none; }
+/* номер трека кликабелен (десктоп, обычные альбомы): открывает мини-поле «на какое место» */
+.track__num--editable { cursor: pointer; border-radius: 6px; transition: color 0.25s var(--ease-out), background-color 0.25s var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .track__num--editable:hover { color: var(--text); background: rgba(255,255,255,0.06); }
+}
+.track__posedit {
+  width: 42px; flex: none;
+  padding: 3px 4px;
+  background: var(--bg);
+  border: 1px solid var(--accent-line);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit; font-size: 12.5px; text-align: center; font-variant-numeric: tabular-nums;
+  outline: none;
+  -moz-appearance: textfield; appearance: textfield;
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.track__posedit::-webkit-outer-spin-button, .track__posedit::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .track__title { flex: 1; font-size: 15px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track__lock { display: grid; place-items: center; color: var(--accent); opacity: 0.85; }
 .track__lock svg { width: 14px; height: 14px; }
@@ -2908,6 +2933,10 @@ body { -webkit-tap-highlight-color: transparent; }
   border-top: 1px solid var(--line);
   font-size: 13px;
   color: var(--text-dim);
+  /* вся зона привязки — контрол: долгий тап (напр. удержание «глаза») не выделяет
+     текст и не вызывает тактильный отклик выделения на телефоне */
+  -webkit-user-select: none; user-select: none;
+  -webkit-touch-callout: none;
 }
 .sv__parent-link {
   color: var(--accent-strong);
@@ -2942,7 +2971,7 @@ body { -webkit-tap-highlight-color: transparent; }
   border-radius: 8px;
   color: var(--text-faint);
   cursor: pointer;
-  user-select: none; -webkit-touch-callout: none; touch-action: none;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: none;
   transition: color 0.25s var(--ease-out), background-color 0.25s var(--ease-out),
               border-color 0.25s var(--ease-out), transform 0.2s var(--ease-out);
 }

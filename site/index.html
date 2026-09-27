@@ -260,6 +260,10 @@
           <form class="av__addtrack" id="track-form" novalidate>
             <input class="field__input field__input--plain av__track-input" id="track-input" type="text"
                    autocomplete="off" spellcheck="false" placeholder="название трека…" />
+            <input class="field__input field__input--plain av__track-pos" id="track-pos-input" type="number"
+                   min="1" step="1" inputmode="numeric" autocomplete="off" placeholder="№"
+                   aria-label="Номер позиции трека (необязательно)"
+                   title="На какую позицию встать: 1 — первым, пусто — в конец" />
             <button class="btn" id="track-add-btn" type="submit">добавить</button>
             <div class="av__feat" id="track-feat-box" hidden>
               <span class="av__feat-label">при участии (ft. / feat. / &)</span>

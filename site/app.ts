@@ -1321,6 +1321,7 @@ const tracksLockLabel = q<HTMLSpanElement>('#tracks-lock-label');
 const tracksLockedNote = q<HTMLParagraphElement>('#tracks-locked-note');
 const trackForm = q<HTMLFormElement>('#track-form');
 const trackInput = q<HTMLInputElement>('#track-input');
+const trackPosInput = q<HTMLInputElement>('#track-pos-input');
 const trackFeatBox = q<HTMLDivElement>('#track-feat-box');
 const trackFeatInput = q<HTMLInputElement>('#track-feat-input');
 const trackFeatList = q<HTMLUListElement>('#track-feat-list');
@@ -2585,6 +2586,9 @@ function renderTracks(enterId?: string): void {
     const mineStr = typeof mineScore === 'number' ? fmt(mineScore) : '';
     const canRename = !t.locked;
     const canOrder = !locked && !maxi;
+    // Перетаскивание ручкой работает и на макси-сингле (как просили: «то же самое
+    // относится к макси-синглам»); кнопки ↑/↓ там не нужны — перестановка редкая.
+    const canDrag = !locked;
     const single = singleOfTrack(t);
 
     const li = document.createElement('li');
@@ -2631,8 +2635,8 @@ function renderTracks(enterId?: string): void {
 
     li.innerHTML = `
       <div class="track__row1">
-        <span class="track__handle"${canOrder ? ' draggable="true"' : ''} aria-hidden="true">${GRIP_SVG}</span>
-        <span class="track__num">${i + 1}</span>
+        <span class="track__handle"${canDrag ? ' draggable="true"' : ''} aria-hidden="true">${GRIP_SVG}</span>
+        <span class="track__num${canOrder ? ' track__num--editable' : ''}"${canOrder ? ' title="нажмите, чтобы изменить номер трека"' : ''}>${i + 1}</span>
         <span class="track__title">${trackTitleHTML(t)}</span>
         ${single ? `<button class="track__single" type="button" title="Открыть страницу сингла «${esc(singleDisplayTitle(single))}»">сингл</button>` : ''}
         ${peerBadge}
@@ -2746,6 +2750,7 @@ let lastFeatExtract = '';
 
 function resetTrackForm(): void {
   trackInput.value = '';
+  trackPosInput.value = '';
   trackFeatInput.value = '';
   trackFeatBox.hidden = true;
   trackFeatList.hidden = true;
@@ -2851,10 +2856,30 @@ async function handleAddTrack(): Promise<void> {
   }
   const featRaw = trackFeatBox.hidden ? '' : trackFeatInput.value.trim();
   const featArtist = featRaw ? canonicalArtistName(featRaw) : null;
+  // Необязательное поле «№»: куда встать в трек-листе (1 — первым, пусто — в конец).
+  const posRaw = trackPosInput.value.trim();
+  const count = tracks.filter((t) => t.albumId === currentAlbumId).length;
+  let targetIdx: number | null = null;
+  if (posRaw !== '') {
+    const pos = parseInt(posRaw, 10);
+    if (isNaN(pos)) trackPosInput.value = '';
+    else targetIdx = Math.min(Math.max(1, pos), count + 1) - 1;
+  }
   try {
     const newId = await addTrackInternal(currentAlbumId, title, featArtist);
+    // Трек добавился в конец; если указана позиция выше — сдвигаем остальные вниз.
+    if (targetIdx !== null && targetIdx < count) {
+      const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
+      const from = list.findIndex((t) => t.id === newId);
+      if (from !== -1 && from !== targetIdx) {
+        const [item] = list.splice(from, 1);
+        list.splice(targetIdx, 0, item);
+        list.forEach((t, i) => { t.position = i; });
+        void persistTrackOrder().catch((err) => toast(messageOf(err)));
+      }
+    }
     resetTrackForm();
-    renderTracks(newId);
+    renderTracksShift(newId, newId);
   } catch (err) {
     toast(messageOf(err));
   }
@@ -3096,16 +3121,59 @@ async function toggleTracksLock(): Promise<void> {
   }
 }
 
-/* порядок треков: кнопки вверх/вниз */
-async function moveTrack(from: number, to: number): Promise<void> {
+/* Перестановка с плавной анимацией: перерисовываем список, прежние строки
+   «дотягиваются» на новые места (FLIP), новый трек (enterId) въезжает своей
+   анимацией track--enter, а scrollToId — мягко прокручивается в центр экрана. */
+function renderTracksShift(enterId?: string, scrollToId?: string): void {
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const before = new Map<string, number>();
+  if (!reduceMotion) {
+    trackList.querySelectorAll<HTMLLIElement>('.track').forEach((el) => {
+      if (el.dataset.id) before.set(el.dataset.id, el.getBoundingClientRect().top);
+    });
+  }
+  renderTracks(enterId);
+  if (reduceMotion) {
+    scrollTrackIntoView(scrollToId, 'auto');
+    return;
+  }
+  trackList.querySelectorAll<HTMLLIElement>('.track').forEach((el) => {
+    const id = el.dataset.id;
+    if (!id || id === enterId) return;
+    const prevTop = before.get(id);
+    if (prevTop === undefined) return;
+    const dy = prevTop - el.getBoundingClientRect().top;
+    if (Math.abs(dy) < 1) return;
+    el.style.transition = 'none';
+    el.style.transform = `translateY(${dy}px)`;
+    void el.offsetHeight; // reflow
+    el.style.transition = 'transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)';
+    el.style.transform = '';
+    const cleanup = (): void => { el.style.transition = ''; el.style.transform = ''; };
+    el.addEventListener('transitionend', cleanup, { once: true });
+    window.setTimeout(cleanup, 500);
+  });
+  scrollTrackIntoView(scrollToId, 'smooth');
+}
+
+function scrollTrackIntoView(id: string | undefined, behavior: ScrollBehavior): void {
+  if (!id) return;
+  const el = trackList.querySelector<HTMLLIElement>(`.track[data-id="${id}"]`);
+  if (!el) return;
+  requestAnimationFrame(() => el.scrollIntoView({ behavior, block: 'center' }));
+}
+
+/* порядок треков: кнопки вверх/вниз, поле позиции — перестановка показывается
+   сразу (оптимистично) и с плавной анимацией, сохранение уходит в фоне */
+async function moveTrack(from: number, to: number, scrollToId?: string): Promise<void> {
   const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
   if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return;
   const [item] = list.splice(from, 1);
   list.splice(to, 0, item);
   list.forEach((t, i) => { t.position = i; });
+  renderTracksShift(undefined, scrollToId);
   try {
     await persistTrackOrder();
-    renderTracks();
   } catch (err) {
     toast(messageOf(err));
   }
@@ -3146,7 +3214,7 @@ trackList.addEventListener('click', (e) => {
   if ((e as RowTapEvent).__trackRowTap) return;
   const target = e.target as HTMLElement;
   // Плашка «сингл» открывает страницу сразу (свой обработчик ниже) — модалку не показываем.
-  if (target.closest('.track__slider, .track__numinput, .track__rename-input, .track__confirm-btn, .track__btn, .track__feat, .track__handle, .track__single')) return;
+  if (target.closest('.track__slider, .track__numinput, .track__rename-input, .track__confirm-btn, .track__btn, .track__feat, .track__handle, .track__single, .track__num, .track__posedit')) return;
   const marked = target.closest<HTMLLIElement>('.track--single');
   if (!marked?.dataset.id) return;
   const row = tracks.find((t) => t.id === marked.dataset.id);
@@ -3203,6 +3271,123 @@ trackList.addEventListener('click', (e) => {
   else if (act === 'unskip' && track) void unskipTrack(track.id);
 });
 
+/* Третий способ перестановки (только десктоп, только обычные альбомы):
+   клик по порядковому номеру трека открывает мини-поле «на какое место»,
+   Enter — переезд с плавной анимацией, Escape — отмена, клик в стороне/blur — применить.
+   На тач-экранах номер остаётся частью строки: тап по нему выделяет/снимает
+   выделение строки (см. TOUCH_UI-обработчик выше), кнопок ↑/↓ там достаточно. */
+function startPosEdit(li: HTMLLIElement): void {
+  const id = li.dataset.id;
+  if (!id) return;
+  const numEl = li.querySelector<HTMLElement>('.track__num');
+  if (!numEl || !numEl.isConnected) return;
+  const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
+  const idx = list.findIndex((t) => t.id === id);
+  if (idx === -1) return;
+  if (li.querySelector('.track__posedit')) return; // уже редактируется
+  const input = document.createElement('input');
+  input.className = 'track__posedit';
+  input.type = 'number';
+  input.min = '1';
+  input.max = String(list.length);
+  input.step = '1';
+  input.inputMode = 'numeric';
+  input.autocomplete = 'off';
+  input.value = String(idx + 1);
+  input.setAttribute('aria-label', 'Номер трека в альбоме');
+  numEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const finish = (apply: boolean): void => {
+    if (done) return;
+    done = true;
+    if (apply) {
+      const target = parseInt(input.value, 10);
+      if (!isNaN(target)) {
+        const to = Math.min(Math.max(1, target), list.length) - 1;
+        if (to !== idx) {
+          void moveTrack(idx, to, id);
+          return;
+        }
+      }
+    }
+    renderTracks();
+  };
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('click', (e) => e.stopPropagation()); // клики внутри поля не трогают строку
+}
+
+trackList.addEventListener('click', (e) => {
+  if (TOUCH_UI.matches) return;
+  const numEl = (e.target as HTMLElement).closest('.track__num');
+  if (!numEl) return;
+  const li = numEl.closest<HTMLLIElement>('.track');
+  if (!li?.dataset.id) return;
+  const al = currentAlbum();
+  if (!al || al.tracksLocked || isMaxiSingle(al)) return; // на макси-сингле номер не редактируется
+  startPosEdit(li);
+});
+
+/* Автопрокрутка при перетаскивании трека: с зажатой ЛКМ у верхнего или нижнего
+   края экрана страница листается сама (родной автопрокрутки у фиксированных
+   скролл-контейнеров «view» в браузерах нет). Цикл идёт на rAF, потому что
+   dragover при неподвижном курсоре приходит редко. Работает и на макси-синглах. */
+const DRAG_EDGE_PX = 72;      // зона у края экрана, где начинается прокрутка
+const DRAG_MAX_STEP = 16;     // максимум пикселей за кадр
+let dragScrollTarget: HTMLElement | null | undefined; // undefined — не было dragover
+let dragScrollY = 0;
+let dragScrollRAF: number | null = null;
+
+function findDragScroller(el: HTMLElement): HTMLElement | null {
+  let node: HTMLElement | null = el.parentElement;
+  while (node) {
+    const overflowY = getComputedStyle(node).overflowY;
+    if ((overflowY === 'auto' || overflowY === 'scroll') && node.scrollHeight > node.clientHeight) return node;
+    node = node.parentElement;
+  }
+  return null; // скроллится само окно
+}
+
+function dragScrollTick(): void {
+  if (dragScrollTarget === undefined || !trackList.querySelector('.dragging')) {
+    stopDragAutoScroll();
+    return;
+  }
+  const vh = window.innerHeight;
+  let delta = 0;
+  if (dragScrollY < DRAG_EDGE_PX) delta = -DRAG_MAX_STEP * (DRAG_EDGE_PX - dragScrollY) / DRAG_EDGE_PX;
+  else if (dragScrollY > vh - DRAG_EDGE_PX) delta = DRAG_MAX_STEP * (dragScrollY - (vh - DRAG_EDGE_PX)) / DRAG_EDGE_PX;
+  if (delta !== 0) {
+    if (dragScrollTarget) dragScrollTarget.scrollTop += delta;
+    else window.scrollBy(0, delta);
+  }
+  dragScrollRAF = requestAnimationFrame(dragScrollTick);
+}
+
+function stopDragAutoScroll(): void {
+  if (dragScrollRAF !== null) cancelAnimationFrame(dragScrollRAF);
+  dragScrollRAF = null;
+  dragScrollTarget = undefined;
+}
+
+document.addEventListener('dragover', (e) => {
+  if (!trackList.querySelector('.dragging')) return;
+  if (dragScrollTarget === undefined) {
+    dragScrollTarget = findDragScroller(trackList);
+    dragScrollRAF = requestAnimationFrame(dragScrollTick);
+  }
+  dragScrollY = e.clientY;
+});
+document.addEventListener('drop', (e) => {
+  if (dragScrollTarget !== undefined) e.preventDefault(); // не «открывать» сброшенный текст
+  stopDragAutoScroll();
+});
+
 /* drag & drop треков (FLIP-анимации).
    Тянуть можно ТОЛЬКО за ручку-точки слева: слайдер и поля не захватываются. */
 trackList.addEventListener('dragstart', (e) => {
@@ -3251,19 +3436,25 @@ trackList.addEventListener('dragover', (e) => {
 trackList.addEventListener('drop', (e) => e.preventDefault());
 
 trackList.addEventListener('dragend', () => {
+  stopDragAutoScroll();
   const dragging = trackList.querySelector<HTMLLIElement>('.track.dragging');
   if (dragging) dragging.classList.remove('dragging');
-  trackList.querySelectorAll<HTMLElement>('.track').forEach((el) => { el.style.transform = ''; });
+  trackList.querySelectorAll<HTMLElement>('.track').forEach((el) => { el.style.transform = ''; el.style.transition = ''; });
 
+  // Сравниваем порядок строк в DOM с треками ТЕКУЩЕГО альбома (раньше сравнивали
+  // с глобальным массивом всех треков: стоило в базе появиться второму альбому
+  // с треками — перетаскивание молча отбрасывалось и номера не обновлялись).
   const ids = [...trackList.querySelectorAll<HTMLLIElement>('.track')].map((el) => el.dataset.id ?? '');
-  const byId = new Map(tracks.map((t) => [t.id, t]));
+  const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
+  if (ids.length !== list.length) { renderTracks(); return; } // за время перетаскивания список изменился снаружи
+  const byId = new Map(list.map((t) => [t.id, t]));
   const next = ids.map((id) => byId.get(id)).filter((t): t is UiTrack => Boolean(t));
-  if (next.length !== tracks.length) return;
-  const changed = next.some((t, i) => tracks[i].id !== t.id);
+  if (next.length !== ids.length) { renderTracks(); return; }
+  const changed = next.some((t, i) => list[i].id !== t.id);
   if (!changed) return;
-  const list = next.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
-  list.forEach((t, i) => { t.position = i; });
-  void persistTrackOrder().then(() => renderTracks()).catch((err) => toast(messageOf(err)));
+  next.forEach((t, i) => { t.position = i; });
+  renderTracks(); // номера позиций обновляем сразу, не дожидаясь ответа сервера
+  void persistTrackOrder().catch((err) => toast(messageOf(err)));
 });
 
 function getDragAfterElement(container: HTMLElement, y: number): HTMLLIElement | null {
@@ -5133,6 +5324,9 @@ svPeekBtn.addEventListener('keyup', (e) => {
 });
 svPeekBtn.addEventListener('blur', hideParentPeek);
 svPeekBtn.addEventListener('contextmenu', (e) => e.preventDefault()); // долгий тап на телефоне
+// iOS/Android: удержание кнопки не должно начинать выделение текста — иначе
+// телефон отвечает тактильной вибрацией, как при выделении (~через секунду)
+svPeekBtn.addEventListener('selectstart', (e) => e.preventDefault());
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') hideParentPeek();
 });

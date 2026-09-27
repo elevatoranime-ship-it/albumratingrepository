@@ -21096,6 +21096,7 @@ ${suffix}`;
   var tracksLockedNote = q("#tracks-locked-note");
   var trackForm = q("#track-form");
   var trackInput = q("#track-input");
+  var trackPosInput = q("#track-pos-input");
   var trackFeatBox = q("#track-feat-box");
   var trackFeatInput = q("#track-feat-input");
   var trackFeatList = q("#track-feat-list");
@@ -22198,6 +22199,7 @@ ${suffix}`;
       const mineStr = typeof mineScore === "number" ? fmt(mineScore) : "";
       const canRename = !t.locked;
       const canOrder = !locked && !maxi;
+      const canDrag = !locked;
       const single = singleOfTrack(t);
       const li = document.createElement("li");
       li.className = "track";
@@ -22231,8 +22233,8 @@ ${suffix}`;
         </div>` : "";
       li.innerHTML = `
       <div class="track__row1">
-        <span class="track__handle"${canOrder ? ' draggable="true"' : ""} aria-hidden="true">${GRIP_SVG}</span>
-        <span class="track__num">${i + 1}</span>
+        <span class="track__handle"${canDrag ? ' draggable="true"' : ""} aria-hidden="true">${GRIP_SVG}</span>
+        <span class="track__num${canOrder ? " track__num--editable" : ""}"${canOrder ? ' title="\u043D\u0430\u0436\u043C\u0438\u0442\u0435, \u0447\u0442\u043E\u0431\u044B \u0438\u0437\u043C\u0435\u043D\u0438\u0442\u044C \u043D\u043E\u043C\u0435\u0440 \u0442\u0440\u0435\u043A\u0430"' : ""}>${i + 1}</span>
         <span class="track__title">${trackTitleHTML(t)}</span>
         ${single ? `<button class="track__single" type="button" title="\u041E\u0442\u043A\u0440\u044B\u0442\u044C \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0443 \u0441\u0438\u043D\u0433\u043B\u0430 \xAB${esc(singleDisplayTitle(single))}\xBB">\u0441\u0438\u043D\u0433\u043B</button>` : ""}
         ${peerBadge}
@@ -22334,6 +22336,7 @@ ${suffix}`;
   var lastFeatExtract = "";
   function resetTrackForm() {
     trackInput.value = "";
+    trackPosInput.value = "";
     trackFeatInput.value = "";
     trackFeatBox.hidden = true;
     trackFeatList.hidden = true;
@@ -22441,10 +22444,30 @@ ${suffix}`;
     }
     const featRaw = trackFeatBox.hidden ? "" : trackFeatInput.value.trim();
     const featArtist = featRaw ? canonicalArtistName(featRaw) : null;
+    const posRaw = trackPosInput.value.trim();
+    const count = tracks.filter((t) => t.albumId === currentAlbumId).length;
+    let targetIdx = null;
+    if (posRaw !== "") {
+      const pos = parseInt(posRaw, 10);
+      if (isNaN(pos)) trackPosInput.value = "";
+      else targetIdx = Math.min(Math.max(1, pos), count + 1) - 1;
+    }
     try {
       const newId = await addTrackInternal(currentAlbumId, title, featArtist);
+      if (targetIdx !== null && targetIdx < count) {
+        const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
+        const from = list.findIndex((t) => t.id === newId);
+        if (from !== -1 && from !== targetIdx) {
+          const [item] = list.splice(from, 1);
+          list.splice(targetIdx, 0, item);
+          list.forEach((t, i) => {
+            t.position = i;
+          });
+          void persistTrackOrder().catch((err) => toast(messageOf(err)));
+        }
+      }
       resetTrackForm();
-      renderTracks(newId);
+      renderTracksShift(newId, newId);
     } catch (err) {
       toast(messageOf(err));
     }
@@ -22671,7 +22694,47 @@ ${suffix}`;
       toast(messageOf(err));
     }
   }
-  async function moveTrack(from, to) {
+  function renderTracksShift(enterId, scrollToId) {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const before = /* @__PURE__ */ new Map();
+    if (!reduceMotion) {
+      trackList.querySelectorAll(".track").forEach((el) => {
+        if (el.dataset.id) before.set(el.dataset.id, el.getBoundingClientRect().top);
+      });
+    }
+    renderTracks(enterId);
+    if (reduceMotion) {
+      scrollTrackIntoView(scrollToId, "auto");
+      return;
+    }
+    trackList.querySelectorAll(".track").forEach((el) => {
+      const id = el.dataset.id;
+      if (!id || id === enterId) return;
+      const prevTop = before.get(id);
+      if (prevTop === void 0) return;
+      const dy = prevTop - el.getBoundingClientRect().top;
+      if (Math.abs(dy) < 1) return;
+      el.style.transition = "none";
+      el.style.transform = `translateY(${dy}px)`;
+      void el.offsetHeight;
+      el.style.transition = "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)";
+      el.style.transform = "";
+      const cleanup = () => {
+        el.style.transition = "";
+        el.style.transform = "";
+      };
+      el.addEventListener("transitionend", cleanup, { once: true });
+      window.setTimeout(cleanup, 500);
+    });
+    scrollTrackIntoView(scrollToId, "smooth");
+  }
+  function scrollTrackIntoView(id, behavior) {
+    if (!id) return;
+    const el = trackList.querySelector(`.track[data-id="${id}"]`);
+    if (!el) return;
+    requestAnimationFrame(() => el.scrollIntoView({ behavior, block: "center" }));
+  }
+  async function moveTrack(from, to, scrollToId) {
     const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
     if (from === to || from < 0 || to < 0 || from >= list.length || to >= list.length) return;
     const [item] = list.splice(from, 1);
@@ -22679,9 +22742,9 @@ ${suffix}`;
     list.forEach((t, i) => {
       t.position = i;
     });
+    renderTracksShift(void 0, scrollToId);
     try {
       await persistTrackOrder();
-      renderTracks();
     } catch (err) {
       toast(messageOf(err));
     }
@@ -22709,7 +22772,7 @@ ${suffix}`;
   trackList.addEventListener("click", (e) => {
     if (e.__trackRowTap) return;
     const target = e.target;
-    if (target.closest(".track__slider, .track__numinput, .track__rename-input, .track__confirm-btn, .track__btn, .track__feat, .track__handle, .track__single")) return;
+    if (target.closest(".track__slider, .track__numinput, .track__rename-input, .track__confirm-btn, .track__btn, .track__feat, .track__handle, .track__single, .track__num, .track__posedit")) return;
     const marked = target.closest(".track--single");
     if (!marked?.dataset.id) return;
     const row = tracks.find((t) => t.id === marked.dataset.id);
@@ -22762,6 +22825,112 @@ ${suffix}`;
     else if (act === "unsingle" && track) void unmarkTrackAsSingle(track);
     else if (act === "skip" && track) openSkipDialog(track);
     else if (act === "unskip" && track) void unskipTrack(track.id);
+  });
+  function startPosEdit(li) {
+    const id = li.dataset.id;
+    if (!id) return;
+    const numEl = li.querySelector(".track__num");
+    if (!numEl || !numEl.isConnected) return;
+    const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
+    const idx = list.findIndex((t) => t.id === id);
+    if (idx === -1) return;
+    if (li.querySelector(".track__posedit")) return;
+    const input = document.createElement("input");
+    input.className = "track__posedit";
+    input.type = "number";
+    input.min = "1";
+    input.max = String(list.length);
+    input.step = "1";
+    input.inputMode = "numeric";
+    input.autocomplete = "off";
+    input.value = String(idx + 1);
+    input.setAttribute("aria-label", "\u041D\u043E\u043C\u0435\u0440 \u0442\u0440\u0435\u043A\u0430 \u0432 \u0430\u043B\u044C\u0431\u043E\u043C\u0435");
+    numEl.replaceWith(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (apply) => {
+      if (done) return;
+      done = true;
+      if (apply) {
+        const target = parseInt(input.value, 10);
+        if (!isNaN(target)) {
+          const to = Math.min(Math.max(1, target), list.length) - 1;
+          if (to !== idx) {
+            void moveTrack(idx, to, id);
+            return;
+          }
+        }
+      }
+      renderTracks();
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        finish(true);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        finish(false);
+      }
+    });
+    input.addEventListener("blur", () => finish(true));
+    input.addEventListener("click", (e) => e.stopPropagation());
+  }
+  trackList.addEventListener("click", (e) => {
+    if (TOUCH_UI.matches) return;
+    const numEl = e.target.closest(".track__num");
+    if (!numEl) return;
+    const li = numEl.closest(".track");
+    if (!li?.dataset.id) return;
+    const al = currentAlbum();
+    if (!al || al.tracksLocked || isMaxiSingle(al)) return;
+    startPosEdit(li);
+  });
+  var DRAG_EDGE_PX = 72;
+  var DRAG_MAX_STEP = 16;
+  var dragScrollTarget;
+  var dragScrollY = 0;
+  var dragScrollRAF = null;
+  function findDragScroller(el) {
+    let node = el.parentElement;
+    while (node) {
+      const overflowY = getComputedStyle(node).overflowY;
+      if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+  function dragScrollTick() {
+    if (dragScrollTarget === void 0 || !trackList.querySelector(".dragging")) {
+      stopDragAutoScroll();
+      return;
+    }
+    const vh = window.innerHeight;
+    let delta = 0;
+    if (dragScrollY < DRAG_EDGE_PX) delta = -DRAG_MAX_STEP * (DRAG_EDGE_PX - dragScrollY) / DRAG_EDGE_PX;
+    else if (dragScrollY > vh - DRAG_EDGE_PX) delta = DRAG_MAX_STEP * (dragScrollY - (vh - DRAG_EDGE_PX)) / DRAG_EDGE_PX;
+    if (delta !== 0) {
+      if (dragScrollTarget) dragScrollTarget.scrollTop += delta;
+      else window.scrollBy(0, delta);
+    }
+    dragScrollRAF = requestAnimationFrame(dragScrollTick);
+  }
+  function stopDragAutoScroll() {
+    if (dragScrollRAF !== null) cancelAnimationFrame(dragScrollRAF);
+    dragScrollRAF = null;
+    dragScrollTarget = void 0;
+  }
+  document.addEventListener("dragover", (e) => {
+    if (!trackList.querySelector(".dragging")) return;
+    if (dragScrollTarget === void 0) {
+      dragScrollTarget = findDragScroller(trackList);
+      dragScrollRAF = requestAnimationFrame(dragScrollTick);
+    }
+    dragScrollY = e.clientY;
+  });
+  document.addEventListener("drop", (e) => {
+    if (dragScrollTarget !== void 0) e.preventDefault();
+    stopDragAutoScroll();
   });
   trackList.addEventListener("dragstart", (e) => {
     const handle = e.target.closest(".track__handle");
@@ -22820,22 +22989,32 @@ ${suffix}`;
   });
   trackList.addEventListener("drop", (e) => e.preventDefault());
   trackList.addEventListener("dragend", () => {
+    stopDragAutoScroll();
     const dragging = trackList.querySelector(".track.dragging");
     if (dragging) dragging.classList.remove("dragging");
     trackList.querySelectorAll(".track").forEach((el) => {
       el.style.transform = "";
+      el.style.transition = "";
     });
     const ids = [...trackList.querySelectorAll(".track")].map((el) => el.dataset.id ?? "");
-    const byId = new Map(tracks.map((t) => [t.id, t]));
+    const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
+    if (ids.length !== list.length) {
+      renderTracks();
+      return;
+    }
+    const byId = new Map(list.map((t) => [t.id, t]));
     const next = ids.map((id) => byId.get(id)).filter((t) => Boolean(t));
-    if (next.length !== tracks.length) return;
-    const changed = next.some((t, i) => tracks[i].id !== t.id);
+    if (next.length !== ids.length) {
+      renderTracks();
+      return;
+    }
+    const changed = next.some((t, i) => list[i].id !== t.id);
     if (!changed) return;
-    const list = next.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
-    list.forEach((t, i) => {
+    next.forEach((t, i) => {
       t.position = i;
     });
-    void persistTrackOrder().then(() => renderTracks()).catch((err) => toast(messageOf(err)));
+    renderTracks();
+    void persistTrackOrder().catch((err) => toast(messageOf(err)));
   });
   function getDragAfterElement(container, y) {
     const els = [...container.querySelectorAll(".track:not(.dragging)")];
@@ -24528,6 +24707,7 @@ ${suffix}`;
   });
   svPeekBtn.addEventListener("blur", hideParentPeek);
   svPeekBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+  svPeekBtn.addEventListener("selectstart", (e) => e.preventDefault());
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") hideParentPeek();
   });

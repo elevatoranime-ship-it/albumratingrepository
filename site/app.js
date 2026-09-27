@@ -20438,7 +20438,7 @@ ${suffix}`;
   }
   function flushDeferredTrackRender() {
     if (!tracksRenderDeferred || !viewAlbum.classList.contains("is-visible")) return;
-    if (ratingPointerTrackId || trackList.contains(document.activeElement) || trackList.querySelector(".dragging")) return;
+    if (ratingPointerTrackId || trackDrag || trackList.contains(document.activeElement) || trackList.querySelector(".dragging")) return;
     renderTracks();
   }
   function renderSynchronizedData(changed) {
@@ -22888,11 +22888,8 @@ ${suffix}`;
   });
   var DRAG_EDGE_PX = 40;
   var DRAG_MAX_STEP = 10;
-  var DRAG_IDLE_MS = 600;
-  var dragScrollTarget;
-  var dragScrollY = 0;
-  var dragScrollAt = 0;
-  var dragScrollRAF = null;
+  var DRAG_START_PX = 4;
+  var trackDrag = null;
   function findDragScroller(el) {
     let node = el.parentElement;
     while (node) {
@@ -22902,66 +22899,18 @@ ${suffix}`;
     }
     return null;
   }
-  function dragScrollTick() {
-    if (dragScrollTarget === void 0 || !trackList.querySelector(".dragging")) {
-      stopDragAutoScroll();
-      return;
+  function dragAfterElement(container, y) {
+    const els = [...container.querySelectorAll(".track:not(.track--drag-source)")];
+    let closest = { offset: -Infinity, element: null };
+    for (const child of els) {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+      if (offset < 0 && offset > closest.offset) closest = { offset, element: child };
     }
-    const vh = window.innerHeight;
-    let delta = 0;
-    if (performance.now() - dragScrollAt <= DRAG_IDLE_MS) {
-      if (dragScrollY < DRAG_EDGE_PX) delta = -DRAG_MAX_STEP * (DRAG_EDGE_PX - dragScrollY) / DRAG_EDGE_PX;
-      else if (dragScrollY > vh - DRAG_EDGE_PX) delta = DRAG_MAX_STEP * (dragScrollY - (vh - DRAG_EDGE_PX)) / DRAG_EDGE_PX;
-    }
-    if (delta !== 0) {
-      if (dragScrollTarget) dragScrollTarget.scrollTop += delta;
-      else window.scrollBy(0, delta);
-      placeDraggedAt(dragScrollY);
-    }
-    dragScrollRAF = requestAnimationFrame(dragScrollTick);
+    return closest.element;
   }
-  function stopDragAutoScroll() {
-    if (dragScrollRAF !== null) cancelAnimationFrame(dragScrollRAF);
-    dragScrollRAF = null;
-    dragScrollTarget = void 0;
-  }
-  document.addEventListener("dragover", (e) => {
-    if (!trackList.querySelector(".dragging")) return;
-    if (dragScrollTarget === void 0) {
-      dragScrollTarget = findDragScroller(trackList);
-      dragScrollRAF = requestAnimationFrame(dragScrollTick);
-    }
-    dragScrollY = e.clientY;
-    dragScrollAt = performance.now();
-  });
-  document.addEventListener("drop", (e) => {
-    if (dragScrollTarget !== void 0) e.preventDefault();
-    stopDragAutoScroll();
-  });
-  trackList.addEventListener("dragstart", (e) => {
-    const handle = e.target.closest(".track__handle");
-    if (!handle || handle.getAttribute("draggable") !== "true") {
-      e.preventDefault();
-      return;
-    }
-    const li = handle.closest(".track");
-    if (!li || !li.dataset.id) {
-      e.preventDefault();
-      return;
-    }
-    e.dataTransfer.effectAllowed = "move";
-    try {
-      e.dataTransfer.setDragImage(li, 24, 24);
-    } catch {
-    }
-    try {
-      e.dataTransfer.setData("text/plain", li.dataset.id);
-    } catch {
-    }
-    li.classList.add("dragging");
-  });
   function animateTrackReorder(container) {
-    const items = [...container.querySelectorAll(".track:not(.dragging)")];
+    const items = [...container.querySelectorAll(".track:not(.track--drag-source)")];
     items.forEach((el) => {
       el.style.transition = "none";
       el.style.transform = "";
@@ -22983,28 +22932,58 @@ ${suffix}`;
       });
     };
   }
-  function placeDraggedAt(y) {
-    const dragging = trackList.querySelector(".track.dragging");
-    if (!dragging) return;
+  function recomputeDragSlot() {
+    const drag = trackDrag;
+    if (!drag?.moved) return;
+    const li = drag.li;
+    const after = dragAfterElement(trackList, drag.lastY);
+    if (after && li.nextElementSibling === after || !after && !li.nextElementSibling) return;
     const apply = animateTrackReorder(trackList);
-    const after = getDragAfterElement(trackList, y);
-    if (after == null) trackList.appendChild(dragging);
-    else trackList.insertBefore(dragging, after);
+    if (after == null) trackList.appendChild(li);
+    else trackList.insertBefore(li, after);
     apply();
   }
-  trackList.addEventListener("dragover", (e) => {
-    e.preventDefault();
-    placeDraggedAt(e.clientY);
-  });
-  trackList.addEventListener("drop", (e) => e.preventDefault());
-  trackList.addEventListener("dragend", () => {
-    stopDragAutoScroll();
-    const dragging = trackList.querySelector(".track.dragging");
-    if (dragging) dragging.classList.remove("dragging");
-    trackList.querySelectorAll(".track").forEach((el) => {
-      el.style.transform = "";
-      el.style.transition = "";
-    });
+  function followDragGhost() {
+    const drag = trackDrag;
+    if (!drag?.ghost) return;
+    drag.ghost.style.top = `${drag.lastY - drag.grabOffsetY}px`;
+  }
+  function dragTick() {
+    const drag = trackDrag;
+    if (!drag?.moved) return;
+    const vh = window.innerHeight;
+    let delta = 0;
+    if (drag.lastY < DRAG_EDGE_PX) delta = -DRAG_MAX_STEP * (DRAG_EDGE_PX - drag.lastY) / DRAG_EDGE_PX;
+    else if (drag.lastY > vh - DRAG_EDGE_PX) delta = DRAG_MAX_STEP * (drag.lastY - (vh - DRAG_EDGE_PX)) / DRAG_EDGE_PX;
+    if (delta !== 0) {
+      if (drag.scroller) drag.scroller.scrollTop += delta;
+      else window.scrollBy(0, delta);
+      recomputeDragSlot();
+    }
+    drag.raf = requestAnimationFrame(dragTick);
+  }
+  function beginTrackDragVisuals() {
+    const drag = trackDrag;
+    if (!drag || drag.moved) return;
+    drag.moved = true;
+    const rect = drag.li.getBoundingClientRect();
+    drag.grabOffsetY = drag.lastY - rect.top;
+    const ghost = drag.li.cloneNode(true);
+    ghost.classList.remove("track--enter");
+    ghost.classList.add("track--drag-ghost");
+    ghost.setAttribute("aria-hidden", "true");
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    ghost.style.left = `${rect.left}px`;
+    ghost.style.top = `${rect.top}px`;
+    document.body.appendChild(ghost);
+    drag.ghost = ghost;
+    drag.li.classList.add("track--drag-source");
+    document.documentElement.classList.add("is-track-dragging");
+    drag.scroller = findDragScroller(trackList);
+    drag.raf = requestAnimationFrame(dragTick);
+  }
+  function commitTrackDrag() {
     const ids = [...trackList.querySelectorAll(".track")].map((el) => el.dataset.id ?? "");
     const list = tracks.filter((t) => t.albumId === currentAlbumId).sort((a, b) => a.position - b.position);
     if (ids.length !== list.length) {
@@ -23018,23 +22997,58 @@ ${suffix}`;
       return;
     }
     const changed = next.some((t, i) => list[i].id !== t.id);
-    if (!changed) return;
+    if (!changed) {
+      renderTracks();
+      return;
+    }
     next.forEach((t, i) => {
       t.position = i;
     });
     renderTracks();
     void persistTrackOrder().catch((err) => toast(messageOf(err)));
-  });
-  function getDragAfterElement(container, y) {
-    const els = [...container.querySelectorAll(".track:not(.dragging)")];
-    let closest = { offset: -Infinity, element: null };
-    for (const child of els) {
-      const box = child.getBoundingClientRect();
-      const offset = y - box.top - box.height / 2;
-      if (offset < 0 && offset > closest.offset) closest = { offset, element: child };
-    }
-    return closest.element;
   }
+  function finishTrackDrag(commit) {
+    const drag = trackDrag;
+    if (!drag) return;
+    trackDrag = null;
+    if (drag.raf !== null) cancelAnimationFrame(drag.raf);
+    drag.ghost?.remove();
+    drag.li.classList.remove("track--drag-source");
+    trackList.querySelectorAll(".track").forEach((el) => {
+      el.style.transform = "";
+      el.style.transition = "";
+    });
+    document.documentElement.classList.remove("is-track-dragging");
+    if (commit && drag.moved) commitTrackDrag();
+    else if (drag.moved) renderTracks();
+  }
+  trackList.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || e.pointerType === "touch" || trackDrag) return;
+    const handle = e.target.closest(".track__handle");
+    if (!handle || handle.getAttribute("draggable") !== "true") return;
+    const li = handle.closest(".track");
+    if (!li?.dataset.id) return;
+    e.preventDefault();
+    trackDrag = { li, ghost: null, scroller: null, startY: e.clientY, lastY: e.clientY, grabOffsetY: 0, moved: false, raf: null };
+  });
+  document.addEventListener("pointermove", (e) => {
+    const drag = trackDrag;
+    if (!drag || e.pointerType === "touch") return;
+    drag.lastY = e.clientY;
+    if (!drag.moved) {
+      if (Math.abs(e.clientY - drag.startY) < DRAG_START_PX) return;
+      beginTrackDragVisuals();
+    }
+    followDragGhost();
+    recomputeDragSlot();
+  });
+  document.addEventListener("pointerup", () => finishTrackDrag(true));
+  document.addEventListener("pointercancel", () => finishTrackDrag(false));
+  window.addEventListener("blur", () => finishTrackDrag(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") finishTrackDrag(false);
+  });
+  trackList.addEventListener("dragstart", (e) => e.preventDefault());
   function visibleView() {
     for (const v of [viewHome, viewAlbum, viewSingle, viewArtist, viewProfile, viewRank, viewArank, viewSrank, viewTrank, viewAdd]) {
       if (v.classList.contains("is-visible")) return v;

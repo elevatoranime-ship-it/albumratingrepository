@@ -1374,6 +1374,28 @@ body {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .track__posedit::-webkit-outer-spin-button, .track__posedit::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* --- перетаскивание трека (pointer-drag, десктоп) --- */
+/* исходная строка остаётся «плашкой» места вставки, её содержимое неактивно */
+.track--drag-source { opacity: 0.35; border-style: dashed; border-color: var(--accent-line); box-shadow: none; background-color: transparent; }
+.track--drag-source * { pointer-events: none; }
+/* клон, следующий за курсором */
+.track--drag-ghost {
+  position: fixed;
+  top: 0; left: 0;
+  margin: 0;
+  list-style: none;
+  z-index: 120;
+  pointer-events: none;
+  opacity: 0.98;
+  background: #15151b;
+  border-color: var(--accent-line);
+  box-shadow: 0 24px 60px -18px rgba(0,0,0,0.85), 0 0 0 1px var(--accent-glow);
+  cursor: grabbing;
+}
+/* на время перетаскивания — курсор «рука» везде и никакого выделения текста */
+html.is-track-dragging, html.is-track-dragging * { cursor: grabbing !important; }
+html.is-track-dragging { -webkit-user-select: none; user-select: none; }
 .track__title { flex: 1; font-size: 15px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .track__lock { display: grid; place-items: center; color: var(--accent); opacity: 0.85; }
 .track__lock svg { width: 14px; height: 14px; }

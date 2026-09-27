@@ -3336,11 +3336,15 @@ trackList.addEventListener('click', (e) => {
 /* Автопрокрутка при перетаскивании трека: с зажатой ЛКМ у верхнего или нижнего
    края экрана страница листается сама (родной автопрокрутки у фиксированных
    скролл-контейнеров «view» в браузерах нет). Цикл идёт на rAF, потому что
-   dragover при неподвижном курсоре приходит редко. Работает и на макси-синглах. */
-const DRAG_EDGE_PX = 72;      // зона у края экрана, где начинается прокрутка
-const DRAG_MAX_STEP = 16;     // максимум пикселей за кадр
+   dragover при неподвижном курсоре приходит редко (~350 мс), и место вставки
+   пересчитывается на КАЖДОМ шаге прокрутки — иначе трек «падал» туда, где
+   курсор был до сдвига страницы. Работает и на макси-синглах. */
+const DRAG_EDGE_PX = 40;      // зона у края экрана, где начинается прокрутка
+const DRAG_MAX_STEP = 10;     // максимум пикселей за кадр
+const DRAG_IDLE_MS = 600;     // пауза, если dragover давно не приходил (курсор за окном)
 let dragScrollTarget: HTMLElement | null | undefined; // undefined — не было dragover
 let dragScrollY = 0;
+let dragScrollAt = 0;
 let dragScrollRAF: number | null = null;
 
 function findDragScroller(el: HTMLElement): HTMLElement | null {
@@ -3360,11 +3364,18 @@ function dragScrollTick(): void {
   }
   const vh = window.innerHeight;
   let delta = 0;
-  if (dragScrollY < DRAG_EDGE_PX) delta = -DRAG_MAX_STEP * (DRAG_EDGE_PX - dragScrollY) / DRAG_EDGE_PX;
-  else if (dragScrollY > vh - DRAG_EDGE_PX) delta = DRAG_MAX_STEP * (dragScrollY - (vh - DRAG_EDGE_PX)) / DRAG_EDGE_PX;
+  // Прокрутка только пока события перетаскивания живые: курсор ушёл за окно —
+  // страница стоит на месте (dragover не приходит), а не «убегает» вниз.
+  if (performance.now() - dragScrollAt <= DRAG_IDLE_MS) {
+    if (dragScrollY < DRAG_EDGE_PX) delta = -DRAG_MAX_STEP * (DRAG_EDGE_PX - dragScrollY) / DRAG_EDGE_PX;
+    else if (dragScrollY > vh - DRAG_EDGE_PX) delta = DRAG_MAX_STEP * (dragScrollY - (vh - DRAG_EDGE_PX)) / DRAG_EDGE_PX;
+  }
   if (delta !== 0) {
     if (dragScrollTarget) dragScrollTarget.scrollTop += delta;
     else window.scrollBy(0, delta);
+    // Страница сдвинулась под курсором — сразу пересчитываем место вставки,
+    // не дожидаясь следующего dragover.
+    placeDraggedAt(dragScrollY);
   }
   dragScrollRAF = requestAnimationFrame(dragScrollTick);
 }
@@ -3382,6 +3393,7 @@ document.addEventListener('dragover', (e) => {
     dragScrollRAF = requestAnimationFrame(dragScrollTick);
   }
   dragScrollY = e.clientY;
+  dragScrollAt = performance.now();
 });
 document.addEventListener('drop', (e) => {
   if (dragScrollTarget !== undefined) e.preventDefault(); // не «открывать» сброшенный текст
@@ -3422,15 +3434,23 @@ function animateTrackReorder(container: HTMLElement): () => void {
   };
 }
 
-trackList.addEventListener('dragover', (e) => {
-  e.preventDefault();
+/* Куда встал бы трек, если отпустить кнопку прямо сейчас: переставляет
+   перетаскиваемую строку в DOM (с FLIP-анимацией соседей). Вызывается и из
+   dragover, и из цикла автопрокрутки — чтобы во время скролла место вставки
+   шло за курсором, а не отставало до следующего dragover. */
+function placeDraggedAt(y: number): void {
   const dragging = trackList.querySelector<HTMLLIElement>('.track.dragging');
   if (!dragging) return;
   const apply = animateTrackReorder(trackList);
-  const after = getDragAfterElement(trackList, e.clientY);
+  const after = getDragAfterElement(trackList, y);
   if (after == null) trackList.appendChild(dragging);
   else trackList.insertBefore(dragging, after);
   apply();
+}
+
+trackList.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  placeDraggedAt(e.clientY);
 });
 
 trackList.addEventListener('drop', (e) => e.preventDefault());

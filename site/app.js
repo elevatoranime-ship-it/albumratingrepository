@@ -22886,10 +22886,12 @@ ${suffix}`;
     if (!al || al.tracksLocked || isMaxiSingle(al)) return;
     startPosEdit(li);
   });
-  var DRAG_EDGE_PX = 72;
-  var DRAG_MAX_STEP = 16;
+  var DRAG_EDGE_PX = 40;
+  var DRAG_MAX_STEP = 10;
+  var DRAG_IDLE_MS = 600;
   var dragScrollTarget;
   var dragScrollY = 0;
+  var dragScrollAt = 0;
   var dragScrollRAF = null;
   function findDragScroller(el) {
     let node = el.parentElement;
@@ -22907,11 +22909,14 @@ ${suffix}`;
     }
     const vh = window.innerHeight;
     let delta = 0;
-    if (dragScrollY < DRAG_EDGE_PX) delta = -DRAG_MAX_STEP * (DRAG_EDGE_PX - dragScrollY) / DRAG_EDGE_PX;
-    else if (dragScrollY > vh - DRAG_EDGE_PX) delta = DRAG_MAX_STEP * (dragScrollY - (vh - DRAG_EDGE_PX)) / DRAG_EDGE_PX;
+    if (performance.now() - dragScrollAt <= DRAG_IDLE_MS) {
+      if (dragScrollY < DRAG_EDGE_PX) delta = -DRAG_MAX_STEP * (DRAG_EDGE_PX - dragScrollY) / DRAG_EDGE_PX;
+      else if (dragScrollY > vh - DRAG_EDGE_PX) delta = DRAG_MAX_STEP * (dragScrollY - (vh - DRAG_EDGE_PX)) / DRAG_EDGE_PX;
+    }
     if (delta !== 0) {
       if (dragScrollTarget) dragScrollTarget.scrollTop += delta;
       else window.scrollBy(0, delta);
+      placeDraggedAt(dragScrollY);
     }
     dragScrollRAF = requestAnimationFrame(dragScrollTick);
   }
@@ -22927,6 +22932,7 @@ ${suffix}`;
       dragScrollRAF = requestAnimationFrame(dragScrollTick);
     }
     dragScrollY = e.clientY;
+    dragScrollAt = performance.now();
   });
   document.addEventListener("drop", (e) => {
     if (dragScrollTarget !== void 0) e.preventDefault();
@@ -22977,15 +22983,18 @@ ${suffix}`;
       });
     };
   }
-  trackList.addEventListener("dragover", (e) => {
-    e.preventDefault();
+  function placeDraggedAt(y) {
     const dragging = trackList.querySelector(".track.dragging");
     if (!dragging) return;
     const apply = animateTrackReorder(trackList);
-    const after = getDragAfterElement(trackList, e.clientY);
+    const after = getDragAfterElement(trackList, y);
     if (after == null) trackList.appendChild(dragging);
     else trackList.insertBefore(dragging, after);
     apply();
+  }
+  trackList.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    placeDraggedAt(e.clientY);
   });
   trackList.addEventListener("drop", (e) => e.preventDefault());
   trackList.addEventListener("dragend", () => {

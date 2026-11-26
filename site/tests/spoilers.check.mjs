@@ -95,6 +95,10 @@ function checkCssSelectors() {
     const found = html.includes(cls) || appSource.includes(cls);
     check(`.${cls} есть в разметке или рендерах`, found, true);
   }
+  // выделение мышкой/долгим тапом не должно оживлять спрятанное число
+  const mainRule = stylesCss.match(/body\.spoilers \.album__avg-num,[^{]*\{[^}]*\}/)?.[0] ?? '';
+  check('маска запрещает выделение (user-select: none)', mainRule.includes('user-select: none'), true);
+  check('страховка ::selection с прозрачным текстом', stylesCss.includes('.album__avg-num::selection'), true);
 }
 
 async function openFirstAlbum(doc, visible) {

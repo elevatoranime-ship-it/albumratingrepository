@@ -82,6 +82,21 @@ test('спойлеры: тумблер в профиле прячет оценк
   await page.locator('#profile-back').click();
   await expect(page.locator('#view-home')).toHaveClass(/is-visible/);
   await expectMasked(page, '.album__avg-num');
+  // маскированное число нельзя выделить — иначе ::selection оживил бы балл
+  await expect.poll(() =>
+    page.locator('.album__avg-num').first().evaluate((el) => getComputedStyle(el).userSelect),
+  ).toBe('none');
+  // пробуем выделить мышкой, как в баг-репорте: реальный балл не должен попасть в выделение
+  const numBox = (await page.locator('.album__avg-num').first().boundingBox())!;
+  const cardBox = (await page.locator('#albums .album').first().boundingBox())!;
+  await page.mouse.move(numBox.x + 2, numBox.y + numBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(cardBox.x + cardBox.width + 24, numBox.y + numBox.height / 2, { steps: 6 });
+  await page.mouse.up();
+  const selected = await page.evaluate(() => window.getSelection()?.toString() ?? '');
+  expect(selected).not.toContain('8.75'); // средний балл засеянного демо-альбома
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
+  await expect(page.locator('#view-home')).toHaveClass(/is-visible/); // карточка не открылась от выделения
 
   // альбом: средний балл, треки, чипы вклада
   await page.locator('#albums .album .album__title').first().click();

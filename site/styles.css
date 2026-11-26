@@ -4376,6 +4376,11 @@ body.spoilers .track__peer-val {
   display: inline-block;
   position: relative;
   color: transparent;
+  /* маскированное число нельзя выделить мышкой или долгим тапом:
+     текст остаётся в DOM, а при выделении браузер перекрашивает его
+     через ::selection — реальная оценка оживала бы на глазах */
+  -webkit-user-select: none;
+  user-select: none;
 }
 body.spoilers .album__avg-num::after,
 body.spoilers .scard__score::after,
@@ -4394,6 +4399,19 @@ body.spoilers .track__peer-val::after {
   padding-top: 0.12em;
   color: var(--text);
   pointer-events: none;
+}
+/* страховка: даже если выделение как-то захватит маскированный текст
+   (старый браузер, программный range), перекрашивать его нечего */
+body.spoilers .album__avg-num::selection,
+body.spoilers .scard__score::selection,
+body.spoilers .artist__score-num::selection,
+body.spoilers .av__avg-num::selection,
+body.spoilers .sv__avg-num::selection,
+body.spoilers .av__chip-val::selection,
+body.spoilers .track__avg::selection,
+body.spoilers .track__peer-val::selection {
+  background: transparent;
+  color: transparent;
 }
 
 /* поле своей оценки: '***' фоном, пока поле пустое не станет и не получит

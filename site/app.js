@@ -20453,10 +20453,13 @@ ${suffix}`;
       if (viewTrank.classList.contains("is-visible")) renderTrackRank();
       if (viewAlbum.classList.contains("is-visible")) renderAlbumSingles();
       if (viewSingle.classList.contains("is-visible") && !currentSingle()) {
-        viewStack.length = 0;
-        viewStack.push({ view: "home" });
-        void swapTo(viewSingle, viewHome, () => {
-          viewHome.scrollTop = 0;
+        void queueNav(async () => {
+          if (!viewSingle.classList.contains("is-visible") || currentSingle()) return;
+          viewStack.length = 0;
+          viewStack.push({ view: "home" });
+          await swapTo(viewSingle, viewHome, () => {
+            viewHome.scrollTop = 0;
+          });
         });
         renderAlbums();
         toast("\u042D\u0442\u043E\u0442 \u0441\u0438\u043D\u0433\u043B \u0443\u0434\u0430\u043B\u0451\u043D");
@@ -21262,7 +21265,17 @@ ${suffix}`;
   var addSubmit = q("#add-submit");
   var addSubmitLabel = q("#add-submit-label");
   var addError = q("#add-error");
+  var navChain = Promise.resolve();
+  function queueNav(task) {
+    const run = navChain.then(task);
+    navChain = run.then(() => void 0, () => void 0);
+    return run;
+  }
   async function swapTo(from, to, after) {
+    if (from === to) {
+      after?.();
+      return;
+    }
     if (from === viewAdd) setEvaluatorOpen(false);
     from.classList.add("is-leaving");
     await sleep3(560);
@@ -21270,11 +21283,15 @@ ${suffix}`;
     from.style.display = "none";
     to.style.display = "";
     to.classList.remove("is-visible");
-    requestAnimationFrame(() => {
-      to.classList.add("is-visible");
-      if (after) after();
-      flushSynchronizedRender();
-    });
+    await new Promise((resolve) => requestAnimationFrame(() => {
+      try {
+        to.classList.add("is-visible");
+        if (after) after();
+        flushSynchronizedRender();
+      } finally {
+        resolve();
+      }
+    }));
   }
   var isRegisterMode = false;
   var authBusy = false;
@@ -21352,10 +21369,10 @@ ${suffix}`;
     success.classList.add("is-visible");
     await sleep3(1350);
     success.classList.remove("is-visible");
-    await swapTo(viewLogin, viewHome, () => {
+    await queueNav(() => swapTo(viewLogin, viewHome, () => {
       viewHome.scrollTop = 0;
       moveSegThumb();
-    });
+    }));
     passwordInput.value = "";
     password2Input.value = "";
     renderAlbums();
@@ -21370,9 +21387,11 @@ ${suffix}`;
       currentSingleId = null;
       currentArtistName = null;
       pendingSingleRatings.clear();
-      viewStack.length = 0;
-      viewStack.push({ view: "home" });
-      await swapTo(viewHome, viewLogin);
+      await queueNav(async () => {
+        viewStack.length = 0;
+        viewStack.push({ view: "home" });
+        await swapTo(viewHome, viewLogin);
+      });
       viewHome.querySelectorAll(".album").forEach((el) => {
         el.classList.add("reveal");
         el.style.animation = "";
@@ -23059,106 +23078,111 @@ ${suffix}`;
     return viewStack[viewStack.length - 1] ?? { view: "home" };
   }
   async function navigateTo(view, entry) {
-    const from = visibleView() ?? viewHome;
-    viewStack.push(entry);
-    await swapTo(from, view, () => {
-      view.scrollTop = 0;
+    await queueNav(async () => {
+      const from = visibleView() ?? viewHome;
+      if (from === view) return;
+      viewStack.push(entry);
+      await swapTo(from, view, () => {
+        view.scrollTop = 0;
+      });
     });
   }
   async function goBack() {
-    viewStack.pop();
-    if (viewAlbum.classList.contains("is-visible")) setActiveTrack(null);
-    const prev = topEntry();
-    const from = visibleView() ?? viewHome;
-    switch (prev.view) {
-      case "album": {
-        currentAlbumId = prev.albumId ?? null;
-        currentSingleId = null;
-        const al = albums.find((a) => a.id === prev.albumId);
-        if (al) renderAlbumPage(al);
-        await swapTo(from, viewAlbum, () => {
-          viewAlbum.scrollTop = 0;
-        });
-        break;
+    await queueNav(async () => {
+      viewStack.pop();
+      if (viewAlbum.classList.contains("is-visible")) setActiveTrack(null);
+      const prev = topEntry();
+      const from = visibleView() ?? viewHome;
+      switch (prev.view) {
+        case "album": {
+          currentAlbumId = prev.albumId ?? null;
+          currentSingleId = null;
+          const al = albums.find((a) => a.id === prev.albumId);
+          if (al) renderAlbumPage(al);
+          await swapTo(from, viewAlbum, () => {
+            viewAlbum.scrollTop = 0;
+          });
+          break;
+        }
+        case "single": {
+          currentSingleId = prev.singleId ?? null;
+          currentAlbumId = null;
+          const s = albums.find((a) => a.id === prev.singleId);
+          if (s) renderSinglePage(s);
+          await swapTo(from, viewSingle, () => {
+            viewSingle.scrollTop = 0;
+          });
+          break;
+        }
+        case "artist": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          if (currentArtistName) renderArtistPage();
+          await swapTo(from, viewArtist, () => {
+            viewArtist.scrollTop = 0;
+          });
+          break;
+        }
+        case "profile": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderProfilePage();
+          await swapTo(from, viewProfile, () => {
+            viewProfile.scrollTop = 0;
+          });
+          break;
+        }
+        case "rank": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderArtistRank();
+          await swapTo(from, viewRank, () => {
+            viewRank.scrollTop = 0;
+          });
+          break;
+        }
+        case "arank": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderAlbumRank();
+          await swapTo(from, viewArank, () => {
+            viewArank.scrollTop = 0;
+          });
+          break;
+        }
+        case "trank": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderTrackRank();
+          await swapTo(from, viewTrank, () => {
+            viewTrank.scrollTop = 0;
+          });
+          break;
+        }
+        case "add": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          applyAddMode(prev.kind);
+          await swapTo(from, viewAdd, () => {
+            viewAdd.scrollTop = 0;
+          });
+          break;
+        }
+        default: {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderAlbums();
+          await swapTo(from, viewHome, () => {
+            viewHome.scrollTop = 0;
+          });
+        }
       }
-      case "single": {
-        currentSingleId = prev.singleId ?? null;
-        currentAlbumId = null;
-        const s = albums.find((a) => a.id === prev.singleId);
-        if (s) renderSinglePage(s);
-        await swapTo(from, viewSingle, () => {
-          viewSingle.scrollTop = 0;
-        });
-        break;
-      }
-      case "artist": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        if (currentArtistName) renderArtistPage();
-        await swapTo(from, viewArtist, () => {
-          viewArtist.scrollTop = 0;
-        });
-        break;
-      }
-      case "profile": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderProfilePage();
-        await swapTo(from, viewProfile, () => {
-          viewProfile.scrollTop = 0;
-        });
-        break;
-      }
-      case "rank": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderArtistRank();
-        await swapTo(from, viewRank, () => {
-          viewRank.scrollTop = 0;
-        });
-        break;
-      }
-      case "arank": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderAlbumRank();
-        await swapTo(from, viewArank, () => {
-          viewArank.scrollTop = 0;
-        });
-        break;
-      }
-      case "trank": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderTrackRank();
-        await swapTo(from, viewTrank, () => {
-          viewTrank.scrollTop = 0;
-        });
-        break;
-      }
-      case "add": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        applyAddMode(prev.kind);
-        await swapTo(from, viewAdd, () => {
-          viewAdd.scrollTop = 0;
-        });
-        break;
-      }
-      default: {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderAlbums();
-        await swapTo(from, viewHome, () => {
-          viewHome.scrollTop = 0;
-        });
-      }
-    }
+    });
   }
   async function openRelease(id) {
     const rel = albums.find((a) => a.id === id);
@@ -23982,15 +24006,17 @@ ${suffix}`;
       }
       const wasLast = currentAlbumId === al.id;
       currentAlbumId = null;
-      viewStack.length = 0;
-      viewStack.push({ view: "home" });
-      if (wasLast) {
-        await crumbleCover();
+      await queueNav(async () => {
+        viewStack.length = 0;
+        viewStack.push({ view: "home" });
         renderAlbums();
-        await swapTo(viewAlbum, viewHome, () => {
-          viewHome.scrollTop = 0;
-        });
-      }
+        if (wasLast && viewAlbum.classList.contains("is-visible")) {
+          await crumbleCover();
+          await swapTo(viewAlbum, viewHome, () => {
+            viewHome.scrollTop = 0;
+          });
+        }
+      });
       toast("\u0410\u043B\u044C\u0431\u043E\u043C \u0443\u0434\u0430\u043B\u0451\u043D");
     } catch (err) {
       toast(messageOf(err));
@@ -24562,13 +24588,16 @@ ${suffix}`;
         saveLocalSingleRatings();
       }
       currentSingleId = null;
-      viewStack.length = 0;
-      viewStack.push({ view: "home" });
-      await crumbleCover(".sv__cover");
-      setHomeMode("single", false);
-      renderAlbums();
-      await swapTo(viewSingle, viewHome, () => {
-        viewHome.scrollTop = 0;
+      await queueNav(async () => {
+        viewStack.length = 0;
+        viewStack.push({ view: "home" });
+        const onSingle = viewSingle.classList.contains("is-visible");
+        if (onSingle) await crumbleCover(".sv__cover");
+        setHomeMode("single", false);
+        renderAlbums();
+        if (onSingle) await swapTo(viewSingle, viewHome, () => {
+          viewHome.scrollTop = 0;
+        });
       });
       toast("\u0421\u0438\u043D\u0433\u043B \u0443\u0434\u0430\u043B\u0451\u043D");
     } catch (err) {
@@ -26896,11 +26925,13 @@ ${suffix}`;
       addSubmit.classList.remove("is-loading");
       resetAddForm();
       setHomeMode(addKind, false);
-      if (topEntry().view === "add") viewStack.pop();
       renderAlbums();
       toast(added ?? (single ? isMaxi ? "\u041C\u0430\u043A\u0441\u0438-\u0441\u0438\u043D\u0433\u043B \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D" : "\u0421\u0438\u043D\u0433\u043B \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D" : isJoint ? "\u0421\u043E\u0432\u043C\u0435\u0441\u0442\u043D\u044B\u0439 \u0430\u043B\u044C\u0431\u043E\u043C \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D" : "\u0410\u043B\u044C\u0431\u043E\u043C \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D"));
-      await swapTo(viewAdd, viewHome, () => {
-        viewHome.scrollTop = 0;
+      await queueNav(async () => {
+        if (topEntry().view === "add") viewStack.pop();
+        await swapTo(viewAdd, viewHome, () => {
+          viewHome.scrollTop = 0;
+        });
       });
     } catch (e) {
       addPending = false;

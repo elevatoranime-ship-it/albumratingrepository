@@ -542,9 +542,13 @@ function renderSynchronizedData(changed: boolean): void {
     if (viewAlbum.classList.contains('is-visible')) renderAlbumSingles();
     // ссылка на страницу сингла могла исчезнуть (сингл удалён из другой вкладки)
     if (viewSingle.classList.contains('is-visible') && !currentSingle()) {
-      viewStack.length = 0;
-      viewStack.push({ view: 'home' });
-      void swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+      void queueNav(async () => {
+        // Пока ждали очередь, могли уйти с этого экрана — тогда стек не трогаем.
+        if (!viewSingle.classList.contains('is-visible') || currentSingle()) return;
+        viewStack.length = 0;
+        viewStack.push({ view: 'home' });
+        await swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+      });
       renderAlbums();
       toast('Этот сингл удалён');
     }
@@ -1516,7 +1520,23 @@ const addSubmitLabel = q<HTMLSpanElement>('#add-submit-label');
 const addError = q<HTMLParagraphElement>('#add-error');
 
 /* ---------- Переходы между экранами ---------- */
+/* Все переходы между экранами строго сериализованы. Без этого быстрые серии
+   кликов (профиль → сразу трек/альбом) запускали бы два swapTo одновременно:
+   каждый прятал «свой» from и показывал «свой» to, поэтому оба экрана
+   оставались бы со классом is-visible — окно профиля висело бы поверх
+   страницы альбома (и наоборот), а стек навигации запутывался бы. */
+let navChain: Promise<void> = Promise.resolve();
+function queueNav<T>(task: () => Promise<T> | T): Promise<T> {
+  const run = navChain.then(task);
+  navChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 async function swapTo(from: HTMLElement, to: HTMLElement, after?: () => void): Promise<void> {
+  if (from === to) { // уже на нужном экране — анимация не нужна
+    after?.();
+    return;
+  }
   if (from === viewAdd) setEvaluatorOpen(false);
   from.classList.add('is-leaving');
   await sleep(560);
@@ -1524,11 +1544,18 @@ async function swapTo(from: HTMLElement, to: HTMLElement, after?: () => void): P
   from.style.display = 'none';
   to.style.display = '';
   to.classList.remove('is-visible');
-  requestAnimationFrame(() => {
-    to.classList.add('is-visible');
-    if (after) after();
-    flushSynchronizedRender();
-  });
+  // Ждём кадр, пока to действительно получит is-visible: только после этого
+  // видимый экран корректно виден через visibleView() у следующего перехода.
+  // finally гарантирует, что очередь переходов не зависнет из-за исключения.
+  await new Promise<void>((resolve) => requestAnimationFrame(() => {
+    try {
+      to.classList.add('is-visible');
+      if (after) after();
+      flushSynchronizedRender();
+    } finally {
+      resolve();
+    }
+  }));
 }
 
 /* ---------- Вход / выход ---------- */
@@ -1607,10 +1634,10 @@ async function enterHome(): Promise<void> {
   success.classList.add('is-visible');
   await sleep(1350);
   success.classList.remove('is-visible');
-  await swapTo(viewLogin, viewHome, () => {
+  await queueNav(() => swapTo(viewLogin, viewHome, () => {
     viewHome.scrollTop = 0;
     moveSegThumb();
-  });
+  }));
   passwordInput.value = '';
   password2Input.value = '';
   renderAlbums();
@@ -1626,9 +1653,11 @@ logoutBtn.addEventListener('click', () => {
     currentSingleId = null;
     currentArtistName = null;
     pendingSingleRatings.clear(); // черновики оценок не переносятся на другого участника
-    viewStack.length = 0;
-    viewStack.push({ view: 'home' });
-    await swapTo(viewHome, viewLogin);
+    await queueNav(async () => {
+      viewStack.length = 0;
+      viewStack.push({ view: 'home' });
+      await swapTo(viewHome, viewLogin);
+    });
     viewHome.querySelectorAll<HTMLElement>('.album').forEach((el) => {
       el.classList.add('reveal');
       el.style.animation = '';
@@ -3537,13 +3566,17 @@ function topEntry(): ViewEntry {
 }
 
 async function navigateTo(view: HTMLElement, entry: ViewEntry): Promise<void> {
-  const from = visibleView() ?? viewHome;
-  viewStack.push(entry);
-  await swapTo(from, view, () => { view.scrollTop = 0; });
+  await queueNav(async () => {
+    const from = visibleView() ?? viewHome;
+    if (from === view) return; // двойной клик по уже открытому экрану — не плодим стек
+    viewStack.push(entry);
+    await swapTo(from, view, () => { view.scrollTop = 0; });
+  });
 }
 
 /* вернуться на предыдущий экран */
 async function goBack(): Promise<void> {
+  await queueNav(async () => {
   viewStack.pop(); // снимаем текущий экран
   if (viewAlbum.classList.contains('is-visible')) setActiveTrack(null); // уходим со страницы альбома — выделение не несём с собой
   const prev = topEntry();
@@ -3619,6 +3652,7 @@ async function goBack(): Promise<void> {
       await swapTo(from, viewHome, () => { viewHome.scrollTop = 0; });
     }
   }
+  });
 }
 
 /* --- открытие страницы релиза (альбом или сингл) --- */
@@ -4542,13 +4576,16 @@ async function handleDeleteAlbum(): Promise<void> {
     }
     const wasLast = currentAlbumId === al.id;
     currentAlbumId = null;
-    viewStack.length = 0;
-    viewStack.push({ view: 'home' });
-    if (wasLast) {
-      await crumbleCover();
+    await queueNav(async () => {
+      viewStack.length = 0;
+      viewStack.push({ view: 'home' });
       renderAlbums();
-      await swapTo(viewAlbum, viewHome, () => { viewHome.scrollTop = 0; });
-    }
+      // Пока ждали очередь, могли уйти с этой страницы — тогда только стек.
+      if (wasLast && viewAlbum.classList.contains('is-visible')) {
+        await crumbleCover();
+        await swapTo(viewAlbum, viewHome, () => { viewHome.scrollTop = 0; });
+      }
+    });
     toast('Альбом удалён');
   } catch (err) {
     toast(messageOf(err));
@@ -5208,12 +5245,15 @@ async function handleDeleteSingle(): Promise<void> {
       saveLocalSingleRatings();
     }
     currentSingleId = null;
-    viewStack.length = 0;
-    viewStack.push({ view: 'home' });
-    await crumbleCover('.sv__cover');
-    setHomeMode('single', false);
-    renderAlbums();
-    await swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+    await queueNav(async () => {
+      viewStack.length = 0;
+      viewStack.push({ view: 'home' });
+      const onSingle = viewSingle.classList.contains('is-visible');
+      if (onSingle) await crumbleCover('.sv__cover');
+      setHomeMode('single', false);
+      renderAlbums();
+      if (onSingle) await swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+    });
     toast('Сингл удалён');
   } catch (err) {
     toast(messageOf(err));
@@ -7842,10 +7882,12 @@ async function handleAdd(): Promise<void> {
     addSubmit.classList.remove('is-loading');
     resetAddForm();
     setHomeMode(addKind, false);
-    if (topEntry().view === 'add') viewStack.pop();
     renderAlbums();
     toast(added ?? (single ? (isMaxi ? 'Макси-сингл добавлен' : 'Сингл добавлен') : (isJoint ? 'Совместный альбом добавлен' : 'Альбом добавлен')));
-    await swapTo(viewAdd, viewHome, () => { viewHome.scrollTop = 0; });
+    await queueNav(async () => {
+      if (topEntry().view === 'add') viewStack.pop();
+      await swapTo(viewAdd, viewHome, () => { viewHome.scrollTop = 0; });
+    });
   } catch (e) {
     addPending = false;
     addSubmit.classList.remove('is-loading');

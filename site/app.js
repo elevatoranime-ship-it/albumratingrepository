@@ -25839,7 +25839,7 @@ ${suffix}`;
       if (e.key !== "Enter" && e.key !== " ") return;
       if (openFrom(e.target)) e.preventDefault();
     });
-    ui.ann.addEventListener("click", (e) => {
+    ui.bodyWrap.addEventListener("click", (e) => {
       if (e.target.closest('[data-act="ann-close"]')) geniusAnnClose(ui);
     });
   }
@@ -26158,7 +26158,11 @@ ${suffix}`;
     const lines = ui.text.querySelectorAll(".lyrics__line");
     ui.text.querySelectorAll(".lyrics__line.is-active").forEach((el) => el.classList.remove("is-active"));
     for (const i of ref.lines) lines[i]?.classList.add("is-active");
-    ui.ann.scrollIntoView({ block: "nearest" });
+    if (window.matchMedia("(max-width: 700px)").matches) {
+      lines[ref.lines[0]]?.scrollIntoView({ block: "center" });
+    } else {
+      ui.ann.scrollIntoView({ block: "nearest" });
+    }
   }
   function geniusRenderCandidates(run, candidates) {
     const ui = run.ui;

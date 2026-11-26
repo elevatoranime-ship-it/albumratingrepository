@@ -422,6 +422,18 @@ test('альбом: аннотации — подсветка строк и ка
   await expect(ann).toBeHidden();
   await expect(page.locator('#lyrics-body')).not.toHaveClass(/is-ann/);
   await expect(refs.nth(0)).not.toHaveClass(/is-active/);
+
+  // телефон: карточка — нижняя шторка, закрывается тапом по затемнению
+  if (test.info().project.name === 'mobile') {
+    await refs.nth(1).click();
+    await expect(ann).toBeVisible();
+    await expect(ann).toHaveCSS('position', 'fixed');
+    const scrim = page.locator('#lyrics-ann-scrim');
+    await expect(scrim).toBeVisible();
+    await scrim.click({ position: { x: 12, y: 12 } }); // верх экрана, вне шторки
+    await expect(ann).toBeHidden();
+    await expect(page.locator('#lyrics-body')).not.toHaveClass(/is-ann/);
+  }
 });
 
 test('сингл: аннотации применяются после посимвольной печати — строки перестраиваются, карточка работает', async ({ page }) => {

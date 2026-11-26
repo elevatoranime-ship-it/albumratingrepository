@@ -3550,9 +3550,6 @@ body { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 700px) {
   .lyrics { padding: 14px 14px 16px; }
   .lyrics__text { font-size: 15px; max-height: 340px; }
-  /* на телефоне карточка аннотации — под текстом, без липкой колонки */
-  .lyrics__body.is-ann { grid-template-columns: 1fr; }
-  .lyrics__body.is-ann .lyrics__ann { position: static; margin-top: 0; }
   .vinyl { padding: 14px; }
   .vinyl__stage { gap: 14px; }
   .vinyl__disc { width: 104px; height: 104px; }
@@ -3737,6 +3734,57 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 .lyrics__ann-link { display: inline-block; margin-top: 10px; font-size: 12.5px; color: var(--text-dim); }
 .lyrics__ann-link:hover { color: var(--accent-strong); }
+/* затемнение под шторкой — на десктопе не показывается */
+.lyrics__ann-scrim { display: none; }
+
+/* --- телефон: аннотация — нижняя шторка.
+   Блок стоит ПОСЛЕ базовых правил: медиазапрос не добавляет специфичности,
+   и перебить сетку он может только порядком следования. --- */
+@keyframes ann-fade { from { opacity: 0; } }
+@keyframes ann-sheet { from { transform: translateY(30px); opacity: 0; } }
+
+@media (max-width: 700px) {
+  /* две колонки не влезают: текст остаётся как был, карточка выезжает
+     снизу, тап по затемнению (или ×) закрывает */
+  .lyrics__body.is-ann { display: block; }
+  .lyrics__body.is-ann .lyrics__ann-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(8, 8, 12, 0.55);
+    z-index: 90;
+    animation: ann-fade 0.22s ease;
+  }
+  .lyrics__body.is-ann .lyrics__ann {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 91;
+    margin-top: 0;
+    max-height: min(56vh, 460px);
+    max-height: min(56dvh, 460px); /* динамическая панель Safari не обрезает */
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: 18px 18px 0 0;
+    border-bottom: 0;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.5);
+    animation: ann-sheet 0.32s var(--ge-ease);
+  }
+  /* ручка шторки */
+  .lyrics__body.is-ann .lyrics__ann::before {
+    content: '';
+    display: block;
+    width: 40px;
+    height: 4px;
+    margin: 0 auto 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.28);
+  }
+  /* закрытие — пальцем, а не ногтем */
+  .lyrics__ann-close { width: 36px; height: 36px; font-size: 18px; }
+}
 
 /* кандидаты и формы: мягкий поп-каскад */
 .lyrics__cand { animation: ge-pop .5s var(--ge-ease) both; }
@@ -3822,7 +3870,7 @@ body { -webkit-tap-highlight-color: transparent; }
 @media (prefers-reduced-motion: reduce) {
   .lyrics::before, .lyrics.is-open, .lyrics.is-open .lyrics__head > *, .lyrics__mark svg,
   .lyrics__skeleton i, .lyrics__line, .lyrics__cand, .lyrics__fix, .lyrics__fail,
-  .lyrics__ann, .lyrics__state.is-searching::after,
+  .lyrics__ann, .lyrics__ann-scrim, .lyrics__state.is-searching::after,
   .vinyl::before, .vinyl::after, .vinyl__waves i, .vinyl__sweep,
   .vinyl__disc.is-searching, .vinyl__disc.is-landing, .vinyl__shock,
   .vinyl__pin.is-dropping, .vinyl.is-found .vinyl__title,

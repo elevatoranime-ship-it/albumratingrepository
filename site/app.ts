@@ -6724,7 +6724,9 @@ for (const ui of [albumLyricsUi, vinylLyricsUi]) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     if (openFrom(e.target as Element)) e.preventDefault();
   });
-  ui.ann.addEventListener('click', (e) => {
+  // × в карточке и тап по затемнению (телефон) — на обёртке: scrim лежит
+  // рядом с карточкой, а не внутри неё
+  ui.bodyWrap.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('[data-act="ann-close"]')) geniusAnnClose(ui);
   });
 }
@@ -7100,7 +7102,13 @@ function geniusAnnOpen(ui: GeniusScreenUi, annId: string): void {
   const lines = ui.text.querySelectorAll<HTMLElement>('.lyrics__line');
   ui.text.querySelectorAll('.lyrics__line.is-active').forEach((el) => el.classList.remove('is-active'));
   for (const i of ref.lines) lines[i]?.classList.add('is-active');
-  ui.ann.scrollIntoView({ block: 'nearest' });
+  if (window.matchMedia('(max-width: 700px)').matches) {
+    // шторка перекрывает низ экрана — поднимаем строку к центру её блока,
+    // чтобы она оставалась видна над карточкой
+    lines[ref.lines[0]]?.scrollIntoView({ block: 'center' });
+  } else {
+    ui.ann.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 /** Список кандидатов в форме «не та песня?». */

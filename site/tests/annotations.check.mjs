@@ -51,6 +51,10 @@ check('server: normalize_annotation зеркалит worker', serverPy.includes(
 check('server: макет --mock-genius для превью без сети', serverPy.includes('--mock-genius') && serverPy.includes('MOCK_LYRICS_HTML'), true);
 check('server: макетные аннотации идут через normalize_annotation', serverPy.includes('normalize_annotation(raw)'), true);
 check('разметка: карточки на обоих экранах', ['id="lyrics-ann"', 'id="vinyl-ann"', 'id="lyrics-body"', 'id="vinyl-textwrap"'].every((s) => html.includes(s)), true);
+check('разметка: затемнение-скрим на обоих экранах', (html.match(/ann-scrim/g) ?? []).length >= 4, true); // class+id ×2 экрана
+check('стили: скрим скрыт вне шторки', stylesCss.includes('.lyrics__ann-scrim { display: none; }'), true);
+check('стили: мобильная шторка объявлена ПОСЛЕ базовой раскладки', stylesCss.indexOf('ann-sheet') > stylesCss.indexOf('.lyrics__body.is-ann {'), true);
+check('стили: шторка учитывает safe-area iPhone', stylesCss.includes('env(safe-area-inset-bottom)'), true);
 check('стили: подсветка, раскладка, iframe', ['.lyrics__line.is-ref', '.lyrics__body.is-ann', '.lyrics__ann-body iframe'].every((s) => stylesCss.includes(s)), true);
 check('стили: у карточки нет display через [hidden]', !/\.lyrics__ann\s*\{[^}]*display\s*:/.test(stylesCss), true);
 check('клиент: санитайзер и YouTube', ['GENIUS_ANN_KEEP', 'youtube-nocookie.com/embed', 'geniusAnnSanitize'].every((s) => appSource.includes(s)), true);
@@ -171,6 +175,13 @@ async function scenario() {
   check('карточка закрыта', ann.hidden, true);
   check('раскладка сброшена', doc.querySelector('#lyrics-body').classList.contains('is-ann'), false);
   check('активность снята', refs[0].classList.contains('is-active'), false);
+
+  // закрытие затемнением (мобильная шторка): клик по scrim рядом с карточкой
+  refs[1].click();
+  check('шторка открылась повторно', ann.hidden, false);
+  doc.querySelector('#lyrics-ann-scrim').click();
+  check('тап по затемнению закрывает карточку', ann.hidden, true);
+  check('после затемнения раскладка сброшена', doc.querySelector('#lyrics-body').classList.contains('is-ann'), false);
   check('ошибок страницы нет', pageErrors, []);
 }
 

@@ -4360,9 +4360,9 @@ body { -webkit-tap-highlight-color: transparent; }
 /* ==========================================================================
    СПОЙЛЕРЫ ОЦЕНКИ — настройка «скрывать оценки» в окне «мой профиль».
    Вместо балла в его месте звёздочки: текст числа гаснет, а поверх ложится
-   псевдоэлемент '**' — одинаковый при любом значении, поэтому анимация
+   псевдоэлемент '***' — одинаковый при любом значении, поэтому анимация
    tweenText спокойно крутит невидимое число под маской. Поле своей оценки
-   рисует '**' фоном, пока не получит фокус; у ползунка не видна «головка» —
+   рисует '***' фоном, пока не получит фокус; у ползунка не видна «головка» —
    позиция не выдаёт число. Маска висит на body, действует на всех экранах.
    ========================================================================== */
 body.spoilers .album__avg-num,
@@ -4385,7 +4385,7 @@ body.spoilers .sv__avg-num::after,
 body.spoilers .av__chip-val::after,
 body.spoilers .track__avg::after,
 body.spoilers .track__peer-val::after {
-  content: '**';
+  content: '***';
   position: absolute;
   inset: 0;
   display: flex;
@@ -4396,11 +4396,11 @@ body.spoilers .track__peer-val::after {
   pointer-events: none;
 }
 
-/* поле своей оценки: '**' фоном, пока поле пустое не станет и не получит
+/* поле своей оценки: '***' фоном, пока поле пустое не станет и не получит
    фокус — выставить балл можно, не выключая спойлер */
 body.spoilers .track__numinput:not(:placeholder-shown) {
   color: transparent;
-  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2044%2016'%3E%3Ctext%20x='22'%20y='12.5'%20text-anchor='middle'%20font-family='Georgia,%20serif'%20font-size='13'%20fill='%23f3f1ec'%20fill-opacity='0.9'%3E**%3C/text%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2052%2016'%3E%3Ctext%20x='26'%20y='12.5'%20text-anchor='middle'%20font-family='Georgia,%20serif'%20font-size='13'%20fill='%23f3f1ec'%20fill-opacity='0.9'%3E***%3C/text%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: center;
   transition: color 0.25s var(--ease-out);

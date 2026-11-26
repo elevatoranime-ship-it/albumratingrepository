@@ -3755,7 +3755,7 @@ function makeAlbumCard(a: UiAlbum, featScore: number | null = null, animate = fa
       <span class="album__year">${a.year}</span>
       ${badge}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ''}
-      ${featScore !== null ? `<span class="album__featbadge">фит ${spoilersOn ? '**' : fmt(featScore)}</span>` : ''}
+      ${featScore !== null ? `<span class="album__featbadge">фит ${spoilersOn ? '***' : fmt(featScore)}</span>` : ''}
     </div>
     <div class="album__body">
       <h3 class="album__title">${esc(title)}</h3>
@@ -4970,7 +4970,7 @@ function renderSingleMine(): void {
   const s = currentSingle();
   const mine = currentUser && s ? singleRatings[s.id]?.[currentUser.id] : undefined;
   // при спойлерах своя оценка тоже звёздочки, но пустое поле остаётся «—»
-  svMine.textContent = mine ? (spoilersOn ? '**' : fmt(mine.score)) : '—';
+  svMine.textContent = mine ? (spoilersOn ? '***' : fmt(mine.score)) : '—';
   svMine.classList.toggle('is-empty', !mine);
 }
 

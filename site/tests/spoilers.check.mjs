@@ -3,11 +3,11 @@
    Что проверяем:
      1) CSS-селекторы маски (**) находятся в разметке/рендерах;
      2) тумблер в «мой профиль» включает body.spoilers, пишет настройку
-        в localStorage, чистит подсказки-тултипы чипов и рисует '**'
+        в localStorage, чистит подсказки-тултипы чипов и рисует '***'
         в «моя оценка» сингла;
      3) настройка переживает перезагрузку (вход с сохранённым значением);
      4) выключение возвращает всё как было.
-   Визуальная маска (прозрачный текст + псевдоэлемент '**', фоновые '**'
+   Визуальная маска (прозрачный текст + псевдоэлемент '***', фоновые '***'
    в поле ввода) — Playwright-спека tests/spoilers.spec.ts в CI. */
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
@@ -160,7 +160,7 @@ async function scenarioToggleAndTitles() {
   await backHome(doc, visible, 'view-album');
 
   await openFirstSingle(doc, visible);
-  check('при спойлерах «моя оценка» — звёздочки', doc.querySelector('#sv-mine').textContent, '**');
+  check('при спойлерах «моя оценка» — звёздочки', doc.querySelector('#sv-mine').textContent, '***');
   await backHome(doc, visible, 'view-single');
 
   // выключаем обратно

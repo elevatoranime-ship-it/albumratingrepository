@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /* Спойлеры оценок: тумблер в «мой профиль» прячет баллы за звёздочками —
-   текст числа гаснет (color: transparent), поверх ложится псевдоэлемент '**'
-   (CSS-класс body.spoilers). Поле своей оценки показывает '**' фоном, пока
+   текст числа гаснет (color: transparent), поверх ложится псевдоэлемент '***'
+   (CSS-класс body.spoilers). Поле своей оценки показывает '***' фоном, пока
    не получит фокус; подсказки-тултипы чипов не выдают число; настройка
    переживает перезагрузку. jsdom-аналог — tests/spoilers.check.mjs. */
 
@@ -28,11 +28,11 @@ async function login(page: Page): Promise<void> {
 
 const TRANSPARENT = 'rgba(0, 0, 0, 0)';
 
-/** число замаскировано: текст прозрачный, а поверх лежат '**' */
+/** число замаскировано: текст прозрачный, а поверх лежат '***' */
 const isMasked = (page: Page, selector: string): Promise<boolean> =>
   page.locator(selector).first().evaluate((el, transparent) => {
     const cs = getComputedStyle(el);
-    return cs.color === transparent && getComputedStyle(el, '::after').content.includes('**');
+    return cs.color === transparent && getComputedStyle(el, '::after').content.includes('***');
   }, TRANSPARENT);
 
 /** число видно: текст обычного цвета, псевдоэлемента-маски нет */
@@ -49,7 +49,7 @@ const expectSharp = async (page: Page, selector: string): Promise<void> => {
   await expect.poll(() => isSharp(page, selector), { timeout: 4000 }).toBe(true);
 };
 
-/** поле оценки: '**' фоном и прозрачный текст, пока не в фокусе */
+/** поле оценки: '***' фоном и прозрачный текст, пока не в фокусе */
 const inputMasked = (page: Page): Promise<boolean> =>
   page.locator('.track__numinput').first().evaluate((el, transparent) => {
     const cs = getComputedStyle(el);
@@ -109,7 +109,7 @@ test('спойлеры: тумблер в профиле прячет оценк
   await expect(page.locator('#view-single')).toHaveClass(/is-visible/);
   await expectMasked(page, '#sv-avg');
   await expectMasked(page, '#sv-chips .av__chip-val');
-  await expect.poll(() => page.locator('#sv-mine').textContent()).toBe('**');
+  await expect.poll(() => page.locator('#sv-mine').textContent()).toBe('***');
 
   // выключаем обратно — всё снова чёткое
   await page.locator('#single-back').click();

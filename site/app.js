@@ -23262,7 +23262,7 @@ ${suffix}`;
       <span class="album__year">${a.year}</span>
       ${badge}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ""}
-      ${featScore !== null ? `<span class="album__featbadge">\u0444\u0438\u0442 ${spoilersOn ? "**" : fmt(featScore)}</span>` : ""}
+      ${featScore !== null ? `<span class="album__featbadge">\u0444\u0438\u0442 ${spoilersOn ? "***" : fmt(featScore)}</span>` : ""}
     </div>
     <div class="album__body">
       <h3 class="album__title">${esc(title)}</h3>
@@ -24342,7 +24342,7 @@ ${suffix}`;
   function renderSingleMine() {
     const s = currentSingle();
     const mine = currentUser && s ? singleRatings[s.id]?.[currentUser.id] : void 0;
-    svMine.textContent = mine ? spoilersOn ? "**" : fmt(mine.score) : "\u2014";
+    svMine.textContent = mine ? spoilersOn ? "***" : fmt(mine.score) : "\u2014";
     svMine.classList.toggle("is-empty", !mine);
   }
   function syncSingleControls() {

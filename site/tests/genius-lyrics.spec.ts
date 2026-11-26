@@ -83,6 +83,10 @@ async function base(page: Page, opts: GeniusOptions = {}): Promise<void> {
     if (new URL(route.request().url()).origin === 'http://127.0.0.1:8080') return route.continue();
     return route.abort();
   });
+  // iframe плеера: отдаём пустой документ — сторонние скрипты YouTube
+  // в тестах не выполняются, а сам элемент с src остаётся для ассертов
+  await page.route('https://www.youtube-nocookie.com/**', (route) =>
+    route.fulfill({ contentType: 'text/html', body: '<!doctype html><title></title>' }));
   await page.route('**/config.js*', (route) => route.fulfill({
     contentType: 'application/javascript',
     body: `window.APP_CONFIG = ${JSON.stringify({
@@ -133,6 +137,9 @@ async function base(page: Page, opts: GeniusOptions = {}): Promise<void> {
 
 async function seedDemo(page: Page, extra: Record<string, unknown> = {}): Promise<void> {
   await page.addInitScript(({ album, track, single, extra }) => {
+    // init-скрипты выполняются и в дочерних окнах (iframe плеера) — там у
+    // документа другой origin и localStorage недоступен, не лезем
+    if (window.top !== window) return;
     if (localStorage.getItem('albums_local_v1')) return;
     localStorage.setItem('albums_local_v1', JSON.stringify([
       { ...album }, { ...single, ...extra },
@@ -191,6 +198,7 @@ test('альбом: запомненная песня открывается с�
   await seedDemo(page, { geniusId: 777 });
   // трек тоже с запомненной песней
   await page.addInitScript(() => {
+    if (window.top !== window) return; // не в дочерних окнах (см. seedDemo)
     const tracks = JSON.parse(localStorage.getItem('tracks_local_v1')!);
     tracks[0] = { ...tracks[0], geniusId: '777' };
     localStorage.setItem('tracks_local_v1', JSON.stringify(tracks));

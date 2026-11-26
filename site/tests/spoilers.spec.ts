@@ -7,10 +7,14 @@ import { expect, test, type Page } from '@playwright/test';
    переживает перезагрузку. jsdom-аналог — tests/spoilers.check.mjs. */
 
 const USER_ID = 'killmiplag@demo.local';
-// оценки треков первого альбома, чтобы на странице альбома были чипы вклада
+// оценки треков первого альбома, чтобы на странице альбома были чипы вклада.
+// своя оценка — confirmed: false: подтверждённая оценка дизейбит поле
+// (disabled = mineConfirmed || !permitted), а тест проверяет фокус-раскрытие
+// маски. средний балл (8.75) и чипы считаются по всем оценкам, независимо
+// от confirmed — на них смена флага не влияет.
 const SEED_RATINGS = JSON.stringify({
   'mojo-music': {
-    [USER_ID]: { score: 8.4, confirmed: true },
+    [USER_ID]: { score: 8.4, confirmed: false },
     'elevator@demo.local': { score: 9.1, confirmed: true },
   },
 });

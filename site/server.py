@@ -6,6 +6,11 @@ worker.js на Cloudflare. Эндпоинты:
   /api/genius/lyrics?id=… → текст песни со страницы genius.com + refs
                             (какими строками покрыты аннотации)
   /api/genius/annotations?id=… → аннотация из JSON genius.com/api/annotations/:id
+
+Флаг --mock-genius — макет для превью без доступа к genius.com (например,
+в песочнице): те же три эндпоинта отвечают фикстурами, весь путь
+«поиск → разбор refs → тела аннотаций → карточка» работает на данных.
+В проде (worker.js) макета нет.
 """
 import http.server
 import json
@@ -25,6 +30,9 @@ for _i, _arg in enumerate(sys.argv):
         PORT = int(sys.argv[_i + 1])
     elif _arg.isdigit():
         PORT = int(_arg)
+
+# Макет Genius для превью без сети: python3 server.py --mock-genius
+MOCK_GENIUS = "--mock-genius" in sys.argv
 
 GENIUS_TOKEN = os.environ.get(
     "GENIUS_TOKEN",
@@ -244,15 +252,89 @@ def normalize_annotation(ann):
     }
 
 
+# --- макет Genius для превью без сети (--mock-genius) ---
+# Один и тот же путь, что и в проде: страница песни проходит через
+# extract_lyrics_detailed (шапка режется, якоря дают refs), тела аннотаций —
+# через normalize_annotation. Данные выдуманные; картинки — стабильные превью
+# YouTube, ссылки ведут на genius.com.
+MOCK_SONG_ID = 9001
+MOCK_SONG_URL = "https://genius.com/"
+
+MOCK_LYRICS_HTML = """<!doctype html><html><head><title>Демо Lyrics | Genius Lyrics</title></head><body>
+<div class="Lyrics__Root">
+<div data-lyrics-container="true"><div data-exclude-from-selection="true" class="LyricsHeader__Container-sc"><span>4 Contributors</span><h2>Демо Lyrics</h2></div>[Текст песни «Демо-аннотации»]<br>[Куплет]<br>Обычная строка без всего<br><a href="/annotations/101" class="ReferentFragmentdesktop__ClickTarget-sc"><span>Эта строка объяснена аннотацией номер один</span></a><br>Короткая <a href="/annotations/102">строка со второй</a> аннотацией посередине<br><br>[Припев]<br>Просто припев, ничего особенного<br><a href="/annotations/103">А здесь живёт YouTube-ролик</a><div class="LyricsFooter__Container-sc" data-exclude-from-selection="true"><a class="LyricsFooter__Embed">Embed</a></div></div>
+</div></body></html>"""
+
+MOCK_ANNOTATIONS = {
+    "101": {
+        "id": 101,
+        "url": "https://genius.com/",
+        "created_at": "2024-05-01T12:00:00Z",
+        "author": {"name": "Демо-знаток", "url": "https://genius.com/"},
+        "body": {"html": '<p>Первая аннотация: <b>жирный текст</b>, <a href="https://ru.wikipedia.org/wiki/Аннотация">ссылка на Википедию</a> и картинка.</p><img src="https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg" alt="превью ролика"/>'},
+    },
+    "102": {
+        "id": 102,
+        "url": "https://genius.com/",
+        "created_at": "2024-06-12T09:30:00Z",
+        "author": {"name": "Второй автор", "url": None},
+        "body": {"html": '<p>Вторая аннотация начинается <i>не с начала строки</i> — якорь покрывает только середину.</p><blockquote>Цитата из интервью, набранная отдельным блоком.</blockquote>'},
+    },
+    "103": {
+        "id": 103,
+        "url": "https://genius.com/",
+        "created_at": "2024-07-20T18:45:00Z",
+        "author": {"name": "Видеограф", "url": "https://genius.com/"},
+        # якорь-превью → iframe; youtu.be в тексте находит только сервер —
+        # клиент добавит второй iframe сверху: оба механизма видны сразу
+        "body": {"html": '<p>Ролик прямо в карточке:</p><a href="https://www.youtube.com/watch?v=jNQXAC9IVRw"><img src="https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg" alt=""/></a><p>И ещё один, найденный по ссылке в тексте: https://youtu.be/aqz-KE-bpKQ</p>'},
+    },
+}
+
+
 class ReusableTCPServer(socketserver.TCPServer):
     allow_reuse_address = True
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def _mock_genius(self, params):
+        """Ответы-фикстуры для превью без сети (флаг --mock-genius)."""
+        if self.path.startswith("/api/genius/search"):
+            q = (params.get("q") or [""])[0].strip()
+            if not q:
+                return self._json({"error": "empty query"}, 400)
+            # подсказываем тем же запросом: скоринг клиента видит совпадение
+            # названия и артиста и открывает текст сразу, без «не уверены»
+            return self._json({"response": {"hits": [{"type": "song", "result": {
+                "id": MOCK_SONG_ID, "title": q, "url": MOCK_SONG_URL,
+                "lyrics_state": "complete", "primary_artist": {"name": q},
+            }}]}})
+        if self.path.startswith("/api/genius/lyrics"):
+            song_id = re.sub(r"\D", "", (params.get("id") or [""])[0]) or str(MOCK_SONG_ID)
+            detailed = extract_lyrics_detailed(MOCK_LYRICS_HTML)
+            return self._json({"song": {
+                "id": int(song_id),
+                "title": "Демо-аннотации",
+                "artist": "Превью",
+                "url": MOCK_SONG_URL,
+                "lyrics_state": "complete",
+                "text": detailed["text"],
+                "refs": detailed["refs"],
+            }})
+        if self.path.startswith("/api/genius/annotations"):
+            ann_id = re.sub(r"\D", "", (params.get("id") or [""])[0])
+            raw = MOCK_ANNOTATIONS.get(ann_id)
+            if not raw:
+                return self._json({"error": "annotation not found"}, 404)
+            return self._json({"annotation": normalize_annotation(raw)})
+        return self._json({"error": "not found"}, 404)
+
     def _genius(self):
         qs = urllib.parse.urlparse(self.path).query
         params = urllib.parse.parse_qs(qs)
         try:
+            if MOCK_GENIUS:
+                return self._mock_genius(params)
             if self.path.startswith("/api/genius/search"):
                 q = (params.get("q") or [""])[0].strip()
                 if not q:

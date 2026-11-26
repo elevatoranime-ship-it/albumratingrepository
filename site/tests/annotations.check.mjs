@@ -48,6 +48,8 @@ check('worker: нормализация аннотации экспортиро�
 check('server: маршрут /api/genius/annotations', serverPy.includes('/api/genius/annotations'), true);
 check('server: lyrics-ответ содержит refs', serverPy.includes('"refs": detailed["refs"]'), true);
 check('server: normalize_annotation зеркалит worker', serverPy.includes('def normalize_annotation'), true);
+check('server: макет --mock-genius для превью без сети', serverPy.includes('--mock-genius') && serverPy.includes('MOCK_LYRICS_HTML'), true);
+check('server: макетные аннотации идут через normalize_annotation', serverPy.includes('normalize_annotation(raw)'), true);
 check('разметка: карточки на обоих экранах', ['id="lyrics-ann"', 'id="vinyl-ann"', 'id="lyrics-body"', 'id="vinyl-textwrap"'].every((s) => html.includes(s)), true);
 check('стили: подсветка, раскладка, iframe', ['.lyrics__line.is-ref', '.lyrics__body.is-ann', '.lyrics__ann-body iframe'].every((s) => stylesCss.includes(s)), true);
 check('стили: у карточки нет display через [hidden]', !/\.lyrics__ann\s*\{[^}]*display\s*:/.test(stylesCss), true);

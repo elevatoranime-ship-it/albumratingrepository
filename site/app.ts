@@ -619,7 +619,47 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('focus', resumeSynchronization);
 window.addEventListener('online', resumeSynchronization);
+/* ---------- Спойлеры оценок (настройка «скрывать оценки» в «мой профиль») ---------- */
+/* Пока включены, body.spoilers размывает баллы на главной и страницах релизов
+   (см. styles.css). Личная настройка: хранится в браузере по id участника,
+   переживает перезагрузку и применяется при входе. */
+const LS_SPOILERS = 'spoilers_local_v1'; // { [userId]: boolean }
+let spoilersOn = false;
+
+function loadSpoilersFor(id: string): boolean {
+  try {
+    const raw = localStorage.getItem(LS_SPOILERS);
+    return raw ? Boolean((JSON.parse(raw) as Record<string, boolean>)[id]) : false;
+  } catch { return false; }
+}
+
+function saveSpoilersFor(id: string, on: boolean): void {
+  try {
+    const raw = localStorage.getItem(LS_SPOILERS);
+    const map = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    map[id] = on;
+    localStorage.setItem(LS_SPOILERS, JSON.stringify(map));
+  } catch { /* ignore */ }
+}
+
+function applySpoilers(): void {
+  document.body.classList.toggle('spoilers', spoilersOn);
+}
+
+function loadSpoilersForUser(id: string): void {
+  spoilersOn = loadSpoilersFor(id);
+  applySpoilers();
+}
+
 window.addEventListener('storage', (event) => {
+  // тумблер переключили в соседней вкладке — подхватываем
+  if (event.key === LS_SPOILERS) {
+    if (currentUser) {
+      loadSpoilersForUser(currentUser.id);
+      syncSpoilerToggle();
+    }
+    return;
+  }
   if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_SINGLE_RATINGS, LS_META].includes(event.key))) requestSync(0);
 });
 
@@ -627,21 +667,25 @@ window.addEventListener('storage', (event) => {
 async function ensureProfile(user: { id: string; email?: string | null }): Promise<ProfileInfo> {
   const s = getSB();
   const { data } = await s.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  let profile: ProfileInfo;
   if (data) {
-    return {
+    profile = {
       id: data.id as string,
       email: user.email ?? '',
       username: data.username as string,
       initials: data.initials as string,
       avatarUrl: (data.avatar_url as string | null) ?? null,
     };
+  } else {
+    const email = (user.email ?? '').toLowerCase();
+    const allowed = ALLOWED_USERS.find((u) => u.email.toLowerCase() === email);
+    const username = allowed?.username ?? (user.email ?? 'user').split('@')[0];
+    const initials = allowed?.initials ?? (username.charAt(0).toUpperCase() || '?');
+    await s.from('profiles').insert({ id: user.id, username, initials, avatar_url: null });
+    profile = { id: user.id, email: user.email ?? '', username, initials, avatarUrl: null };
   }
-  const email = (user.email ?? '').toLowerCase();
-  const allowed = ALLOWED_USERS.find((u) => u.email.toLowerCase() === email);
-  const username = allowed?.username ?? (user.email ?? 'user').split('@')[0];
-  const initials = allowed?.initials ?? (username.charAt(0).toUpperCase() || '?');
-  await s.from('profiles').insert({ id: user.id, username, initials, avatar_url: null });
-  return { id: user.id, email: user.email ?? '', username, initials, avatarUrl: null };
+  loadSpoilersForUser(profile.id); // личный тумблер «скрывать оценки»
+  return profile;
 }
 
 async function loginCloud(email: string, password: string): Promise<void> {
@@ -673,6 +717,7 @@ async function loginLocal(email: string, password: string): Promise<void> {
     initials: u.initials,
     avatarUrl: m?.avatarUrl ?? null,
   };
+  loadSpoilersForUser(currentUser.id);
 }
 
 function isAdmin(): boolean {
@@ -1358,6 +1403,7 @@ const artistsBtn = q<HTMLButtonElement>('#artists-btn');
 
 /* мой профиль */
 const profileBack = q<HTMLButtonElement>('#profile-back');
+const profSpoilers = q<HTMLButtonElement>('#prof-spoilers');
 const profAvatar = q<HTMLSpanElement>('#prof-avatar');
 const profUpload = q<HTMLButtonElement>('#prof-upload');
 const profRemove = q<HTMLButtonElement>('#prof-remove');
@@ -1649,6 +1695,8 @@ logoutBtn.addEventListener('click', () => {
     stopRealtime();
     if (CLOUD) await getSB().auth.signOut();
     currentUser = null;
+    spoilersOn = false;
+    applySpoilers(); // на входе спойлеры подтянутся заново для вошедшего участника
     currentAlbumId = null;
     currentSingleId = null;
     currentArtistName = null;
@@ -2116,7 +2164,8 @@ function renderImpact(): void {
       ${avatarMarkup(r, 'av__chip-who')}
       <span class="av__chip-val">${r.mean === null ? '—' : fmt(r.mean)}</span>
       <span class="av__chip-sub">${label} · ${r.n} из ${list.length}</span>`;
-    chip.title = `${r.username}: ${r.mean === null ? 'нет оценок' : fmt(r.mean) + ' в среднем'} · ${r.n}/${list.length} треков`;
+    // при включённых спойлерах подсказка не должна выдавать балл
+    chip.title = spoilersOn ? '' : `${r.username}: ${r.mean === null ? 'нет оценок' : fmt(r.mean) + ' в среднем'} · ${r.n}/${list.length} треков`;
     avChips.appendChild(chip);
   }
 }
@@ -4252,6 +4301,7 @@ function renderProfilePage(): void {
   profRemove.hidden = !currentUser.avatarUrl;
   profError.textContent = '';
   profError.classList.remove('is-visible');
+  syncSpoilerToggle();
 }
 
 async function openProfile(): Promise<void> {
@@ -4261,6 +4311,21 @@ async function openProfile(): Promise<void> {
 
 profileBtn.addEventListener('click', () => void openProfile());
 profileBack.addEventListener('click', () => void goBack());
+
+/* --- тумблер спойлеров: применяется сразу, без кнопки «сохранить» --- */
+function syncSpoilerToggle(): void {
+  profSpoilers.classList.toggle('is-on', spoilersOn);
+  profSpoilers.setAttribute('aria-checked', String(spoilersOn));
+}
+
+profSpoilers.addEventListener('click', () => {
+  if (!currentUser) return;
+  spoilersOn = !spoilersOn;
+  saveSpoilersFor(currentUser.id, spoilersOn);
+  applySpoilers();
+  syncSpoilerToggle();
+  toast(spoilersOn ? 'оценки скрыты' : 'оценки снова видны');
+});
 
 /* применяем обновлённые аватар/ник во всех видимых местах */
 function applyProfileToUi(): void {
@@ -4864,7 +4929,8 @@ function renderSingleImpact(): void {
       ${avatarMarkup(row, 'av__chip-who')}
       <span class="av__chip-val">${row.value ? fmt(row.value.score) : '—'}</span>
       <span class="av__chip-sub">${label} · ${state}</span>`;
-    chip.title = `${row.username}: ${row.value ? fmt(row.value.score) : 'нет оценки'} · ${state}`;
+    // при включённых спойлерах подсказка не должна выдавать балл
+    chip.title = spoilersOn ? '' : `${row.username}: ${row.value ? fmt(row.value.score) : 'нет оценки'} · ${state}`;
     svChips.appendChild(chip);
   }
 }

@@ -20528,27 +20528,64 @@ ${suffix}`;
   });
   window.addEventListener("focus", resumeSynchronization);
   window.addEventListener("online", resumeSynchronization);
+  var LS_SPOILERS = "spoilers_local_v1";
+  var spoilersOn = false;
+  function loadSpoilersFor(id) {
+    try {
+      const raw = localStorage.getItem(LS_SPOILERS);
+      return raw ? Boolean(JSON.parse(raw)[id]) : false;
+    } catch {
+      return false;
+    }
+  }
+  function saveSpoilersFor(id, on) {
+    try {
+      const raw = localStorage.getItem(LS_SPOILERS);
+      const map = raw ? JSON.parse(raw) : {};
+      map[id] = on;
+      localStorage.setItem(LS_SPOILERS, JSON.stringify(map));
+    } catch {
+    }
+  }
+  function applySpoilers() {
+    document.body.classList.toggle("spoilers", spoilersOn);
+  }
+  function loadSpoilersForUser(id) {
+    spoilersOn = loadSpoilersFor(id);
+    applySpoilers();
+  }
   window.addEventListener("storage", (event) => {
+    if (event.key === LS_SPOILERS) {
+      if (currentUser) {
+        loadSpoilersForUser(currentUser.id);
+        syncSpoilerToggle();
+      }
+      return;
+    }
     if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_SINGLE_RATINGS, LS_META].includes(event.key))) requestSync(0);
   });
   async function ensureProfile(user) {
     const s = getSB();
     const { data } = await s.from("profiles").select("*").eq("id", user.id).maybeSingle();
+    let profile;
     if (data) {
-      return {
+      profile = {
         id: data.id,
         email: user.email ?? "",
         username: data.username,
         initials: data.initials,
         avatarUrl: data.avatar_url ?? null
       };
+    } else {
+      const email = (user.email ?? "").toLowerCase();
+      const allowed = ALLOWED_USERS.find((u) => u.email.toLowerCase() === email);
+      const username = allowed?.username ?? (user.email ?? "user").split("@")[0];
+      const initials = allowed?.initials ?? (username.charAt(0).toUpperCase() || "?");
+      await s.from("profiles").insert({ id: user.id, username, initials, avatar_url: null });
+      profile = { id: user.id, email: user.email ?? "", username, initials, avatarUrl: null };
     }
-    const email = (user.email ?? "").toLowerCase();
-    const allowed = ALLOWED_USERS.find((u) => u.email.toLowerCase() === email);
-    const username = allowed?.username ?? (user.email ?? "user").split("@")[0];
-    const initials = allowed?.initials ?? (username.charAt(0).toUpperCase() || "?");
-    await s.from("profiles").insert({ id: user.id, username, initials, avatar_url: null });
-    return { id: user.id, email: user.email ?? "", username, initials, avatarUrl: null };
+    loadSpoilersForUser(profile.id);
+    return profile;
   }
   async function loginCloud(email, password) {
     const { data, error } = await getSB().auth.signInWithPassword({ email, password });
@@ -20577,6 +20614,7 @@ ${suffix}`;
       initials: u.initials,
       avatarUrl: m?.avatarUrl ?? null
     };
+    loadSpoilersForUser(currentUser.id);
   }
   function isAdmin() {
     if (!currentUser) return false;
@@ -21126,6 +21164,7 @@ ${suffix}`;
   var albumRankList = q("#album-rank-list");
   var artistsBtn = q("#artists-btn");
   var profileBack = q("#profile-back");
+  var profSpoilers = q("#prof-spoilers");
   var profAvatar = q("#prof-avatar");
   var profUpload = q("#prof-upload");
   var profRemove = q("#prof-remove");
@@ -21383,6 +21422,8 @@ ${suffix}`;
       stopRealtime();
       if (CLOUD) await getSB().auth.signOut();
       currentUser = null;
+      spoilersOn = false;
+      applySpoilers();
       currentAlbumId = null;
       currentSingleId = null;
       currentArtistName = null;
@@ -21794,7 +21835,7 @@ ${suffix}`;
       ${avatarMarkup(r, "av__chip-who")}
       <span class="av__chip-val">${r.mean === null ? "\u2014" : fmt(r.mean)}</span>
       <span class="av__chip-sub">${label} \xB7 ${r.n} \u0438\u0437 ${list.length}</span>`;
-      chip.title = `${r.username}: ${r.mean === null ? "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043E\u043A" : fmt(r.mean) + " \u0432 \u0441\u0440\u0435\u0434\u043D\u0435\u043C"} \xB7 ${r.n}/${list.length} \u0442\u0440\u0435\u043A\u043E\u0432`;
+      chip.title = spoilersOn ? "" : `${r.username}: ${r.mean === null ? "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043E\u043A" : fmt(r.mean) + " \u0432 \u0441\u0440\u0435\u0434\u043D\u0435\u043C"} \xB7 ${r.n}/${list.length} \u0442\u0440\u0435\u043A\u043E\u0432`;
       avChips.appendChild(chip);
     }
   }
@@ -23679,6 +23720,7 @@ ${suffix}`;
     profRemove.hidden = !currentUser.avatarUrl;
     profError.textContent = "";
     profError.classList.remove("is-visible");
+    syncSpoilerToggle();
   }
   async function openProfile() {
     renderProfilePage();
@@ -23686,6 +23728,18 @@ ${suffix}`;
   }
   profileBtn.addEventListener("click", () => void openProfile());
   profileBack.addEventListener("click", () => void goBack());
+  function syncSpoilerToggle() {
+    profSpoilers.classList.toggle("is-on", spoilersOn);
+    profSpoilers.setAttribute("aria-checked", String(spoilersOn));
+  }
+  profSpoilers.addEventListener("click", () => {
+    if (!currentUser) return;
+    spoilersOn = !spoilersOn;
+    saveSpoilersFor(currentUser.id, spoilersOn);
+    applySpoilers();
+    syncSpoilerToggle();
+    toast(spoilersOn ? "\u043E\u0446\u0435\u043D\u043A\u0438 \u0441\u043A\u0440\u044B\u0442\u044B" : "\u043E\u0446\u0435\u043D\u043A\u0438 \u0441\u043D\u043E\u0432\u0430 \u0432\u0438\u0434\u043D\u044B");
+  });
   function applyProfileToUi() {
     setAvatarEl(homeAvatar, currentUser);
     setAvatarEl(profAvatar, currentUser);
@@ -24251,7 +24305,7 @@ ${suffix}`;
       ${avatarMarkup(row, "av__chip-who")}
       <span class="av__chip-val">${row.value ? fmt(row.value.score) : "\u2014"}</span>
       <span class="av__chip-sub">${label} \xB7 ${state}</span>`;
-      chip.title = `${row.username}: ${row.value ? fmt(row.value.score) : "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043A\u0438"} \xB7 ${state}`;
+      chip.title = spoilersOn ? "" : `${row.username}: ${row.value ? fmt(row.value.score) : "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043A\u0438"} \xB7 ${state}`;
       svChips.appendChild(chip);
     }
   }

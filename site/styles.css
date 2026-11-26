@@ -3550,6 +3550,9 @@ body { -webkit-tap-highlight-color: transparent; }
 @media (max-width: 700px) {
   .lyrics { padding: 14px 14px 16px; }
   .lyrics__text { font-size: 15px; max-height: 340px; }
+  /* на телефоне карточка аннотации — под текстом, без липкой колонки */
+  .lyrics__body.is-ann { grid-template-columns: 1fr; }
+  .lyrics__body.is-ann .lyrics__ann { position: static; margin-top: 0; }
   .vinyl { padding: 14px; }
   .vinyl__stage { gap: 14px; }
   .vinyl__disc { width: 104px; height: 104px; }
@@ -3644,6 +3647,97 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 .lyrics__text.is-typing::before { opacity: .95; box-shadow: 0 0 12px rgba(242, 207, 94, .35); }
 
+/* --- аннотации Genius: подсветка строк и карточка --- */
+.lyrics__line.is-ref {
+  padding: 0 4px;
+  margin: 0 -4px;
+  background: rgba(242, 207, 94, 0.16);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+.lyrics__line.is-ref:hover { background: rgba(242, 207, 94, 0.3); }
+.lyrics__line.is-ref:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.lyrics__line.is-ref.is-active {
+  background: rgba(242, 207, 94, 0.38);
+  box-shadow: inset 0 0 0 1px rgba(242, 207, 94, 0.65);
+}
+/* после посимвольной печати строки перестраиваются — без повторного каскада */
+.lyrics__text--type .lyrics__line { animation: none; }
+
+/* текст и карточка: на широком экране рядом, на узком — карточка под текстом.
+   display у карточки не задаём — [hidden] должен её скрывать. */
+.lyrics__body.is-ann {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 300px);
+  gap: 14px;
+  align-items: start;
+}
+.lyrics__body.is-ann .lyrics__ann { margin-top: 12px; position: sticky; top: 10px; }
+
+.lyrics__ann {
+  padding: 12px 14px 14px;
+  background: var(--panel);
+  border: 1px solid rgba(242, 207, 94, 0.45);
+  border-radius: 12px;
+  font-family: var(--font-ui);
+  font-size: 14px;
+  line-height: 1.6;
+  animation: ge-pop 0.4s var(--ge-ease);
+}
+.lyrics__ann-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.lyrics__ann-label {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #f2cf5e;
+}
+.lyrics__ann-close {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+.lyrics__ann-close:hover { color: var(--text); border-color: var(--line-strong); }
+.lyrics__ann-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.lyrics__ann-quote {
+  margin: 8px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--ge-yellow);
+  color: var(--text-dim);
+  font-size: 13px;
+  white-space: pre-line;
+}
+.lyrics__ann-meta { margin-top: 6px; font-size: 12.5px; color: var(--text-faint); }
+.lyrics__ann-meta strong { color: var(--text-dim); font-weight: 600; }
+.lyrics__ann-body { margin-top: 10px; overflow-wrap: anywhere; }
+.lyrics__ann-body p { margin: 0 0 8px; }
+.lyrics__ann-body p:last-child { margin-bottom: 0; }
+.lyrics__ann-body a { color: var(--accent-strong); text-decoration: underline; text-underline-offset: 2px; }
+.lyrics__ann-body img { display: block; max-width: 100%; border-radius: 10px; margin: 8px 0; }
+.lyrics__ann-body iframe {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin: 8px 0;
+  border: 0;
+  border-radius: 10px;
+  background: #000;
+}
+.lyrics__ann-body blockquote {
+  margin: 8px 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--line-strong);
+  color: var(--text-dim);
+}
+.lyrics__ann-link { display: inline-block; margin-top: 10px; font-size: 12.5px; color: var(--text-dim); }
+.lyrics__ann-link:hover { color: var(--accent-strong); }
+
 /* кандидаты и формы: мягкий поп-каскад */
 .lyrics__cand { animation: ge-pop .5s var(--ge-ease) both; }
 .lyrics__cand:nth-child(2) { animation-delay: .07s; }
@@ -3728,7 +3822,7 @@ body { -webkit-tap-highlight-color: transparent; }
 @media (prefers-reduced-motion: reduce) {
   .lyrics::before, .lyrics.is-open, .lyrics.is-open .lyrics__head > *, .lyrics__mark svg,
   .lyrics__skeleton i, .lyrics__line, .lyrics__cand, .lyrics__fix, .lyrics__fail,
-  .lyrics__state.is-searching::after,
+  .lyrics__ann, .lyrics__state.is-searching::after,
   .vinyl::before, .vinyl::after, .vinyl__waves i, .vinyl__sweep,
   .vinyl__disc.is-searching, .vinyl__disc.is-landing, .vinyl__shock,
   .vinyl__pin.is-dropping, .vinyl.is-found .vinyl__title,

@@ -25623,15 +25623,43 @@ ${suffix}`;
     const data = await geniusApi("lyrics", { id });
     const song = data.song;
     if (!song) throw new GeniusError("parse", "\u043F\u0435\u0441\u043D\u044F \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430");
+    const refs = Array.isArray(song.refs) ? song.refs.flatMap((r) => {
+      if (!r || typeof r !== "object") return [];
+      const obj = r;
+      const rid = typeof obj.id === "string" || typeof obj.id === "number" ? String(obj.id) : "";
+      const lines = Array.isArray(obj.lines) ? obj.lines.filter((n) => typeof n === "number" && Number.isInteger(n) && n >= 0) : [];
+      return rid && lines.length ? [{ id: rid, lines }] : [];
+    }) : [];
     const parsed = {
       id: String(song.id),
       title: typeof song.title === "string" ? song.title : "",
       artist: typeof song.artist === "string" ? song.artist : "",
       url: typeof song.url === "string" ? song.url : "",
       lyricsState: typeof song.lyrics_state === "string" ? song.lyrics_state : null,
-      text: typeof song.text === "string" ? song.text : ""
+      text: typeof song.text === "string" ? song.text : "",
+      refs
     };
     geniusLyricsCache.set(id, parsed);
+    return parsed;
+  }
+  var geniusAnnCache = /* @__PURE__ */ new Map();
+  async function geniusFetchAnnotation(id) {
+    const hit = geniusAnnCache.get(id);
+    if (hit) return hit;
+    const data = await geniusApi("annotations", { id });
+    const a = data.annotation;
+    if (!a) throw new GeniusError("parse", "\u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044F \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430");
+    const authorRaw = a.author && typeof a.author === "object" ? a.author : null;
+    const authorName = authorRaw && typeof authorRaw.name === "string" && authorRaw.name ? authorRaw.name : null;
+    const parsed = {
+      id: typeof a.id === "string" ? a.id : id,
+      url: typeof a.url === "string" && a.url ? a.url : `https://genius.com/annotations/${id}`,
+      author: authorName ? { name: authorName, url: typeof authorRaw?.url === "string" && authorRaw.url ? authorRaw.url : null } : null,
+      createdAt: typeof a.created_at === "string" && a.created_at ? a.created_at : null,
+      html: typeof a.html === "string" ? a.html : "",
+      youtube: Array.isArray(a.youtube) ? a.youtube.filter((x) => typeof x === "string") : []
+    };
+    geniusAnnCache.set(id, parsed);
     return parsed;
   }
   var GENIUS_BRACKETS_RE = /[(\[{][^)\]}]*[)\]}]/g;
@@ -25722,6 +25750,8 @@ ${suffix}`;
   var lyricsFixCancel = q("#lyrics-fix-cancel");
   var lyricsFixSave = q("#lyrics-fix-save");
   var lyricsFixNote = q("#lyrics-fix-note");
+  var lyricsBody = q("#lyrics-body");
+  var lyricsAnn = q("#lyrics-ann");
   var vinylSection = q("#vinyl-section");
   var vinylDisc = q("#vinyl-disc");
   var vinylArt = q("#vinyl-art");
@@ -25745,6 +25775,8 @@ ${suffix}`;
   var vinylFixCancel = q("#vinyl-fix-cancel");
   var vinylFixSave = q("#vinyl-fix-save");
   var vinylFixNote = q("#vinyl-fix-note");
+  var vinylTextwrap = q("#vinyl-textwrap");
+  var vinylAnn = q("#vinyl-ann");
   var albumLyricsUi = {
     song: lyricsSong,
     artist: lyricsArtist,
@@ -25757,6 +25789,8 @@ ${suffix}`;
     report: lyricsReport,
     copy: lyricsCopy,
     text: lyricsText,
+    bodyWrap: lyricsBody,
+    ann: lyricsAnn,
     fix: lyricsFix,
     cands: lyricsCands,
     url: lyricsUrl,
@@ -25778,6 +25812,8 @@ ${suffix}`;
     report: vinylReport,
     copy: vinylCopy,
     text: vinylText,
+    bodyWrap: vinylTextwrap,
+    ann: vinylAnn,
     fix: vinylFix,
     cands: vinylCands,
     url: vinylUrl,
@@ -25787,6 +25823,26 @@ ${suffix}`;
     fixNote: vinylFixNote,
     typewriter: true
   };
+  for (const ui of [albumLyricsUi, vinylLyricsUi]) {
+    const openFrom = (target) => {
+      const line = target?.closest(".is-ref") ?? null;
+      if (line && ui.text.contains(line) && line.dataset.ann) {
+        geniusAnnOpen(ui, line.dataset.ann);
+        return true;
+      }
+      return false;
+    };
+    ui.text.addEventListener("click", (e) => {
+      openFrom(e.target);
+    });
+    ui.text.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      if (openFrom(e.target)) e.preventDefault();
+    });
+    ui.ann.addEventListener("click", (e) => {
+      if (e.target.closest('[data-act="ann-close"]')) geniusAnnClose(ui);
+    });
+  }
   var geniusSeq = 0;
   var geniusActiveKey = null;
   var geniusTypeTimer;
@@ -25831,6 +25887,9 @@ ${suffix}`;
     ui.text.hidden = true;
     ui.text.textContent = "";
     ui.text.classList.remove("is-typing");
+    geniusAnnClose(ui);
+    geniusAnnDeferred.delete(ui);
+    geniusAnnCtx.delete(ui.text);
     ui.fix.hidden = true;
     ui.cands.innerHTML = "";
     ui.url.value = "";
@@ -25844,10 +25903,12 @@ ${suffix}`;
   }
   function geniusTypeText(ui, text) {
     window.clearInterval(geniusTypeTimer);
+    geniusAnnDeferred.delete(ui);
     ui.text.hidden = false;
     ui.text.classList.remove("is-typing");
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       ui.text.textContent = text;
+      geniusAnnFlush(ui);
       return;
     }
     if (!ui.typewriter) {
@@ -25861,6 +25922,7 @@ ${suffix}`;
       });
       ui.text.textContent = "";
       ui.text.appendChild(frag);
+      geniusAnnFlush(ui);
       return;
     }
     ui.text.textContent = "";
@@ -25872,6 +25934,7 @@ ${suffix}`;
       if (i >= text.length) {
         window.clearInterval(geniusTypeTimer);
         ui.text.classList.remove("is-typing");
+        geniusAnnFlush(ui);
       }
     }, 16);
   }
@@ -25885,12 +25948,217 @@ ${suffix}`;
       ui.link.hidden = false;
     }
     if (song.text) geniusTypeText(ui, song.text);
+    void geniusLoadAnn(run, song);
     const surface = run.kind === "single" ? vinylSection : lyricsPanel;
     surface.classList.add("is-found");
     if (run.kind === "single") {
       vinylDisc.classList.add("is-landing");
       vinylPin.classList.add("is-dropping");
     }
+  }
+  var geniusAnnCtx = /* @__PURE__ */ new WeakMap();
+  var geniusAnnDeferred = /* @__PURE__ */ new WeakMap();
+  function geniusAnnFlush(ui) {
+    const fn = geniusAnnDeferred.get(ui);
+    if (fn) {
+      geniusAnnDeferred.delete(ui);
+      fn();
+    }
+  }
+  async function geniusLoadAnn(run, song) {
+    if (!song.refs.length) return;
+    const key = `${run.kind}:${run.refId}`;
+    try {
+      const pairs = [];
+      await Promise.all(song.refs.map(async (ref) => {
+        const ann = await geniusFetchAnnotation(ref.id).catch(() => null);
+        if (ann) pairs.push([ref, ann]);
+      }));
+      if (geniusActiveKey !== key) return;
+      pairs.sort((a, b) => a[0].lines[0] - b[0].lines[0]);
+      geniusApplyAnn(run, song, pairs);
+    } catch {
+    }
+  }
+  function geniusBuildLines(ui, text) {
+    const frag = document.createDocumentFragment();
+    text.split("\n").forEach((line) => {
+      const el = document.createElement("span");
+      el.className = "lyrics__line";
+      el.textContent = line.length ? line : "\xA0";
+      frag.appendChild(el);
+    });
+    ui.text.textContent = "";
+    ui.text.appendChild(frag);
+  }
+  function geniusApplyAnn(run, song, pairs) {
+    const ui = run.ui;
+    const apply = () => {
+      if (geniusActiveKey !== `${run.kind}:${run.refId}` || ui.text.hidden || !pairs.length) return;
+      if (song.text && !ui.text.querySelector(".lyrics__line")) geniusBuildLines(ui, song.text);
+      const lines = ui.text.querySelectorAll(".lyrics__line");
+      const anns = /* @__PURE__ */ new Map();
+      const refs = [];
+      for (const [ref, ann] of pairs) {
+        anns.set(ref.id, ann);
+        refs.push(ref);
+        for (const i of ref.lines) {
+          const el = lines[i];
+          if (!el || el.dataset.ann) continue;
+          el.classList.add("is-ref");
+          el.dataset.ann = ref.id;
+          el.setAttribute("role", "button");
+          el.setAttribute("tabindex", "0");
+          el.setAttribute("aria-label", "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044E \u043A \u0441\u0442\u0440\u043E\u043A\u0435");
+        }
+      }
+      geniusAnnCtx.set(ui.text, { song, refs, anns });
+    };
+    if (ui.text.classList.contains("is-typing")) geniusAnnDeferred.set(ui, apply);
+    else apply();
+  }
+  function geniusAnnClose(ui) {
+    ui.ann.hidden = true;
+    ui.bodyWrap.classList.remove("is-ann");
+    ui.text.querySelectorAll(".lyrics__line.is-active").forEach((el) => el.classList.remove("is-active"));
+  }
+  function geniusYoutubeId(url) {
+    const m = /(?:youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{6,})/i.exec(url);
+    return m ? m[1] : null;
+  }
+  function geniusYoutubeIframe(id) {
+    const f = document.createElement("iframe");
+    f.src = `https://www.youtube-nocookie.com/embed/${id}`;
+    f.title = "\u0420\u043E\u043B\u0438\u043A YouTube";
+    f.loading = "lazy";
+    f.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+    f.allowFullscreen = true;
+    f.referrerPolicy = "strict-origin-when-cross-origin";
+    return f;
+  }
+  var GENIUS_ANN_KEEP = /* @__PURE__ */ new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "S", "BLOCKQUOTE", "UL", "OL", "LI", "H2", "H3", "H4", "FIGURE", "FIGCAPTION", "IMG", "A"]);
+  var GENIUS_ANN_DROP = /* @__PURE__ */ new Set(["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "SVG", "MATH", "FORM", "INPUT", "BUTTON", "SELECT", "TEXTAREA", "VIDEO", "AUDIO", "SOURCE", "NOSCRIPT"]);
+  function geniusAnnSanitize(src, dst, seen) {
+    for (const child of Array.from(src.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        dst.appendChild(document.createTextNode(child.textContent ?? ""));
+        continue;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      const el = child;
+      const tag = el.tagName;
+      if (GENIUS_ANN_DROP.has(tag)) continue;
+      if (tag === "A") {
+        const href = el.getAttribute("href") ?? "";
+        if (!/^https?:\/\//i.test(href)) {
+          geniusAnnSanitize(el, dst, seen);
+          continue;
+        }
+        const yt = geniusYoutubeId(href);
+        if (yt) {
+          if (!seen.has(yt)) {
+            seen.add(yt);
+            dst.appendChild(geniusYoutubeIframe(yt));
+          }
+          continue;
+        }
+        const a = document.createElement("a");
+        a.href = href;
+        a.target = "_blank";
+        a.rel = "noreferrer noopener";
+        geniusAnnSanitize(el, a, seen);
+        dst.appendChild(a);
+        continue;
+      }
+      if (tag === "IMG") {
+        const srcAttr = el.getAttribute("src") ?? "";
+        if (!/^https?:\/\//i.test(srcAttr)) continue;
+        const img = document.createElement("img");
+        img.src = srcAttr;
+        img.alt = el.getAttribute("alt") ?? "";
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+        dst.appendChild(img);
+        continue;
+      }
+      if (!GENIUS_ANN_KEEP.has(tag)) {
+        geniusAnnSanitize(el, dst, seen);
+        continue;
+      }
+      const out = document.createElement(tag.toLowerCase());
+      geniusAnnSanitize(el, out, seen);
+      dst.appendChild(out);
+    }
+  }
+  function geniusAnnBody(ann) {
+    const frag = document.createDocumentFragment();
+    const seen = /* @__PURE__ */ new Set();
+    const holder = document.createElement("div");
+    holder.innerHTML = ann.html;
+    geniusAnnSanitize(holder, frag, seen);
+    const missing = ann.youtube.filter((id) => !seen.has(id));
+    for (const id of missing.reverse()) frag.insertBefore(geniusYoutubeIframe(id), frag.firstChild);
+    return frag;
+  }
+  function geniusAnnOpen(ui, annId) {
+    const ctx = geniusAnnCtx.get(ui.text);
+    const ref = ctx?.refs.find((r) => r.id === annId);
+    const ann = ctx?.anns.get(annId);
+    if (!ctx || !ref || !ann) return;
+    const frag = document.createDocumentFragment();
+    const head2 = document.createElement("div");
+    head2.className = "lyrics__ann-head";
+    const label = document.createElement("span");
+    label.className = "lyrics__ann-label";
+    label.textContent = "\u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044F";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "lyrics__ann-close";
+    close.dataset.act = "ann-close";
+    close.setAttribute("aria-label", "\u0417\u0430\u043A\u0440\u044B\u0442\u044C \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044E");
+    close.textContent = "\xD7";
+    head2.append(label, close);
+    frag.appendChild(head2);
+    const textLines = ctx.song.text.split("\n");
+    const quote2 = ref.lines.map((i) => textLines[i] ?? "").join("\n");
+    if (quote2.trim()) {
+      const q2 = document.createElement("p");
+      q2.className = "lyrics__ann-quote";
+      q2.textContent = quote2;
+      frag.appendChild(q2);
+    }
+    const meta = document.createElement("p");
+    meta.className = "lyrics__ann-meta";
+    if (ann.author) {
+      const strong = document.createElement("strong");
+      strong.textContent = ann.author.name;
+      meta.appendChild(strong);
+    }
+    if (ann.createdAt) {
+      const date = new Date(ann.createdAt);
+      if (!Number.isNaN(date.getTime())) {
+        meta.appendChild(document.createTextNode(`${ann.author ? " \xB7 " : ""}${date.toLocaleDateString("ru-RU")}`));
+      }
+    }
+    if (meta.textContent) frag.appendChild(meta);
+    const body = document.createElement("div");
+    body.className = "lyrics__ann-body";
+    body.appendChild(geniusAnnBody(ann));
+    frag.appendChild(body);
+    const link = document.createElement("a");
+    link.className = "lyrics__ann-link";
+    link.href = ann.url;
+    link.target = "_blank";
+    link.rel = "noreferrer noopener";
+    link.textContent = "\u043E\u0442\u043A\u0440\u044B\u0442\u044C \u043D\u0430 Genius";
+    frag.appendChild(link);
+    ui.ann.replaceChildren(frag);
+    ui.ann.hidden = false;
+    ui.bodyWrap.classList.add("is-ann");
+    const lines = ui.text.querySelectorAll(".lyrics__line");
+    ui.text.querySelectorAll(".lyrics__line.is-active").forEach((el) => el.classList.remove("is-active"));
+    for (const i of ref.lines) lines[i]?.classList.add("is-active");
+    ui.ann.scrollIntoView({ block: "nearest" });
   }
   function geniusRenderCandidates(run, candidates) {
     const ui = run.ui;

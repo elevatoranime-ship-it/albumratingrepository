@@ -1,12 +1,14 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { extractLyrics } from '../../worker.js';
+import { extractLyrics, extractLyricsDetailed, normalizeAnnotation } from '../../worker.js';
 
 /* Разбор страницы genius.com в текст песни — оба прокси (worker.js для Cloudflare,
    server.py для превью) на одной и той же разметке должны давать одинаковый чистый
    текст: без «шапки» Genius («6 Contributors», переводы, «<название> Lyrics»),
-   без подвала («Embed») и с переносами строк на месте <br>. Браузер не нужен. */
+   без подвала («Embed») и с переносами строк на месте <br>. Плюс refs — какими
+   строками покрыты аннотации — и нормализация тел аннотаций: обе стороны одинаковы.
+   Браузер не нужен. */
 
 const TITLE = 'z4p7sk4yu v n33 sv0j $$$';
 
@@ -48,6 +50,13 @@ function extractWithPython(html: string): string {
   return JSON.parse(out) as string;
 }
 
+/** Любое выражение над server.py с данными из stdin → JSON на выходе. */
+function pyJson<T>(expr: string, payload: string): T {
+  const script = 'import json, sys\nfrom server import extract_lyrics, extract_lyrics_detailed, normalize_annotation\nprint(json.dumps(' + expr + '))';
+  const out = execFileSync('python3', ['-c', script], { cwd: path.resolve(__dirname, '..'), input: payload, encoding: 'utf8' });
+  return JSON.parse(out) as T;
+}
+
 test('страница Genius → чистый текст: без шапки «Contributors … Lyrics» и подвала, одинаково в worker.js и server.py', () => {
   const fromWorker = extractLyrics(PAGE);
   expect(fromWorker).toBe(EXPECTED);
@@ -76,4 +85,53 @@ test('обычный текст не трогаем: маркеры в слов�
   expect(extractLyrics(plain)).toBe(expected);
   expect(extractWithPython(plain)).toBe(expected);
   expect(extractLyrics('<html><body>no lyrics here</body></html>')).toBe('');
+});
+
+test('якоря аннотаций → refs: какие строки покрыты, текст без изменений', () => {
+  // в PAGE аннотация 1 оборачивает строки 2–3 («Мои мувы жёсткие…» / «Твои суки…»)
+  const detailed = extractLyricsDetailed(PAGE);
+  expect(detailed.text).toBe(EXPECTED);
+  expect(detailed.refs).toEqual([{ id: '1', lines: [2, 3] }]);
+  expect(detailed.text).not.toContain('\u0000'); // маркеры не просачиваются в текст
+  // паритет server.py — тот же {text, refs}
+  expect(pyJson('extract_lyrics_detailed(sys.stdin.read())', PAGE))
+    .toEqual({ text: detailed.text, refs: detailed.refs });
+  // без якорей — refs пустые, extractLyrics как раньше
+  const bare = '<div data-lyrics-container="true">[Intro]<br>Line</div>';
+  expect(extractLyricsDetailed(bare).refs).toEqual([]);
+  expect(extractLyrics(bare)).toBe('[Intro]\nLine');
+});
+
+test('аннотация на части строки и абсолютная ссылка Genius', () => {
+  const html = '<div data-lyrics-container="true">Первая<br><a href="https://genius.com/annotations/42" class="Ref">вторая</a> половина<br>Третья</div>';
+  const detailed = extractLyricsDetailed(html);
+  expect(detailed.text).toBe('Первая\nвторая половина\nТретья');
+  expect(detailed.refs).toEqual([{ id: '42', lines: [1] }]);
+  expect(pyJson('extract_lyrics_detailed(sys.stdin.read())', html))
+    .toEqual({ text: detailed.text, refs: detailed.refs });
+});
+
+test('нормализация аннотации одинакова в worker.js и server.py', () => {
+  const fixture = {
+    id: 777,
+    url: 'https://genius.com/annotations/777',
+    created_at: '2024-05-01T12:00:00Z',
+    author: { name: 'Знаток', url: 'https://genius.com/znatok', image_url: 'https://images.genius.com/x.jpg' },
+    body: {
+      html: '<p>Абзац со <a href="https://genius.com/song-lyrics">ссылкой</a> и видео: <a href="https://www.youtube.com/watch?v=abc123def45">ютуб</a>.</p><img src="https://images.genius.com/pic.jpg" alt="картинка"/><img src="https://i.ytimg.com/vi/xyz789ghi012/hqdefault.jpg"/>',
+      plain: 'текст',
+    },
+    votes_total: 12,
+  };
+  const fromWorker = normalizeAnnotation(fixture);
+  expect(fromWorker.youtube).toEqual(['abc123def45', 'xyz789ghi012']);
+  expect(fromWorker.author).toEqual({ name: 'Знаток', url: 'https://genius.com/znatok' });
+  expect(fromWorker.html).toContain('images.genius.com/pic.jpg');
+  expect(pyJson('normalize_annotation(json.loads(sys.stdin.read()))', JSON.stringify(fixture)))
+    .toEqual(fromWorker);
+  // без url/author — ссылка конструируется по id
+  const bare = normalizeAnnotation({ id: 5, body: { html: '' } });
+  expect(bare).toEqual({ id: '5', url: 'https://genius.com/annotations/5', author: null, created_at: null, html: '', youtube: [] });
+  expect(pyJson('normalize_annotation(json.loads(sys.stdin.read()))', JSON.stringify({ id: 5, body: { html: '' } })))
+    .toEqual(bare);
 });

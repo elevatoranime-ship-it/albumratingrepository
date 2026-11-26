@@ -41,8 +41,20 @@ const weakSearchFixture = {
     ],
   },
 };
-const lyricsFixture = (id: number, title: string, artist: string) => ({
-  song: { id, title, artist, url: `https://genius.com/song-${id}`, lyrics_state: 'complete', text: LYRICS_TEXT },
+const annFixture = {
+  id: 555,
+  url: 'https://genius.com/annotations/555',
+  author: { name: 'Знаток', url: 'https://genius.com/znatok' },
+  created_at: '2024-05-01T12:00:00Z',
+  html: '<p>Это <b>аннотация</b> со <a href="https://genius.com/annotated-song-lyrics">ссылкой</a>.</p>'
+    + '<img src="https://images.genius.com/pic.jpg" alt="картинка"/>'
+    + '<a href="https://www.youtube.com/watch?v=abc123def45"><img src="https://i.ytimg.com/vi/abc123def45/hqdefault.jpg" alt=""/></a>'
+    + '<script>alert(1)</script>',
+  youtube: ['abc123def45'],
+};
+const annRefs = [{ id: '555', lines: [1, 2] }]; // «Два», «Три»
+const lyricsFixture = (id: number, title: string, artist: string, refs: Array<{ id: string; lines: number[] }> = []) => ({
+  song: { id, title, artist, url: `https://genius.com/song-${id}`, lyrics_state: 'complete', text: LYRICS_TEXT, refs },
 });
 
 const pageErrors = new WeakMap<Page, string[]>();
@@ -58,6 +70,7 @@ interface GeniusOptions {
   search?: 'exact' | 'weak';
   lyricsFail?: boolean;
   searchDelayMs?: number; // держим поиск открытым, чтобы поймать состояние «ищем»
+  withAnns?: boolean; // текст с refs и тело аннотации 555
 }
 
 async function base(page: Page, opts: GeniusOptions = {}): Promise<void> {
@@ -102,7 +115,19 @@ async function base(page: Page, opts: GeniusOptions = {}): Promise<void> {
       9100: { title: 'Отдельный сингл', artist: 'Другой артист' },
     };
     const song = songs[id ?? ''] ?? { title: 'Песня', artist: 'Кто-то' };
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(lyricsFixture(Number(id), song.title, song.artist)) });
+    return route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(lyricsFixture(Number(id), song.title, song.artist, opts.withAnns ? annRefs : [])),
+    });
+  });
+  await page.route('**/api/genius/annotations**', (route) => {
+    const url = new URL(route.request().url());
+    const id = url.searchParams.get('id');
+    q.push(`ann:${id}`);
+    if (id !== '555') {
+      return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ error: 'annotation not found' }) });
+    }
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ annotation: annFixture }) });
   });
 }
 
@@ -352,4 +377,77 @@ test('сингл: ручная подстановка по ссылке, адм�
   // админская замена запомнена в базе
   expect(writes).toHaveLength(1);
   expect(writes[0]).toEqual({ table: 'albums', body: { genius_song_id: 9100 }, id: `eq.${single.id}` });
+});
+
+test('альбом: аннотации — подсветка строк и карточка с цитатой, телом, картинкой, ссылкой и YouTube', async ({ page }) => {
+  await base(page, { withAnns: true });
+  await seedDemo(page);
+  await page.goto('/');
+  await login(page);
+  await page.locator('#albums .album__title').filter({ hasText: album.title }).click();
+  await expect(page.locator('#view-album')).toHaveClass(/is-visible/);
+  await page.locator('[data-id="track-1"] .track__genius').click();
+
+  const text = page.locator('#lyrics-text');
+  await expect(text).toBeVisible();
+  await expect(text).toContainText('Раз');
+  // тело аннотации доехало → строки 1–2 («Два», «Три») подсвечены
+  await expect.poll(() => queries.get(page)!.some((x) => x === 'ann:555')).toBe(true);
+  const refs = page.locator('#lyrics-text .lyrics__line.is-ref');
+  await expect(refs).toHaveCount(2);
+  await expect(refs.nth(0)).toHaveText('Два');
+  await expect(refs.nth(1)).toHaveText('Три');
+  await expect(page.locator('#lyrics-text .lyrics__line:not(.is-ref)')).toHaveCount(3);
+
+  // клик по строке открывает карточку
+  await refs.nth(0).click();
+  const ann = page.locator('#lyrics-ann');
+  await expect(ann).toBeVisible();
+  await expect(page.locator('#lyrics-body')).toHaveClass(/is-ann/);
+  await expect(ann.locator('.lyrics__ann-quote')).toContainText('Два');
+  await expect(ann.locator('.lyrics__ann-quote')).toContainText('Три');
+  await expect(ann.locator('.lyrics__ann-meta')).toContainText('Знаток');
+  await expect(ann.locator('.lyrics__ann-body b')).toHaveText('аннотация');
+  await expect(ann.locator('.lyrics__ann-body a[href="https://genius.com/annotated-song-lyrics"]')).toBeVisible();
+  await expect(ann.locator('.lyrics__ann-body img')).toHaveAttribute('src', 'https://images.genius.com/pic.jpg');
+  // YouTube — iframe прямо в карточке (ссылка-превью заменена плеером)
+  await expect(ann.locator('iframe[src="https://www.youtube-nocookie.com/embed/abc123def45"]')).toBeVisible();
+  // скрипт из тела аннотации не прошёл санитайзинг
+  await expect(ann.locator('script')).toHaveCount(0);
+  await expect(ann.locator('.lyrics__ann-link')).toHaveAttribute('href', 'https://genius.com/annotations/555');
+  await expect(refs.nth(0)).toHaveClass(/is-active/); // открытая строка активна
+
+  // × закрывает карточку и снимает активность
+  await ann.locator('.lyrics__ann-close').click();
+  await expect(ann).toBeHidden();
+  await expect(page.locator('#lyrics-body')).not.toHaveClass(/is-ann/);
+  await expect(refs.nth(0)).not.toHaveClass(/is-active/);
+});
+
+test('сингл: аннотации применяются после посимвольной печати — строки перестраиваются, карточка работает', async ({ page }) => {
+  await base(page, { withAnns: true });
+  await seedDemo(page);
+  await page.goto('/');
+  await login(page);
+  await page.locator('#seg-singles').click();
+  await page.locator('#albums .album__title').filter({ hasText: single.title }).click();
+  await expect(page.locator('#view-single')).toHaveClass(/is-visible/);
+
+  const text = page.locator('#vinyl-text');
+  await expect(text).toBeVisible();
+  await expect(text).toContainText('Раз');
+  // подсветка появляется только когда печать завершена (отложенный apply)
+  const refs = page.locator('#vinyl-text .lyrics__line.is-ref');
+  await expect(refs).toHaveCount(2);
+  await expect(refs.nth(0)).toHaveText('Два');
+  expect(await text.innerText()).toBe(LYRICS_TEXT); // текст не изменился, строки — span-ы
+
+  await refs.nth(0).click();
+  const ann = page.locator('#vinyl-ann');
+  await expect(ann).toBeVisible();
+  await expect(page.locator('#vinyl-textwrap')).toHaveClass(/is-ann/);
+  await expect(ann.locator('.lyrics__ann-quote')).toContainText('Два');
+  await expect(ann.locator('iframe[src*="youtube-nocookie.com/embed/abc123def45"]')).toBeVisible();
+  await ann.locator('.lyrics__ann-close').click();
+  await expect(ann).toBeHidden();
 });

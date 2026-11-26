@@ -3,7 +3,9 @@
 Прокси нужен для живого превью и ручной проверки: в проде то же самое делает
 worker.js на Cloudflare. Эндпоинты:
   /api/genius/search?q=…  → прокси api.genius.com/search (поиск песен)
-  /api/genius/lyrics?id=… → текст песни со страницы genius.com
+  /api/genius/lyrics?id=… → текст песни со страницы genius.com + refs
+                            (какими строками покрыты аннотации)
+  /api/genius/annotations?id=… → аннотация из JSON genius.com/api/annotations/:id
 """
 import http.server
 import json
@@ -104,8 +106,62 @@ def drop_elements(html, pattern):
         html, pos = cut
 
 
-def extract_lyrics(html):
-    """Блоки data-lyrics-container с учётом вложенности → чистый текст
+# Открывающий тег аннотации → маркеры NUL-ID-NUL … NUL/-/NUL: маркеры
+# переживают снятие тегов и превращение <br> в \n — по ним после разбора видно,
+# какими строками текста покрыта каждая аннотация. Логика зеркалит worker.js.
+ANN_ANCHOR_RE = re.compile(
+    r'(<a\b[^>]*\bhref="(?:https?://(?:www\.)?genius\.com)?/annotations/(\d+)"[^>]*>)([\s\S]*?)(</a>)',
+    re.I,
+)
+
+
+def _ann_mark(m):
+    return "\x00" + m.group(2) + "\x00" + m.group(3) + "\x00/\x00"
+
+
+ANN_TOKEN_RE = re.compile(r"\x00[^\x00]*\x00")
+
+
+def collect_ann_refs(text):
+    """Какими строками финального текста (индексы с нуля) покрыта каждая
+    аннотация: NUL-ID-NUL открывает охват, NUL/-/NUL закрывает; строки между
+    ними (включая первую и последнюю) принадлежат аннотации."""
+    by_id = {}
+    stack = []
+
+    def add(ann_id, line):
+        by_id.setdefault(ann_id, set()).add(line)
+
+    for idx, line in enumerate(text.split("\n")):
+        for ann_id in stack:
+            add(ann_id, idx)
+        pos = 0
+        while True:
+            at = line.find("\x00", pos)
+            if at == -1:
+                break
+            end = line.find("\x00", at + 1)
+            if end == -1:
+                break
+            token = line[at + 1:end]
+            pos = end + 1
+            if token == "/":
+                if stack:
+                    stack.pop()
+            elif token.isdigit():
+                if token not in stack:
+                    stack.append(token)
+                add(token, idx)
+    refs = [
+        {"id": ann_id, "lines": sorted(lines)}
+        for ann_id, lines in by_id.items()
+    ]
+    refs.sort(key=lambda r: r["lines"][0])
+    return refs
+
+
+def extract_lyrics_detailed(html):
+    """Блоки data-lyrics-container с учётом вложенности → {text, refs}
     (шапка/подвал Genius вырезаются, <br> и блочные теги → переносы строк)."""
     marker = 'data-lyrics-container="true"'
     parts, i = [], 0
@@ -130,6 +186,7 @@ def extract_lyrics(html):
         parts.append(drop_elements(part, LYRICS_CHROME_RE))
         i = pos
     text = "\n".join(parts)
+    text = ANN_ANCHOR_RE.sub(_ann_mark, text)
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
     text = re.sub(r"</p>", "\n\n", text, flags=re.I)
     text = BLOCK_TAG_RE.sub("\n", text)
@@ -138,7 +195,53 @@ def extract_lyrics(html):
     text = re.sub(r"[ \t]+\n", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     text = text.strip()
-    return LYRICS_HEADER_TEXT_RE.sub("", text, count=1).lstrip()
+    cleaned = LYRICS_HEADER_TEXT_RE.sub("", text, count=1).lstrip()
+    refs = collect_ann_refs(cleaned)
+    return {"text": ANN_TOKEN_RE.sub("", cleaned), "refs": refs}
+
+
+def extract_lyrics(html):
+    """Только текст песни (обратная совместимость)."""
+    return extract_lyrics_detailed(html)["text"]
+
+
+def youtube_ids(text):
+    """Id роликов YouTube, упомянутые в тексте (ссылки и превью i.ytimg)."""
+    ids = set()
+    for m in re.finditer(
+        r"(?:https?://)?(?:www\.)?(?:youtube\.com/(?:watch\?(?:[^#\s]*&)?v=|embed/|shorts/|live/)|youtu\.be/)([\w-]{6,})"
+        r"|i\.ytimg\.com/vi/([\w-]{6,})",
+        str(text),
+        re.I,
+    ):
+        ids.add(m.group(1) or m.group(2))
+    return sorted(ids)
+
+
+def normalize_annotation(ann):
+    """Стабильная форма аннотации для клиента — зеркалит worker.js."""
+    body = ann if isinstance(ann, dict) else {}
+    inner = body.get("body") if isinstance(body.get("body"), dict) else {}
+    html = inner.get("html") if isinstance(inner.get("html"), str) else ""
+    author_raw = body.get("author") if isinstance(body.get("author"), dict) else None
+    ann_id = str(body.get("id")) if body.get("id") is not None else ""
+    author = None
+    if author_raw and isinstance(author_raw.get("name"), str) and author_raw.get("name"):
+        url = author_raw.get("url")
+        author = {
+            "name": author_raw["name"],
+            "url": url if isinstance(url, str) and url else None,
+        }
+    url = body.get("url")
+    created = body.get("created_at")
+    return {
+        "id": ann_id,
+        "url": url if isinstance(url, str) and url else f"https://genius.com/annotations/{ann_id}",
+        "author": author,
+        "created_at": created if isinstance(created, str) and created else None,
+        "html": html,
+        "youtube": youtube_ids(html),
+    }
 
 
 class ReusableTCPServer(socketserver.TCPServer):
@@ -168,14 +271,32 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 )
                 with urllib.request.urlopen(req, timeout=20) as resp:
                     html = resp.read().decode("utf-8", "replace")
+                detailed = extract_lyrics_detailed(html)
                 return self._json({"song": {
                     "id": song.get("id"),
                     "title": song.get("title"),
                     "artist": (song.get("primary_artist") or {}).get("name"),
                     "url": song.get("url"),
                     "lyrics_state": song.get("lyrics_state"),
-                    "text": extract_lyrics(html),
+                    "text": detailed["text"],
+                    "refs": detailed["refs"],
                 }})
+            if self.path.startswith("/api/genius/annotations"):
+                ann_id = re.sub(r"\D", "", (params.get("id") or [""])[0])
+                if not ann_id:
+                    return self._json({"error": "missing id"}, 400)
+                # Внутренний JSON Genius — тот же, которым пользуется сам сайт:
+                # официальный API аннотаций не отдаёт.
+                req = urllib.request.Request(
+                    f"https://genius.com/api/annotations/{ann_id}",
+                    headers={"user-agent": UA, "accept": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    data = json.loads(resp.read().decode("utf-8", "replace"))
+                ann = (data.get("response") or {}).get("annotation")
+                if not ann:
+                    return self._json({"error": "annotation not found"}, 404)
+                return self._json({"annotation": normalize_annotation(ann)})
             return self._json({"error": "not found"}, 404)
         except Exception as err:  # noqa: BLE001 — прокси должен отвечать JSON-ошибкой
             return self._json({"error": str(err)}, 502)

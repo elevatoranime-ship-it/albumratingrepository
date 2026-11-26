@@ -6427,9 +6427,22 @@ class GeniusError extends Error {
   }
 }
 
+/** Строка(и) текста, покрытые аннотацией (индексы строк с нуля). */
+interface GeniusAnnRef { id: string; lines: number[]; }
+
+/** Аннотация в стабильной форме прокси /api/genius/annotations. */
+interface GeniusAnnotation {
+  id: string; url: string;
+  author: { name: string; url: string | null } | null;
+  createdAt: string | null;
+  html: string;        // тело — клиент санитайзирует перед вставкой
+  youtube: string[];   // id роликов, упомянутых в теле
+}
+
 interface GeniusSongInfo {
   id: string; title: string; artist: string; url: string;
   lyricsState: string | null; text: string;
+  refs: GeniusAnnRef[];
 }
 
 const geniusSearchCache = new Map<string, Array<{ id: string; title: string; artist: string; url: string; lyricsState: string | null }>>();
@@ -6483,15 +6496,52 @@ async function geniusFetchSong(id: string): Promise<GeniusSongInfo> {
   const data = await geniusApi<{ song?: Record<string, unknown> }>('lyrics', { id });
   const song = data.song;
   if (!song) throw new GeniusError('parse', 'песня не найдена');
-  const parsed = {
+  const refs: GeniusAnnRef[] = Array.isArray(song.refs)
+    ? song.refs.flatMap((r) => {
+        if (!r || typeof r !== 'object') return [];
+        const obj = r as { id?: unknown; lines?: unknown };
+        const rid = typeof obj.id === 'string' || typeof obj.id === 'number' ? String(obj.id) : '';
+        const lines = Array.isArray(obj.lines)
+          ? obj.lines.filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0)
+          : [];
+        return rid && lines.length ? [{ id: rid, lines }] : [];
+      })
+    : [];
+  const parsed: GeniusSongInfo = {
     id: String(song.id),
     title: typeof song.title === 'string' ? song.title : '',
     artist: typeof song.artist === 'string' ? song.artist : '',
     url: typeof song.url === 'string' ? song.url : '',
     lyricsState: typeof song.lyrics_state === 'string' ? song.lyrics_state : null,
     text: typeof song.text === 'string' ? song.text : '',
+    refs,
   };
   geniusLyricsCache.set(id, parsed);
+  return parsed;
+}
+
+/** Кэш тел аннотаций на сеанс — тот же id не тянется дважды. */
+const geniusAnnCache = new Map<string, GeniusAnnotation>();
+
+async function geniusFetchAnnotation(id: string): Promise<GeniusAnnotation> {
+  const hit = geniusAnnCache.get(id);
+  if (hit) return hit;
+  const data = await geniusApi<{ annotation?: Record<string, unknown> }>('annotations', { id });
+  const a = data.annotation;
+  if (!a) throw new GeniusError('parse', 'аннотация не найдена');
+  const authorRaw = a.author && typeof a.author === 'object' ? a.author as Record<string, unknown> : null;
+  const authorName = authorRaw && typeof authorRaw.name === 'string' && authorRaw.name ? authorRaw.name : null;
+  const parsed: GeniusAnnotation = {
+    id: typeof a.id === 'string' ? a.id : id,
+    url: typeof a.url === 'string' && a.url ? a.url : `https://genius.com/annotations/${id}`,
+    author: authorName
+      ? { name: authorName, url: typeof authorRaw?.url === 'string' && authorRaw.url ? authorRaw.url : null }
+      : null,
+    createdAt: typeof a.created_at === 'string' && a.created_at ? a.created_at : null,
+    html: typeof a.html === 'string' ? a.html : '',
+    youtube: Array.isArray(a.youtube) ? a.youtube.filter((x): x is string => typeof x === 'string') : [],
+  };
+  geniusAnnCache.set(id, parsed);
   return parsed;
 }
 
@@ -6590,6 +6640,8 @@ const lyricsUrlError = q<HTMLElement>('#lyrics-url-error');
 const lyricsFixCancel = q<HTMLButtonElement>('#lyrics-fix-cancel');
 const lyricsFixSave = q<HTMLButtonElement>('#lyrics-fix-save');
 const lyricsFixNote = q<HTMLElement>('#lyrics-fix-note');
+const lyricsBody = q<HTMLElement>('#lyrics-body');
+const lyricsAnn = q<HTMLElement>('#lyrics-ann');
 
 const vinylSection = q<HTMLElement>('#vinyl-section');
 const vinylDisc = q<HTMLElement>('#vinyl-disc');
@@ -6614,6 +6666,8 @@ const vinylUrlError = q<HTMLElement>('#vinyl-url-error');
 const vinylFixCancel = q<HTMLButtonElement>('#vinyl-fix-cancel');
 const vinylFixSave = q<HTMLButtonElement>('#vinyl-fix-save');
 const vinylFixNote = q<HTMLElement>('#vinyl-fix-note');
+const vinylTextwrap = q<HTMLElement>('#vinyl-textwrap');
+const vinylAnn = q<HTMLElement>('#vinyl-ann');
 
 interface GeniusScreenUi {
   song: HTMLElement;
@@ -6627,6 +6681,8 @@ interface GeniusScreenUi {
   report: HTMLElement;
   copy: HTMLButtonElement;
   text: HTMLElement;
+  bodyWrap: HTMLElement; // текст + карточка аннотации (раскладка «текст | карточка»)
+  ann: HTMLElement;       // карточка аннотации
   fix: HTMLFormElement;
   cands: HTMLElement;
   url: HTMLInputElement;
@@ -6640,7 +6696,7 @@ interface GeniusScreenUi {
 const albumLyricsUi: GeniusScreenUi = {
   song: lyricsSong, artist: lyricsArtist, link: lyricsLink, replaceBtn: lyricsReplaceBtn,
   state: lyricsState, skeleton: lyricsSkeleton, fail: lyricsFail, failToggle: lyricsFailToggle, report: lyricsReport,
-  copy: lyricsCopy, text: lyricsText, fix: lyricsFix, cands: lyricsCands, url: lyricsUrl,
+  copy: lyricsCopy, text: lyricsText, bodyWrap: lyricsBody, ann: lyricsAnn, fix: lyricsFix, cands: lyricsCands, url: lyricsUrl,
   urlError: lyricsUrlError, fixCancel: lyricsFixCancel, fixSave: lyricsFixSave, fixNote: lyricsFixNote,
   typewriter: false,
 };
@@ -6648,10 +6704,30 @@ const albumLyricsUi: GeniusScreenUi = {
 const vinylLyricsUi: GeniusScreenUi = {
   song: vinylSong, artist: vinylArtist, link: vinylLink, replaceBtn: vinylReplaceBtn,
   state: vinylState, skeleton: vinylSkeleton, fail: vinylFail, failToggle: vinylFailToggle, report: vinylReport,
-  copy: vinylCopy, text: vinylText, fix: vinylFix, cands: vinylCands, url: vinylUrl,
+  copy: vinylCopy, text: vinylText, bodyWrap: vinylTextwrap, ann: vinylAnn, fix: vinylFix, cands: vinylCands, url: vinylUrl,
   urlError: vinylUrlError, fixCancel: vinylFixCancel, fixSave: vinylFixSave, fixNote: vinylFixNote,
   typewriter: true,
 };
+
+/* Клик по подсвеченной строке открывает карточку аннотации, × закрывает. */
+for (const ui of [albumLyricsUi, vinylLyricsUi]) {
+  const openFrom = (target: Element | null): boolean => {
+    const line = target?.closest<HTMLElement>('.is-ref') ?? null;
+    if (line && ui.text.contains(line) && line.dataset.ann) {
+      geniusAnnOpen(ui, line.dataset.ann);
+      return true;
+    }
+    return false;
+  };
+  ui.text.addEventListener('click', (e) => { openFrom(e.target as Element); });
+  ui.text.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (openFrom(e.target as Element)) e.preventDefault();
+  });
+  ui.ann.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-act="ann-close"]')) geniusAnnClose(ui);
+  });
+}
 
 /* ---------- общий движок ---------- */
 
@@ -6711,6 +6787,9 @@ function geniusResetUi(ui: GeniusScreenUi): void {
   ui.text.hidden = true;
   ui.text.textContent = '';
   ui.text.classList.remove('is-typing');
+  geniusAnnClose(ui);
+  geniusAnnDeferred.delete(ui);
+  geniusAnnCtx.delete(ui.text);
   ui.fix.hidden = true;
   ui.cands.innerHTML = '';
   ui.url.value = '';
@@ -6726,10 +6805,12 @@ function geniusResetUi(ui: GeniusScreenUi): void {
 /** Печать текста посимвольно (сингл): быстро, с бегущим курсором. */
 function geniusTypeText(ui: GeniusScreenUi, text: string): void {
   window.clearInterval(geniusTypeTimer);
+  geniusAnnDeferred.delete(ui); // подсветка аннотаций применится к новому тексту
   ui.text.hidden = false;
   ui.text.classList.remove('is-typing');
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     ui.text.textContent = text;
+    geniusAnnFlush(ui);
     return;
   }
   if (!ui.typewriter) {
@@ -6744,6 +6825,7 @@ function geniusTypeText(ui: GeniusScreenUi, text: string): void {
     });
     ui.text.textContent = '';
     ui.text.appendChild(frag);
+    geniusAnnFlush(ui);
     return;
   }
   ui.text.textContent = '';
@@ -6755,6 +6837,7 @@ function geniusTypeText(ui: GeniusScreenUi, text: string): void {
     if (i >= text.length) {
       window.clearInterval(geniusTypeTimer);
       ui.text.classList.remove('is-typing');
+      geniusAnnFlush(ui);
     }
   }, 16);
 }
@@ -6769,12 +6852,255 @@ function geniusRenderSong(run: GeniusRun, song: GeniusSongInfo): void {
     ui.link.hidden = false;
   }
   if (song.text) geniusTypeText(ui, song.text);
+  void geniusLoadAnn(run, song); // подсветка строк с аннотациями — когда тела дойдут
   const surface = run.kind === 'single' ? vinylSection : lyricsPanel;
   surface.classList.add('is-found');
   if (run.kind === 'single') {
     vinylDisc.classList.add('is-landing');
     vinylPin.classList.add('is-dropping');
   }
+}
+
+/* ---------- аннотации: подсветка строк и карточка ---------- */
+
+/** Что уже показано на экране: текст песни, id аннотаций и их тела. */
+interface GeniusAnnCtx {
+  song: GeniusSongInfo;
+  refs: GeniusAnnRef[];
+  anns: Map<string, GeniusAnnotation>;
+}
+const geniusAnnCtx = new WeakMap<HTMLElement, GeniusAnnCtx>(); // по ui.text
+/** Подсветка, пришедшая до конца посимвольной печати — применить после. */
+const geniusAnnDeferred = new WeakMap<GeniusScreenUi, () => void>();
+
+function geniusAnnFlush(ui: GeniusScreenUi): void {
+  const fn = geniusAnnDeferred.get(ui);
+  if (fn) {
+    geniusAnnDeferred.delete(ui);
+    fn();
+  }
+}
+
+/** Тянет тела аннотаций песни и подсвечивает строки. Ошибки тихие:
+    подсветка — украшение, текст и без неё читается. */
+async function geniusLoadAnn(run: GeniusRun, song: GeniusSongInfo): Promise<void> {
+  if (!song.refs.length) return;
+  const key = `${run.kind}:${run.refId}`;
+  try {
+    const pairs: Array<readonly [GeniusAnnRef, GeniusAnnotation]> = [];
+    await Promise.all(song.refs.map(async (ref) => {
+      const ann = await geniusFetchAnnotation(ref.id).catch(() => null);
+      if (ann) pairs.push([ref, ann] as const);
+    }));
+    if (geniusActiveKey !== key) return;
+    pairs.sort((a, b) => a[0].lines[0] - b[0].lines[0]); // детерминизм при гонке
+    geniusApplyAnn(run, song, pairs);
+  } catch { /* без подсветки живём */ }
+}
+
+/** Перестраивает текст в построчные span-ы (нужно пластинке: там текст
+    печатался одним куском) — без каскадной анимации, текст уже виден. */
+function geniusBuildLines(ui: GeniusScreenUi, text: string): void {
+  const frag = document.createDocumentFragment();
+  text.split('\n').forEach((line) => {
+    const el = document.createElement('span');
+    el.className = 'lyrics__line';
+    el.textContent = line.length ? line : '\u00A0';
+    frag.appendChild(el);
+  });
+  ui.text.textContent = '';
+  ui.text.appendChild(frag);
+}
+
+function geniusApplyAnn(run: GeniusRun, song: GeniusSongInfo, pairs: Array<readonly [GeniusAnnRef, GeniusAnnotation]>): void {
+  const ui = run.ui;
+  const apply = (): void => {
+    if (geniusActiveKey !== `${run.kind}:${run.refId}` || ui.text.hidden || !pairs.length) return;
+    if (song.text && !ui.text.querySelector('.lyrics__line')) geniusBuildLines(ui, song.text);
+    const lines = ui.text.querySelectorAll<HTMLElement>('.lyrics__line');
+    const anns = new Map<string, GeniusAnnotation>();
+    const refs: GeniusAnnRef[] = [];
+    for (const [ref, ann] of pairs) {
+      anns.set(ref.id, ann);
+      refs.push(ref);
+      for (const i of ref.lines) {
+        const el = lines[i];
+        if (!el || el.dataset.ann) continue; // если строку уже заняли — первая аннотация
+        el.classList.add('is-ref');
+        el.dataset.ann = ref.id;
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('aria-label', 'Показать аннотацию к строке');
+      }
+    }
+    geniusAnnCtx.set(ui.text, { song, refs, anns });
+  };
+  if (ui.text.classList.contains('is-typing')) geniusAnnDeferred.set(ui, apply);
+  else apply();
+}
+
+function geniusAnnClose(ui: GeniusScreenUi): void {
+  ui.ann.hidden = true;
+  ui.bodyWrap.classList.remove('is-ann');
+  ui.text.querySelectorAll('.lyrics__line.is-active').forEach((el) => el.classList.remove('is-active'));
+}
+
+/** YouTube-ролик → iframe (прямо в карточке, по решению продукта). */
+function geniusYoutubeId(url: string): string | null {
+  const m = /(?:youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{6,})/i.exec(url);
+  return m ? m[1] : null;
+}
+
+function geniusYoutubeIframe(id: string): HTMLIFrameElement {
+  const f = document.createElement('iframe');
+  f.src = `https://www.youtube-nocookie.com/embed/${id}`;
+  f.title = 'Ролик YouTube';
+  f.loading = 'lazy';
+  f.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+  f.allowFullscreen = true;
+  f.referrerPolicy = 'strict-origin-when-cross-origin';
+  return f;
+}
+
+/* Тело аннотации — чужой HTML: вставляем только известные теги и только
+   http(s)-ссылки; всё остальное (скрипты, iframe, style) выбрасываем,
+   прочие элементы разворачиваем в содержимое. */
+const GENIUS_ANN_KEEP = new Set(['P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'BLOCKQUOTE', 'UL', 'OL', 'LI', 'H2', 'H3', 'H4', 'FIGURE', 'FIGCAPTION', 'IMG', 'A']);
+const GENIUS_ANN_DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH', 'FORM', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA', 'VIDEO', 'AUDIO', 'SOURCE', 'NOSCRIPT']);
+
+function geniusAnnSanitize(src: Node, dst: ParentNode, seen: Set<string>): void {
+  for (const child of Array.from(src.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      dst.appendChild(document.createTextNode(child.textContent ?? ''));
+      continue;
+    }
+    if (child.nodeType !== Node.ELEMENT_NODE) continue;
+    const el = child as HTMLElement;
+    const tag = el.tagName;
+    if (GENIUS_ANN_DROP.has(tag)) continue;
+    if (tag === 'A') {
+      const href = el.getAttribute('href') ?? '';
+      if (!/^https?:\/\//i.test(href)) {
+        geniusAnnSanitize(el, dst, seen); // ссылку снимаем, текст оставляем
+        continue;
+      }
+      const yt = geniusYoutubeId(href);
+      if (yt) {
+        if (!seen.has(yt)) {
+          seen.add(yt);
+          dst.appendChild(geniusYoutubeIframe(yt));
+        }
+        continue; // вместо ссылки-превью — сам плеер
+      }
+      const a = document.createElement('a');
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noreferrer noopener';
+      geniusAnnSanitize(el, a, seen);
+      dst.appendChild(a);
+      continue;
+    }
+    if (tag === 'IMG') {
+      const srcAttr = el.getAttribute('src') ?? '';
+      if (!/^https?:\/\//i.test(srcAttr)) continue;
+      const img = document.createElement('img');
+      img.src = srcAttr;
+      img.alt = el.getAttribute('alt') ?? '';
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer'; // CDN не должен видеть, откуда пришли
+      dst.appendChild(img);
+      continue;
+    }
+    if (!GENIUS_ANN_KEEP.has(tag)) {
+      geniusAnnSanitize(el, dst, seen); // div, span и прочее — разворачиваем
+      continue;
+    }
+    const out = document.createElement(tag.toLowerCase());
+    geniusAnnSanitize(el, out, seen);
+    dst.appendChild(out);
+  }
+}
+
+/** Санированное тело аннотации: ролики из тела — iframe, ролики,
+    найденные только сервером (без якоря) — в начало. */
+function geniusAnnBody(ann: GeniusAnnotation): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  const seen = new Set<string>();
+  const holder = document.createElement('div');
+  holder.innerHTML = ann.html; // вставка в изолированный узел; скрипты не исполняются
+  geniusAnnSanitize(holder, frag, seen);
+  const missing = ann.youtube.filter((id) => !seen.has(id));
+  for (const id of missing.reverse()) frag.insertBefore(geniusYoutubeIframe(id), frag.firstChild);
+  return frag;
+}
+
+/** Открывает карточку аннотации для подсвеченной строки. */
+function geniusAnnOpen(ui: GeniusScreenUi, annId: string): void {
+  const ctx = geniusAnnCtx.get(ui.text);
+  const ref = ctx?.refs.find((r) => r.id === annId);
+  const ann = ctx?.anns.get(annId);
+  if (!ctx || !ref || !ann) return;
+
+  const frag = document.createDocumentFragment();
+  const head = document.createElement('div');
+  head.className = 'lyrics__ann-head';
+  const label = document.createElement('span');
+  label.className = 'lyrics__ann-label';
+  label.textContent = 'аннотация';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'lyrics__ann-close';
+  close.dataset.act = 'ann-close';
+  close.setAttribute('aria-label', 'Закрыть аннотацию');
+  close.textContent = '×';
+  head.append(label, close);
+  frag.appendChild(head);
+
+  // точные строки, к которым относится аннотация
+  const textLines = ctx.song.text.split('\n');
+  const quote = ref.lines.map((i) => textLines[i] ?? '').join('\n');
+  if (quote.trim()) {
+    const q = document.createElement('p');
+    q.className = 'lyrics__ann-quote';
+    q.textContent = quote;
+    frag.appendChild(q);
+  }
+
+  const meta = document.createElement('p');
+  meta.className = 'lyrics__ann-meta';
+  if (ann.author) {
+    const strong = document.createElement('strong');
+    strong.textContent = ann.author.name;
+    meta.appendChild(strong);
+  }
+  if (ann.createdAt) {
+    const date = new Date(ann.createdAt);
+    if (!Number.isNaN(date.getTime())) {
+      meta.appendChild(document.createTextNode(`${ann.author ? ' · ' : ''}${date.toLocaleDateString('ru-RU')}`));
+    }
+  }
+  if (meta.textContent) frag.appendChild(meta);
+
+  const body = document.createElement('div');
+  body.className = 'lyrics__ann-body';
+  body.appendChild(geniusAnnBody(ann));
+  frag.appendChild(body);
+
+  const link = document.createElement('a');
+  link.className = 'lyrics__ann-link';
+  link.href = ann.url;
+  link.target = '_blank';
+  link.rel = 'noreferrer noopener';
+  link.textContent = 'открыть на Genius';
+  frag.appendChild(link);
+
+  ui.ann.replaceChildren(frag);
+  ui.ann.hidden = false;
+  ui.bodyWrap.classList.add('is-ann');
+  const lines = ui.text.querySelectorAll<HTMLElement>('.lyrics__line');
+  ui.text.querySelectorAll('.lyrics__line.is-active').forEach((el) => el.classList.remove('is-active'));
+  for (const i of ref.lines) lines[i]?.classList.add('is-active');
+  ui.ann.scrollIntoView({ block: 'nearest' });
 }
 
 /** Список кандидатов в форме «не та песня?». */

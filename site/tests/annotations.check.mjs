@@ -54,6 +54,10 @@ check('разметка: карточки на обоих экранах', ['id=
 check('разметка: затемнение-скрим на обоих экранах', (html.match(/ann-scrim/g) ?? []).length >= 4, true); // class+id ×2 экрана
 check('стили: скрим скрыт вне шторки', stylesCss.includes('.lyrics__ann-scrim { display: none; }'), true);
 check('стили: мобильная шторка объявлена ПОСЛЕ базовой раскладки', stylesCss.indexOf('ann-sheet') > stylesCss.indexOf('.lyrics__body.is-ann {'), true);
+// мобильная шторка обязана снимать базовый inset-top: иначе top:0 + max-height
+// прижимает лист к верху экрана (CI: панель перехватывает клик по затемнению)
+const mobileSheetRule = stylesCss.match(/\.lyrics__body\.is-ann \.lyrics__ann \{[^}]*position: fixed[^}]*\}/);
+check('стили: мобильная шторка bottom-anchored (top: auto)', Boolean(mobileSheetRule && mobileSheetRule[0].includes('top: auto')), true);
 check('стили: шторка учитывает safe-area iPhone', stylesCss.includes('env(safe-area-inset-bottom)'), true);
 check('стили: подсветка, раскладка, iframe', ['.lyrics__line.is-ref', '.lyrics__body.is-ann', '.lyrics__ann-body iframe'].every((s) => stylesCss.includes(s)), true);
 check('стили: у карточки нет display через [hidden]', !/\.lyrics__ann\s*\{[^}]*display\s*:/.test(stylesCss), true);

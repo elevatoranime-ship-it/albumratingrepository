@@ -3759,6 +3759,7 @@ body { -webkit-tap-highlight-color: transparent; }
     position: fixed;
     left: 0;
     right: 0;
+    top: auto; /* снимаем базовый inset-top — иначе шторка прижата к верху */
     bottom: 0;
     z-index: 91;
     margin-top: 0;

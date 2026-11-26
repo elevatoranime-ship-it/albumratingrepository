@@ -3971,10 +3971,12 @@ body { -webkit-tap-highlight-color: transparent; }
   margin-top: 14px;
   z-index: 65;
 }
-/* После окончания выкатывания (JS добавляет класс) — не обрезаем выпадающие подсказки */
+/* После окончания выкатывания (JS добавляет класс) — не обрезаем выпадающие подсказки
+   (overflow: visible; сам список абсолютный и перекрывает соседей).
+   max-height при этом остаётся числом из :not([hidden]): переход от none к 0px
+   не интерполируется, и скрытие поля рвалось бы вместо плавного схлопывания. */
 .cb__reveal.is-revealed {
   overflow: visible;
-  max-height: none;
 }
 .field--joint .combobox:not(.cb__reveal),
 .field--maxi #maxi-tracks {

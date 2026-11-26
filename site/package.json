@@ -7,6 +7,7 @@
     "typecheck": "tsc --noEmit",
     "test": "npm run build && playwright test",
     "test:nav": "node tests/navigation-race.check.mjs",
+    "test:joint": "node tests/joint-reveal.check.mjs",
     "test:spoilers": "node tests/spoilers.check.mjs",
     "test:unit": "playwright test rating-access.spec.ts rating-access-sql.spec.ts genius-extract.spec.ts --project=desktop --workers=1"
   },

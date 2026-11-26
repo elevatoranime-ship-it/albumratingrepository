@@ -4446,8 +4446,7 @@ function openEditRelease(al: UiAlbum): void {
   editJointField.hidden = isSingleEdit;
   editArtistInput.value = first;
   editJointCheck.checked = joint && !isSingleEdit;
-  editJointBox.hidden = !editJointCheck.checked;
-  editJointBox.classList.toggle('is-revealed', editJointCheck.checked);
+  setJointReveal(editJointBox, editJointCheck.checked);
   editJointInput.value = second;
   editTitleInput.value = al.title;
   editYearInput.value = String(al.year);
@@ -7628,7 +7627,7 @@ function resetAddForm(): void {
   window.clearTimeout(coverUrlTimer);
   artistList.hidden = true;
   jointList.hidden = true;
-  jointBox.hidden = true;
+  setJointReveal(jointBox, false);
   jointField.hidden = true;
   jointCheck.checked = false;
   maxiField.hidden = true;
@@ -7672,7 +7671,7 @@ function applyAddMode(kind: ReleaseKind): void {
     ? 'файл или ссылку можно заменить позже, на странице сингла; без своей обложки подставится обложка альбома'
     : 'файл или ссылка — обложку можно будет заменить и позже, на странице альбома';
   if (!single) {
-    jointBox.hidden = !jointCheck.checked;
+    setJointReveal(jointBox, jointCheck.checked);
   } else {
     maxiTracks.hidden = !maxiCheck.checked;
   }

@@ -1,13 +1,14 @@
 /* Проверка спойлеров оценок на jsdom — работает без браузера:
      node tests/spoilers.check.mjs   (npm run test:spoilers)
    Что проверяем:
-     1) CSS-селекторы размытия действительно есть в разметке/рендерах;
+     1) CSS-селекторы маски (**) находятся в разметке/рендерах;
      2) тумблер в «мой профиль» включает body.spoilers, пишет настройку
-        в localStorage и чистит подсказки-тултипы чипов с баллами;
+        в localStorage, чистит подсказки-тултипы чипов и рисует '**'
+        в «моя оценка» сингла;
      3) настройка переживает перезагрузку (вход с сохранённым значением);
      4) выключение возвращает всё как было.
-   Визуальное размытие (filter: blur) проверяет Playwright-спека
-   tests/spoilers.spec.ts в CI. */
+   Визуальная маска (прозрачный текст + псевдоэлемент '**', фоновые '**'
+   в поле ввода) — Playwright-спека tests/spoilers.spec.ts в CI. */
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -85,27 +86,44 @@ const SEED_RATINGS = JSON.stringify({
 });
 
 function checkCssSelectors() {
-  console.log('проверка: CSS-селекторы спойлеров находят свои элементы');
+  console.log('проверка: CSS-селекторы маски находят свои элементы');
   const classes = new Set(
     [...stylesCss.matchAll(/body\.spoilers \.([A-Za-z0-9_-]+)/g)].map((m) => m[1]),
   );
-  check('селекторов размытия достаточно', classes.size >= 10, true);
+  check('селекторов маски достаточно', classes.size >= 10, true);
   for (const cls of classes) {
     const found = html.includes(cls) || appSource.includes(cls);
     check(`.${cls} есть в разметке или рендерах`, found, true);
   }
 }
 
+async function openFirstAlbum(doc, visible) {
+  doc.querySelector('#albums .album .album__title').click();
+  await waitFor(() => visible().join() === 'view-album');
+}
+
+async function openFirstSingle(doc, visible) {
+  doc.querySelector('#seg-singles').click();
+  doc.querySelector('#albums .album .album__title').click();
+  await waitFor(() => visible().join() === 'view-single');
+}
+
+async function backHome(doc, visible, viewId) {
+  doc.querySelector(viewId === 'view-single' ? '#single-back' : '#album-back').click();
+  await waitFor(() => visible().join() === 'view-home');
+  if (viewId === 'view-single') doc.querySelector('#seg-albums').click(); // вернуть режим альбомов
+}
+
 async function scenarioToggleAndTitles() {
-  console.log('сценарий: тумблер, подсказки чипов, выключение');
+  console.log('сценарий: тумблер, звёздочки, подсказки чипов, выключение');
   const { dom, window, doc, visible, pageErrors } = await boot({
     track_ratings_local_v1: SEED_RATINGS,
   });
   check('при входе спойлеры выключены', doc.body.classList.contains('spoilers'), false);
 
-  // спойлеры выключены: подсказки чипов вклада называют балл
-  doc.querySelector('#albums .album .album__title').click();
-  await waitFor(() => visible().join() === 'view-album');
+  // спойлеры выключены: подсказки чипов вклада называют балл,
+  // «моя оценка» сингла показывает настоящее число
+  await openFirstAlbum(doc, visible);
   const chips = [...doc.querySelectorAll('#av-chips .av__chip')];
   check('чипы «вклад в общий балл» отрисованы', chips.length >= 2, true);
   check('подсказки чипов содержат балл (спойлеры выключены)', chips.every((c) => /\d/.test(c.title)), true);
@@ -115,10 +133,13 @@ async function scenarioToggleAndTitles() {
     && doc.querySelector('.track__numinput')
     && doc.querySelector('.track__slider'),
   ), true);
+  await backHome(doc, visible, 'view-album');
 
-  // назад на главную → «мой профиль» → включаем
-  doc.querySelector('#album-back').click();
-  await waitFor(() => visible().join() === 'view-home');
+  await openFirstSingle(doc, visible);
+  check('без спойлеров «моя оценка» — настоящее число', doc.querySelector('#sv-mine').textContent, '9.4');
+  await backHome(doc, visible, 'view-single');
+
+  // «мой профиль» → включаем
   doc.querySelector('#profile-btn').click();
   await waitFor(() => visible().join() === 'view-profile');
   const toggle = doc.querySelector('#prof-spoilers');
@@ -130,17 +151,19 @@ async function scenarioToggleAndTitles() {
   const saved = JSON.parse(window.localStorage.getItem('spoilers_local_v1'));
   check('настройка сохранена по id участника', saved, { [USER_ID]: true });
 
-  // включены: подсказки чипов пустые, чтобы не выдавать балл
+  // включены: подсказки чипов пустые, «моя оценка» — звёздочки
   doc.querySelector('#profile-back').click();
   await waitFor(() => visible().join() === 'view-home');
-  doc.querySelector('#albums .album .album__title').click();
-  await waitFor(() => visible().join() === 'view-album');
+  await openFirstAlbum(doc, visible);
   const chips2 = [...doc.querySelectorAll('#av-chips .av__chip')];
   check('при спойлерах подсказки чипов пустые', chips2.length >= 2 && chips2.every((c) => c.title === ''), true);
+  await backHome(doc, visible, 'view-album');
+
+  await openFirstSingle(doc, visible);
+  check('при спойлерах «моя оценка» — звёздочки', doc.querySelector('#sv-mine').textContent, '**');
+  await backHome(doc, visible, 'view-single');
 
   // выключаем обратно
-  doc.querySelector('#album-back').click();
-  await waitFor(() => visible().join() === 'view-home');
   doc.querySelector('#profile-btn').click();
   await waitFor(() => visible().join() === 'view-profile');
   doc.querySelector('#prof-spoilers').click();

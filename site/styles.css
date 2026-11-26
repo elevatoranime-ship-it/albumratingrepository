@@ -4359,29 +4359,63 @@ body { -webkit-tap-highlight-color: transparent; }
 
 /* ==========================================================================
    СПОЙЛЕРЫ ОЦЕНКИ — настройка «скрывать оценки» в окне «мой профиль».
-   Пока включены, все баллы замазаны: карточки главной, средние альбомов и
-   синглов, трековые оценки, вклады участников. Поле и ползунок своей оценки
-   проявляются в фокусе/при удержании — можно выставить балл, не выключая
-   спойлер. Класс вешается на body, поэтому действует на всех экранах сразу.
+   Вместо балла в его месте звёздочки: текст числа гаснет, а поверх ложится
+   псевдоэлемент '**' — одинаковый при любом значении, поэтому анимация
+   tweenText спокойно крутит невидимое число под маской. Поле своей оценки
+   рисует '**' фоном, пока не получит фокус; у ползунка не видна «головка» —
+   позиция не выдаёт число. Маска висит на body, действует на всех экранах.
    ========================================================================== */
 body.spoilers .album__avg-num,
-body.spoilers .album__featbadge,
 body.spoilers .scard__score,
 body.spoilers .artist__score-num,
 body.spoilers .av__avg-num,
 body.spoilers .sv__avg-num,
 body.spoilers .av__chip-val,
 body.spoilers .track__avg,
-body.spoilers .track__peer-val,
-body.spoilers .sv__mine,
-body.spoilers .track__numinput,
-body.spoilers .track__slider {
-  filter: blur(0.34em);
-  transition: filter 0.45s var(--ease-out);
+body.spoilers .track__peer-val {
+  display: inline-block;
+  position: relative;
+  color: transparent;
+}
+body.spoilers .album__avg-num::after,
+body.spoilers .scard__score::after,
+body.spoilers .artist__score-num::after,
+body.spoilers .av__avg-num::after,
+body.spoilers .sv__avg-num::after,
+body.spoilers .av__chip-val::after,
+body.spoilers .track__avg::after,
+body.spoilers .track__peer-val::after {
+  content: '**';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 0.12em;
+  color: var(--text);
+  pointer-events: none;
+}
+
+/* поле своей оценки: '**' фоном, пока поле пустое не станет и не получит
+   фокус — выставить балл можно, не выключая спойлер */
+body.spoilers .track__numinput:not(:placeholder-shown) {
+  color: transparent;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2044%2016'%3E%3Ctext%20x='22'%20y='12.5'%20text-anchor='middle'%20font-family='Georgia,%20serif'%20font-size='13'%20fill='%23f3f1ec'%20fill-opacity='0.9'%3E**%3C/text%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  transition: color 0.25s var(--ease-out);
 }
 body.spoilers .track__numinput:focus,
-body.spoilers .track__numinput:active,
-body.spoilers .track__slider:focus,
-body.spoilers .track__slider:active {
-  filter: none;
+body.spoilers .track__numinput:active {
+  color: var(--text);
+  background-image: none;
 }
+
+/* ползунок: «головка» не видна — позиция не выдаёт оценку; при фокусе или
+   перетаскивании возвращается, чтобы можно было выставить балл */
+body.spoilers .track__slider::-webkit-slider-thumb { opacity: 0 !important; }
+body.spoilers .track__slider::-moz-range-thumb { opacity: 0 !important; }
+body.spoilers .track__slider:focus::-webkit-slider-thumb,
+body.spoilers .track__slider:active::-webkit-slider-thumb { opacity: 1 !important; }
+body.spoilers .track__slider:focus::-moz-range-thumb,
+body.spoilers .track__slider:active::-moz-range-thumb { opacity: 1 !important; }

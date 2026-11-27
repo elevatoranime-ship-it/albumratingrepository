@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { extractLyrics, extractLyricsDetailed, normalizeAnnotation } from '../../worker.js';
+import { extractLyrics, extractLyricsDetailed, normalizeAnnotation, mapAnnRefs, domToHtml } from '../../worker.js';
 
 /* Разбор страницы genius.com в текст песни — оба прокси (worker.js для Cloudflare,
    server.py для превью) на одной и той же разметке должны давать одинаковый чистый
@@ -134,4 +134,295 @@ test('нормализация аннотации одинакова в worker.j
   expect(bare).toEqual({ id: '5', url: 'https://genius.com/annotations/5', author: null, created_at: null, html: '', youtube: [] });
   expect(pyJson('normalize_annotation(json.loads(sys.stdin.read()))', JSON.stringify({ id: 5, body: { html: '' } })))
     .toEqual(bare);
+});
+
+/* --- реальные данные Genius (сняты26.11.2026): api.genius.com referents +
+   официальное тело аннотации + текст со снимка Wayback. Так проверяем новый
+   путь прод-цепочки: страница genius.com с сервера закрыта (403), refs и тела
+   берутся из официального API. */
+const HUMBLE_TEXT = "[Intro]\nNobody pray for me\nIt been that day for me\nWay (Yeah, yeah)\n\n[Verse 1]\nAyy, I remember syrup sandwiches and crime allowances\nFinesse a nigga with some counterfeits, but now I'm countin\u2019 this\nParmesan where my accountant lives, in fact, I'm downin' this\nD\u2019uss\u00e9 with my boo bae, tastes like Kool-Aid for the analysts\nGirl, I can buy your ass the world with my paystub\nOoh, that pussy good, won't you sit it on my taste bloods?\nI get way too petty once you let me do the extras\nPull up on your block, then break it down, we playin' Tetris\nA.m. to the p.m., p.m. to the a.m., funk\nPiss out your per diem, you just gotta hate 'em, funk\nIf I quit your BM, I still ride Mercedes, funk\nIf I quit this season, I still be the greatest, funk\nMy left stroke just went viral\nRight stroke put lil' baby in a spiral\nSoprano C, we like to keep it on a high note\nIt's levels to it, you and I know\n\n[Chorus]\nBitch, be humble (Hold up, bitch)\nSit down (Hold up, lil'\u2014 hold up, lil' bitch)\nBe humble (Hold up, bitch)\nSit down (Hold up, sit down, lil\u2019\u2014 sit down, lil\u2019 bitch)\nBe humble (Hold up, hold up, hold up, hold up, lil' bitch)\nBitch, sit down (Hold up, lil\u2019 bitch)\nBe humble (Hold up, bitch)\nSit down (Hold up, hold up, hold up, hold up)\nBe humble (Hold up, hold up, hold up, hold up, lil'\u2014)\nSit down (Hold up, lil' bitch)\nBe humble (Hold up, bitch)\nSit down (Hold up, sit down, lil'\u2014 sit down, lil\u2019 bitch)\nBe humble (Hold up, hold up, hold up, hold up, lil' bitch)\nBitch, sit down (Hold up, lil' bitch)\nBe humble (Hold up, bitch)\nSit down (Hold up, hold up, hold up, hold up)\n\n[Verse 2]\nWho that nigga thinkin' that he frontin' on Man-Man? (Man-Man)\nGet the fuck off my stage, I'm the Sandman (Sandman)\nGet the fuck off my dick, that ain't right\nI make a play fucking up your whole life\nI'm so fuckin' sick and tired of the Photoshop\nShow me somethin' natural like afro on Richard Pryor\nShow me somethin' natural like ass with some stretch marks\nStill'll take you down right on your mama couch in Polo socks\nAyy, this shit way too crazy, ayy, you do not amaze me, ayy\nI blew cool from AC, ayy, Obama just paged me, ayy\nI don't fabricate it, ayy, most of y'all be fakin', ayy\nI stay modest 'bout it, ayy, she elaborate it, ayy\nThis that Grey Poupon, that Evian, that TED Talk, ayy\nWatch my soul speak, you let the meds talk, ayy\nIf I kill a nigga, it won't be the alcohol, ayy\nI'm the realest nigga after all\n\n[Chorus]\nBitch, be humble (Hold up, bitch)\nSit down (Hold up, lil'\u2014 hold up, lil' bitch)\nBe humble (Hold up, bitch)\nSit down (Hold up, sit down, lil'\u2014 sit down, lil' bitch)\nBe humble (Hold up, hold up, hold up, hold up, lil' bitch)\nBitch, sit down (Hold up, lil' bitch)\nBe humble (Hold up, bitch)\nSit down (Hold up, hold up, hold up, hold up)\nBe humble (Hold up, hold up, hold up, hold up, lil'\u2014)\nSit down (Hold up, lil' bitch)\nBe humble (Hold up, bitch)\nSit down (Hold up, sit down, lil'\u2014 sit down, lil' bitch)\nBe humble (Hold up, hold up, hold up, hold up, lil' bitch)\nBitch, sit down (Hold up, lil' bitch)\nBe humble (Hold up, bitch)\nSit down (Hold up, hold up, hold up, hold up)";
+const HUMBLE_REFERENTS = [
+ {
+  "id": 11776682,
+  "path": "/11776682/Kendrick-lamar-humble/Ooh-that-pussy-good-wont-you-sit-it-on-my-taste-bloods",
+  "fragment": "Ooh, that pussy good, won’t you sit it on my taste bloods?",
+  "range": {
+   "content": "Ooh, that pussy good, won't you sit it on my taste bloods?"
+  },
+  "is_description": false,
+  "annotations": [
+   {
+    "id": 11776682
+   }
+  ]
+ },
+ {
+  "id": 11593217,
+  "path": "/11593217/Kendrick-lamar-humble/Watch-my-soul-speak-you-let-the-meds-talk-ayy-if-i-kill-a-nigga-it-wont-be-the-alcohol-ayy-im-the-realest-nigga-after-all",
+  "fragment": "Watch my soul speak, you let the meds talk, ayy\n If I kill a nigga, it won’t be the alcohol, ayy\n I’m the realest nigga after all",
+  "range": {
+   "content": "Watch my soul speak, you let the meds talk, ayy\n If I kill a nigga, it won't be the alcohol, ayy\n I'm the realest nigga after all"
+  },
+  "is_description": false,
+  "annotations": [
+   {
+    "id": 11593217
+   }
+  ]
+ },
+ {
+  "id": 11593050,
+  "path": "/11593050/Kendrick-lamar-humble/Intro-nobody-pray-for-me-it-been-that-day-for-me-way-yeah-yeah",
+  "fragment": "[Intro]\n Nobody pray for me\n It been that day for me\n Way (Yeah, yeah)",
+  "range": {
+   "content": "[Intro]\n Nobody pray for me\n It been that day for me\n Way (Yeah, yeah)"
+  },
+  "is_description": false,
+  "annotations": [
+   {
+    "id": 11593050
+   }
+  ]
+ },
+ {
+  "id": 11592958,
+  "path": "/11592958/Kendrick-lamar-humble/Parmesan-where-my-accountant-lives-in-fact-im-downin-this-dusse-with-my-boo-bae-tastes-like-kool-aid-for-the-analysts",
+  "fragment": "Parmesan where my accountant lives, in fact, I’m downin’ this\n D’ussé with my boo bae, tastes like Kool-Aid for the analysts",
+  "range": {
+   "content": "Parmesan where my accountant lives, in fact, I'm downin' this\n D'ussé with my boo bae, tastes like Kool-Aid for the analysts"
+  },
+  "is_description": false,
+  "annotations": [
+   {
+    "id": 11592958
+   }
+  ]
+ },
+ {
+  "id": 11592775,
+  "path": "/11592775/Kendrick-lamar-humble/Girl-i-can-buy-your-ass-the-world-with-my-paystub",
+  "fragment": "Girl, I can buy your ass the world with my paystub",
+  "range": {
+   "content": "Girl, I can buy your ass the world with my paystub"
+  },
+  "is_description": false,
+  "annotations": [
+   {
+    "id": 11592775
+   }
+  ]
+ },
+ {
+  "id": 11592646,
+  "path": "/11592646/Kendrick-lamar-humble/Bitch-be-humble-hold-up-bitch-sit-down-hold-up-lil-hold-up-lil-bitch-be-humble-hold-up-bitch-sit-down-hold-up-sit-down-lil-sit-down-lil-bitch-be-humble-hold-up-hold-up-hold-up-hold-up-lil-bitch-bitch-sit-down-hold-up-lil-bitch-be-humble-hold-up-bitch-sit-down-hold-up-hold-up-hold-up-hold-up-be-humble-hold-up-hold-up-hold-up-hold-up-lil-sit-down-hold-up-lil-bitch-be-humble-hold-up-bitch-sit-down-hold-up-sit-down-lil-sit-down-lil-bitch-be-humble-hold-up-hold-up-hold-up-hold-up-lil-bitch-bitch-sit",
+  "fragment": "Bitch, be humble (Hold up, bitch)\n Sit down (Hold up, lil’— hold up, lil’ bitch)\n Be humble (Hold up, bitch)\n Sit down (Hold up, sit down, lil’— sit down, lil’ bitch)\n Be humble (Hold up, hold up, hold up, hold up, lil’ bitch)\n Bitch, sit down (Hold up, lil’ bitch)\n Be humble (Hold up, bitch)\n Sit down (Hold up, hold up, hold up, hold up)\n Be humble (Hold up, hold up, hold up, hold up, lil’—)\n Sit down (Hold up, lil’ bitch)\n Be humble (Hold up, bitch)\n Sit down (Hold up, sit down, lil’— sit down, lil’ bitch)\n Be humble (Hold up, hold up, hold up, hold up, lil’ bitch)\n Bitch, sit down (Hold up, lil’ bitch)\n Be humble (Hold up, bitch)\n Sit down (Hold up, hold up, hold up, hold up)",
+  "range": {
+   "content": "Bitch, be humble (Hold up, bitch)\n Sit down (Hold up, lil'— hold up, lil' bitch)\n Be humble (Hold up, bitch)\n Sit down (Hold up, sit down, lil'— sit down, lil' bitch)\n Be humble (Hold up, hold up, hold up, hold up, lil' bitch)\n Bitch, sit down (Hold up, lil' bitch)\n Be humble (Hold up, bitch)\n Sit down (Hold up, hold up, hold up, hold up)\n Be humble (Hold up, hold up, hold up, hold up, lil'—)\n Sit down (Hold up, lil' bitch)\n Be humble (Hold up, bitch)\n Sit down (Hold up, sit down, lil'— sit down, lil' bitch)\n Be humble (Hold up, hold up, hold up, hold up, lil' bitch)\n Bitch, sit down (Hold up, lil' bitch)\n Be humble (Hold up, bitch)\n Sit down (Hold up, hold up, hold up, hold up)"
+  },
+  "is_description": false,
+  "annotations": [
+   {
+    "id": 11592646
+   }
+  ]
+ },
+ {
+  "id": 11592574,
+  "path": "/11592574/Kendrick-lamar-humble/Verse-1-ayy-i-remember-syrup-sandwiches-and-crime-allowances-finesse-a-nigga-with-some-counterfeits-but-now-im-countin-this",
+  "fragment": "[Verse 1]\n Ayy, I remember syrup sandwiches and crime allowances\n Finesse a nigga with some counterfeits, but now I’m countin’ this",
+  "range": {
+   "content": "[Verse 1]\n Ayy, I remember syrup sandwiches and crime allowances\n Finesse a nigga with some counterfeits, but now I'm countin' this"
+  },
+  "is_description": false,
+  "annotations": [
+   {
+    "id": 11592574
+   }
+  ]
+ },
+ {
+  "id": 11592561,
+  "path": "/11592561/Kendrick-lamar-humble/I-get-way-too-petty-once-you-let-me-do-the-extras-pull-up-on-your-block-then-break-it-down-we-playin-tetris-am-to-the-pm-pm-to-the-am-funk",
+  "fragment": "I get way too petty once you let me do the extras\n Pull up on your block, then break it down, we playin’ Tetris\n A.m. to the p.m., p.m. to the a.m., funk",
+  "range": {
+   "content": "I get way too petty once you let me do the extras\n Pull up on your block, then break it down, we playin' Tetris\n A.m. to the p.m., p.m. to the a.m., funk"
+  },
+  "is_description": false,
+  "annotations": [
+   {
+    "id": 11592561
+   }
+  ]
+ }
+] as unknown as Array<Record<string, unknown>>;
+const HUMBLE_ANNOTATION = {
+ "api_path": "/annotations/35874550",
+ "body": {
+  "dom": {
+   "tag": "root",
+   "children": [
+    {
+     "tag": "p",
+     "children": [
+      "Kendrick is flexing his ability to shift the culture or dominate the game with a single move — a track, a verse, a decision.",
+      {
+       "tag": "br"
+      },
+      "When he “makes a play,” it’s not minor — it’s something that could undermine your whole career or identity, especially if you’re faking it or trying to compete with him."
+     ]
+    },
+    "",
+    {
+     "tag": "p",
+     "children": [
+      "It’s both a warning and a power statement:"
+     ]
+    },
+    "",
+    {
+     "tag": "p",
+     "children": [
+      "“I move with purpose, and my moves have real consequences — for me and for anyone in the way.”"
+     ]
+    }
+   ]
+  }
+ },
+ "comment_count": 1,
+ "community": true,
+ "custom_preview": null,
+ "has_voters": true,
+ "id": 35874550,
+ "pinned": false,
+ "share_url": "https://genius.com/35874550",
+ "source": null,
+ "state": "pending",
+ "url": "https://genius.com/35874550/Kendrick-lamar-humble/I-make-a-play-fucking-up-your-whole-life",
+ "verified": false,
+ "votes_total": 5,
+ "current_user_metadata": {
+  "permissions": [],
+  "excluded_permissions": [
+   "vote",
+   "edit",
+   "cosign",
+   "uncosign",
+   "destroy",
+   "accept",
+   "reject",
+   "see_unreviewed",
+   "clear_votes",
+   "propose_edit_to",
+   "pin_to_profile",
+   "unpin_from_profile",
+   "update_source",
+   "edit_custom_preview",
+   "report_as_abusive",
+   "create_comment"
+  ],
+  "interactions": {
+   "cosign": false,
+   "pyong": false,
+   "vote": null
+  },
+  "iq_by_action": {}
+ },
+ "authors": [
+  {
+   "attribution": 1.0,
+   "pinned_role": null,
+   "user": {
+    "api_path": "/users/23120751",
+    "avatar": {
+     "tiny": {
+      "url": "https://images.genius.com/avatars/tiny/4e44bd87198f6acaa39eea13d31fc004",
+      "bounding_box": {
+       "width": 16,
+       "height": 16
+      }
+     },
+     "thumb": {
+      "url": "https://images.genius.com/avatars/thumb/4e44bd87198f6acaa39eea13d31fc004",
+      "bounding_box": {
+       "width": 32,
+       "height": 32
+      }
+     },
+     "small": {
+      "url": "https://images.genius.com/avatars/small/4e44bd87198f6acaa39eea13d31fc004",
+      "bounding_box": {
+       "width": 100,
+       "height": 100
+      }
+     },
+     "medium": {
+      "url": "https://images.genius.com/avatars/medium/4e44bd87198f6acaa39eea13d31fc004",
+      "bounding_box": {
+       "width": 300,
+       "height": 400
+      }
+     }
+    },
+    "header_image_url": "https://filepicker-images.genius.com/ee496405a64b1be3968d585278c2fbd265ba63e8e6429bee2f427d27e9c16e4a%2Fj7r1ou5503a",
+    "human_readable_role_for_display": "Contributor",
+    "id": 23120751,
+    "login": "Coinz_101",
+    "name": "Coinz_101",
+    "role_for_display": "contributor",
+    "url": "https://genius.com/Coinz_101",
+    "current_user_metadata": {
+     "permissions": [],
+     "excluded_permissions": [
+      "follow"
+     ],
+     "interactions": {
+      "following": false
+     }
+    },
+    "iq": 965
+   }
+  }
+ ],
+ "cosigned_by": [],
+ "rejection_comment": null,
+ "verified_by": null
+} as unknown as Record<string, unknown>;
+
+test('referents API: фрагмент → индексы строк (реальные данные HUMBLE.)', () => {
+  const refs = mapAnnRefs(HUMBLE_REFERENTS, HUMBLE_TEXT) as Array<{ id: string; lines: number[] }>;
+  expect(refs).toHaveLength(HUMBLE_REFERENTS.length); // каждый фрагмент находит себя
+  const total = HUMBLE_TEXT.split('\n').length;
+  for (const r of refs) {
+    expect(r.lines.length).toBeGreaterThan(0);
+    for (const l of r.lines) expect(l).toBeLessThan(total);
+  }
+  // мультистрочный фрагмент покрывает несколько строк
+  const multi = refs.filter((r) => r.lines.length > 1);
+  expect(multi.length).toBeGreaterThanOrEqual(2);
+  // API отдаёт прямые кавычки, в тексте — типографские: всё равно находимся
+  expect(refs.find((r) => r.id === '11592958')).toBeTruthy();
+  // фрагмент, начинающийся с [Verse 1], занимает строки куплета
+  const verse = refs.find((r) => r.id === '11592574');
+  expect(verse!.lines.length).toBeGreaterThanOrEqual(3);
+  // is_description не попадает в refs (в выборке их нет — проверяем и так)
+  expect(mapAnnRefs([{ is_description: true, annotations: [{ id: 9 }], range: { content: 'x' } }], 'x')).toEqual([]);
+  // источник недоступен / фрагмент не найден — тихо без refs
+  expect(mapAnnRefs(null, HUMBLE_TEXT)).toEqual([]);
+  expect(mapAnnRefs([], HUMBLE_TEXT)).toEqual([]);
+});
+
+test('официальный формат аннотации: body.dom → html, автор из authors', () => {
+  const norm = normalizeAnnotation(HUMBLE_ANNOTATION);
+  expect(norm.id).toBe('35874550');
+  expect(norm.author).toEqual({ name: 'Coinz_101', url: 'https://genius.com/Coinz_101' });
+  expect(norm.created_at).toBeNull(); // в официальном API поля нет
+  expect(norm.url).toContain('/35874550/');
+  expect(norm.html).toContain('<p>');
+  expect(norm.html).toContain('<br>');
+  expect(norm.youtube).toEqual([]);
+  // санитайзер: неизвестные теги разворачиваются, ссылки — только http(s)
+  expect(domToHtml({ tag: 'root', children: [{ tag: 'script', children: ['alert(1)'] }] })).toBe('alert(1)');
+  expect(domToHtml({ tag: 'a', attributes: { href: 'javascript:x' }, children: ['y'] })).toBe('y');
+  expect(domToHtml({ tag: 'a', attributes: { href: 'https://genius.com/a' }, children: ['y'] })).toBe('<a href="https://genius.com/a">y</a>');
+  expect(domToHtml('a < b & c')).toBe('a &lt; b &amp; c');
 });

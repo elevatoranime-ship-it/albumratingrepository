@@ -43,11 +43,18 @@ async function waitFor(fn, timeout = 8000, step = 40) {
 
 console.log('проверка: статика аннотаций');
 check('worker: маршрут /api/genius/annotations', workerJs.includes("'/api/genius/annotations'"), true);
-check('worker: разбор возвращает refs', workerJs.includes('extractLyricsDetailed') && workerJs.includes('refs: detailed.refs'), true);
+check('worker: разбор возвращает refs', workerJs.includes('extractLyricsDetailed') && workerJs.includes('refs: refs.length ? refs : detailed.refs'), true);
 check('worker: нормализация аннотации экспортирована', workerJs.includes('export function normalizeAnnotation'), true);
+check('worker: текст — Wayback при403, refs — официальный referents API',
+  ['waybackHtml', 'id_/', 'geniusReferents', 'mapAnnRefs'].every((s) => workerJs.includes(s)), true);
+check('worker: тело аннотации — api.genius.com + body.dom → html',
+  ['api.genius.com/annotations', 'domToHtml'].every((s) => workerJs.includes(s)), true);
 check('server: маршрут /api/genius/annotations', serverPy.includes('/api/genius/annotations'), true);
-check('server: lyrics-ответ содержит refs', serverPy.includes('"refs": detailed["refs"]'), true);
+check('server: lyrics-ответ содержит refs', serverPy.includes('"refs": refs or detailed["refs"]'), true);
 check('server: normalize_annotation зеркалит worker', serverPy.includes('def normalize_annotation'), true);
+check('server: текст — Wayback при403, refs — referents API (паритет worker)',
+  ['fetch_lyrics_html', 'wayback_html', 'id_/', 'map_ann_refs', 'dom_to_html'].every((s) => serverPy.includes(s)), true);
+check('server: аннотация из api.genius.com', serverPy.includes('api.genius.com/annotations'), true);
 check('server: макет --mock-genius для превью без сети', serverPy.includes('--mock-genius') && serverPy.includes('MOCK_LYRICS_HTML'), true);
 check('server: макетные аннотации идут через normalize_annotation', serverPy.includes('normalize_annotation(raw)'), true);
 check('разметка: карточки на обоих экранах', ['id="lyrics-ann"', 'id="vinyl-ann"', 'id="lyrics-body"', 'id="vinyl-textwrap"'].every((s) => html.includes(s)), true);

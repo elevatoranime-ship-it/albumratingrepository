@@ -3,9 +3,9 @@
 Прокси нужен для живого превью и ручной проверки: в проде то же самое делает
 worker.js на Cloudflare. Эндпоинты:
   /api/genius/search?q=…  → прокси api.genius.com/search (поиск песен)
-  /api/genius/lyrics?id=… → текст песни со страницы genius.com + refs
-                            (какими строками покрыты аннотации)
-  /api/genius/annotations?id=… → аннотация из JSON genius.com/api/annotations/:id
+  /api/genius/lyrics?id=… → текст песни (genius.com с сервера закрыт —
+                            Wayback-снимок) + refs из официального API referents
+  /api/genius/annotations?id=… → аннотация из api.genius.com/annotations/:id
 
 Флаг --mock-genius — макет для превью без доступа к genius.com (например,
 в песочнице): те же три эндпоинта отвечают фикстурами, весь путь
@@ -18,6 +18,7 @@ import os
 import re
 import socketserver
 import sys
+import time
 import urllib.parse
 import urllib.error
 import urllib.request
@@ -226,26 +227,193 @@ def youtube_ids(text):
     return sorted(ids)
 
 
+# --- источники данных: страница genius.com с сервера закрыта (403, bot-защита) ---
+# Текст берём из свежего снимка Wayback (вариант id_ — оригинальная разметка),
+# покрытие аннотаций — из официального API referents (якоря в HTML больше не
+# содержат id — слаг-ссылки). Зеркалит worker.js.
+
+
+def wayback_html(page_url):
+    """Свежий снимок страницы в Wayback: сначала availability, потом оригинал (id_)."""
+    avail = "https://archive.org/wayback/available?" + urllib.parse.urlencode({"url": page_url})
+    req = urllib.request.Request(avail, headers={"user-agent": UA})
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        snap = (json.loads(resp.read().decode("utf-8", "replace")).get("archived_snapshots") or {}).get("closest")
+    if not snap or not snap.get("url") or not snap.get("timestamp"):
+        return None
+    wb_url = f"https://web.archive.org/web/{snap['timestamp']}id_/{page_url}"
+
+    def get():
+        req = urllib.request.Request(wb_url, headers={"user-agent": UA})
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return resp.read().decode("utf-8", "replace")
+
+    try:
+        return get()
+    except urllib.error.HTTPError as err:
+        if err.code != 429:
+            raise
+        time.sleep(1.5)  # politeness-лимит archive.org — один повтор
+        return get()
+
+
+def fetch_lyrics_html(page_url):
+    """HTML страницы песни: сначала сам genius.com, при ошибке/403 — Wayback."""
+    live_status = None
+    try:
+        req = urllib.request.Request(
+            page_url, headers={"user-agent": UA, "accept-language": "en,ru;q=0.9"}
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.read().decode("utf-8", "replace")
+    except Exception as err:  # noqa: BLE001 — HTTPError и сетевые сбои одинаковы
+        live_status = getattr(err, "code", None) or str(err)
+    html = wayback_html(page_url)
+    if html is None:
+        raise RuntimeError(
+            f"страница Genius ответила {live_status}; свежего снимка Wayback нет"
+        )
+    return html
+
+
+def genius_referents(song_id):
+    """Официальный API referents — покрытие аннотаций; None — источник недоступен."""
+    try:
+        data = genius_api("/referents", {"song_id": str(song_id), "per_page": "50"})
+    except Exception:  # noqa: BLE001 — refs украшение, текст отдаём и без них
+        return None
+    referents = (data.get("response") or {}).get("referents")
+    return referents if isinstance(referents, list) else []
+
+
+# Складка символов1→1: API отдаёт прямые кавычки, страница — типографские.
+FOLD_CHARS = {
+    "\u2018": "'", "\u2019": "'", "\u201a": "'", "\u201b": "'", "\u2032": "'",
+    "\u201c": '"', "\u201d": '"', "\u201e": '"', "\u201f": '"', "\u2033": '"',
+    "\u2013": "-", "\u2014": "-", "\u2212": "-",
+}
+
+
+def canon_with_map(text):
+    """Канонический вид текста + карта позиций — зеркалит canonWithMap в worker.js."""
+    out = []
+    pos_map = []
+    for i, ch in enumerate(text):
+        folded = FOLD_CHARS.get(ch, ch)
+        if re.match(r"\s", folded):
+            if out and out[-1] != " ":
+                out.append(" ")
+                pos_map.append(i)
+        else:
+            out.append(folded)
+            pos_map.append(i)
+    return "".join(out), pos_map
+
+
+def map_ann_refs(referents, text):
+    """refs из referents API: фрагмент → строки текста. Зеркалит mapAnnRefs."""
+    if not isinstance(referents, list) or not text:
+        return []
+    canon, pos_map = canon_with_map(text)
+    out = []
+    seen = set()
+
+    def line_of(off):
+        return text.count("\n", 0, off)
+
+    for rf in referents:
+        if not isinstance(rf, dict) or rf.get("is_description"):
+            continue
+        anns = rf.get("annotations") if isinstance(rf.get("annotations"), list) else []
+        ann = anns[0] if anns and isinstance(anns[0], dict) else None
+        ann_id = str(ann.get("id")) if ann and ann.get("id") is not None else ""
+        if not ann_id or ann_id in seen:
+            continue
+        rng = rf.get("range") if isinstance(rf.get("range"), dict) else {}
+        raw = rng.get("content") if isinstance(rng.get("content"), str) and rng.get("content") else (
+            rf.get("fragment") if isinstance(rf.get("fragment"), str) else ""
+        )
+        frag = canon_with_map(raw)[0].strip()
+        if not frag:
+            continue
+        at = canon.find(frag)
+        if at == -1:
+            continue
+        start = pos_map[at]
+        end = pos_map[min(at + len(frag), len(pos_map) - 1)] + 1
+        first, last = line_of(start), line_of(max(start, end - 1))
+        seen.add(ann_id)
+        out.append({"id": ann_id, "lines": list(range(first, last + 1))})
+    out.sort(key=lambda r: (r["lines"][0], r["id"]))
+    return out
+
+
+# body.dom официального API → html: текст экранируется, неизвестные теги
+# разворачиваются, ссылки — только http(s). Клиент санитайзером — второй рубеж.
+ANN_HTML_TAGS = {
+    "p", "br", "a", "i", "em", "b", "strong", "u", "s", "span", "sub", "sup",
+    "blockquote", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "code", "hr",
+}
+
+
+def escape_ann_text(s):
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def dom_to_html(node):
+    """Зеркалит domToHtml из worker.js."""
+    if node is None:
+        return ""
+    if isinstance(node, str):
+        return escape_ann_text(node)
+    if isinstance(node, list):
+        return "".join(dom_to_html(x) for x in node)
+    if not isinstance(node, dict):
+        return ""
+    tag = str(node.get("tag") or "").lower()
+    kids = dom_to_html(node.get("children"))
+    if tag == "root" or tag not in ANN_HTML_TAGS:
+        return kids
+    if tag == "br":
+        return "<br>"
+    if tag == "a":
+        attrs = node.get("attributes") if isinstance(node.get("attributes"), dict) else {}
+        href = str(attrs.get("href") or "")
+        if not re.match(r"^https?://", href, re.I):
+            return kids
+        return f'<a href="{href.replace(chr(34), "&quot;")}">{kids}</a>'
+    return f"<{tag}>{kids}</{tag}>"
+
+
 def normalize_annotation(ann):
     """Стабильная форма аннотации для клиента — зеркалит worker.js."""
     body = ann if isinstance(ann, dict) else {}
     inner = body.get("body") if isinstance(body.get("body"), dict) else {}
-    html = inner.get("html") if isinstance(inner.get("html"), str) else ""
-    author_raw = body.get("author") if isinstance(body.get("author"), dict) else None
+    html = inner.get("html") if isinstance(inner.get("html"), str) and inner.get("html") else dom_to_html(inner.get("dom"))
+    authors = body.get("authors") if isinstance(body.get("authors"), list) else []
+    author_user = None
+    if authors and isinstance(authors[0], dict) and isinstance(authors[0].get("user"), dict):
+        author_user = authors[0]["user"]
+    legacy = body.get("author") if isinstance(body.get("author"), dict) else None
+    if isinstance(author_user, dict) and isinstance(author_user.get("name"), str) and author_user.get("name"):
+        author_name = author_user["name"]
+    elif legacy and isinstance(legacy.get("name"), str) and legacy.get("name"):
+        author_name = legacy["name"]
+    else:
+        author_name = None
+    if isinstance(author_user, dict) and isinstance(author_user.get("url"), str) and author_user.get("url"):
+        author_url = author_user["url"]
+    elif legacy and isinstance(legacy.get("url"), str) and legacy.get("url"):
+        author_url = legacy["url"]
+    else:
+        author_url = None
     ann_id = str(body.get("id")) if body.get("id") is not None else ""
-    author = None
-    if author_raw and isinstance(author_raw.get("name"), str) and author_raw.get("name"):
-        url = author_raw.get("url")
-        author = {
-            "name": author_raw["name"],
-            "url": url if isinstance(url, str) and url else None,
-        }
     url = body.get("url")
     created = body.get("created_at")
     return {
         "id": ann_id,
         "url": url if isinstance(url, str) and url else f"https://genius.com/annotations/{ann_id}",
-        "author": author,
+        "author": {"name": author_name, "url": author_url} if author_name else None,
         "created_at": created if isinstance(created, str) and created else None,
         "html": html,
         "youtube": youtube_ids(html),
@@ -348,12 +516,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 song = (meta.get("response") or {}).get("song")
                 if not song:
                     return self._json({"error": "song not found"}, 404)
-                req = urllib.request.Request(
-                    song["url"], headers={"user-agent": UA, "accept-language": "en,ru;q=0.9"}
-                )
-                with urllib.request.urlopen(req, timeout=20) as resp:
-                    html = resp.read().decode("utf-8", "replace")
+                html = fetch_lyrics_html(song["url"])
                 detailed = extract_lyrics_detailed(html)
+                # refs: официальный referents API; недоступен — якоря из HTML
+                referents = genius_referents(song_id)
+                refs = map_ann_refs(referents, detailed["text"]) if referents else []
                 return self._json({"song": {
                     "id": song.get("id"),
                     "title": song.get("title"),
@@ -361,20 +528,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                     "url": song.get("url"),
                     "lyrics_state": song.get("lyrics_state"),
                     "text": detailed["text"],
-                    "refs": detailed["refs"],
+                    "refs": refs or detailed["refs"],
                 }})
             if self.path.startswith("/api/genius/annotations"):
                 ann_id = re.sub(r"\D", "", (params.get("id") or [""])[0])
                 if not ann_id:
                     return self._json({"error": "missing id"}, 400)
-                # Внутренний JSON Genius — тот же, которым пользуется сам сайт:
-                # официальный API аннотаций не отдаёт.
-                req = urllib.request.Request(
-                    f"https://genius.com/api/annotations/{ann_id}",
-                    headers={"user-agent": UA, "accept": "application/json"},
+                # Официальный API: тот же JSON, которым Genius отдаёт тела
+                # аннотаций (внутренний /api/annotations закрыт bot-защитой).
+                api = "https://api.genius.com/annotations/" + ann_id + "?" + urllib.parse.urlencode(
+                    {"access_token": GENIUS_TOKEN}
                 )
-                with urllib.request.urlopen(req, timeout=20) as resp:
-                    data = json.loads(resp.read().decode("utf-8", "replace"))
+                req = urllib.request.Request(api, headers={"user-agent": UA, "accept": "application/json"})
+                try:
+                    with urllib.request.urlopen(req, timeout=15) as resp:
+                        data = json.loads(resp.read().decode("utf-8", "replace"))
+                except urllib.error.HTTPError as err:
+                    if err.code == 404:
+                        return self._json({"error": "annotation not found"}, 404)
+                    raise RuntimeError(f"Genius API ответил {err.code}") from None
                 ann = (data.get("response") or {}).get("annotation")
                 if not ann:
                     return self._json({"error": "annotation not found"}, 404)

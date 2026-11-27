@@ -8371,7 +8371,9 @@ async function init(): Promise<void> {
   // так же, как это уже делают карточки релизов.
   document.addEventListener('animationend', (ev) => {
     const el = ev.target;
-    if (ev.animationName === 'rise' && el instanceof HTMLElement && el.classList.contains('reveal')) {
+    // rise — общий кейфрейм, riseSoft — у reveal внутри view-specific правил
+    const isRevealAnim = ev.animationName === 'rise' || ev.animationName === 'riseSoft';
+    if (isRevealAnim && el instanceof HTMLElement && el.classList.contains('reveal')) {
       el.classList.remove('reveal');
       el.style.animation = 'none';
     }

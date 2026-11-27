@@ -64,7 +64,8 @@ check('стили: у карточки нет display через [hidden]', !/\.
 check('клиент: санитайзер и YouTube', ['GENIUS_ANN_KEEP', 'youtube-nocookie.com/embed', 'geniusAnnSanitize'].every((s) => appSource.includes(s)), true);
 // без клинапа Chrome оставляет identity-матрицу reveal-анимации — секция
 // становится containing block для fixed-шторки и обрезает её overflow'ом
-check('клиент: reveal снимается после анимации rise (нет вечного fixed-CB)', appSource.includes("ev.animationName === 'rise'"), true);
+check('клиент: reveal снимается после анимации rise/riseSoft (нет вечного fixed-CB)',
+  appSource.includes("ev.animationName === 'rise'") && appSource.includes("'riseSoft'"), true);
 
 /* --- поведение --- */
 

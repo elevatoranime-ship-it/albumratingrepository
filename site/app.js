@@ -27322,7 +27322,8 @@ ${suffix}`;
     window.setTimeout(() => card.classList.add("animate-in"), 140);
     document.addEventListener("animationend", (ev) => {
       const el = ev.target;
-      if (ev.animationName === "rise" && el instanceof HTMLElement && el.classList.contains("reveal")) {
+      const isRevealAnim = ev.animationName === "rise" || ev.animationName === "riseSoft";
+      if (isRevealAnim && el instanceof HTMLElement && el.classList.contains("reveal")) {
         el.classList.remove("reveal");
         el.style.animation = "none";
       }

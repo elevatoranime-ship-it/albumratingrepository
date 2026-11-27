@@ -68,7 +68,7 @@ check('стили: мобильная шторка bottom-anchored (top: auto)',
 check('стили: шторка учитывает safe-area iPhone', stylesCss.includes('env(safe-area-inset-bottom)'), true);
 check('стили: подсветка, раскладка, iframe', ['.lyrics__line.is-ref', '.lyrics__body.is-ann', '.lyrics__ann-body iframe'].every((s) => stylesCss.includes(s)), true);
 check('стили: у карточки нет display через [hidden]', !/\.lyrics__ann\s*\{[^}]*display\s*:/.test(stylesCss), true);
-check('клиент: санитайзер и YouTube', ['GENIUS_ANN_KEEP', 'youtube-nocookie.com/embed', 'geniusAnnSanitize'].every((s) => appSource.includes(s)), true);
+check('клиент: санитайзер и YouTube', ['GENIUS_ANN_KEEP', 'youtube-nocookie.com/embed', 'geniusAnnSanitize', 'geniusAnnImageSrc', 'filepicker-images.genius.com'].every((s) => appSource.includes(s)), true);
 // без клинапа Chrome оставляет identity-матрицу reveal-анимации — секция
 // становится containing block для fixed-шторки и обрезает её overflow'ом
 check('клиент: reveal снимается после анимации rise/riseSoft (нет вечного fixed-CB)',
@@ -84,6 +84,8 @@ const annFixture = {
   created_at: '2024-05-01T12:00:00Z',
   html: '<p>Это <b>аннотация</b> со <a href="https://genius.com/annotated-song-lyrics">ссылкой</a>.</p>'
     + '<img src="https://images.genius.com/pic.jpg" alt="картинка"/>'
+    // вложение genius-CDN: в body приходит ссылкой — карточка показывает картинкой
+    + '<a href="https://filepicker-images.genius.com/f0b42d309c89a7fd2dc9d87d18a52225ddb601db51a5aad98857cff9a15ded3%2Fac9am38xyy6">https://filepicker-images.genius.com/f0b42d309c89a7fd2dc9d87d18a52225ddb601db51a5aad98857cff9a15ded3%2Fac9am38xyy6</a>'
     + '<a href="https://www.youtube.com/watch?v=abc123def45"><img src="https://i.ytimg.com/vi/abc123def45/hqdefault.jpg" alt=""/></a>'
     + '<script>alert(1)</script>',
   youtube: ['abc123def45'],
@@ -182,6 +184,10 @@ async function scenario() {
   check('тело: script выброшен', ann.querySelector('.lyrics__ann-body script'), null);
   check('тело: ссылка https осталась', Boolean(ann.querySelector('.lyrics__ann-body a[href="https://genius.com/annotated-song-lyrics"]')), true);
   check('тело: картинка с CDN', ann.querySelector('.lyrics__ann-body img')?.getAttribute('src'), 'https://images.genius.com/pic.jpg');
+  // ссылка-вложение genius-CDN (filepicker, без расширения) — картинкой, не URL-текстом
+  check('тело: ссылка-картинка стала <img>',
+    Boolean(ann.querySelector('.lyrics__ann-body img[src^="https://filepicker-images.genius.com/"]')), true);
+  check('тело: без ссылки-URL вместо картинки', ann.querySelector('.lyrics__ann-body a[href^="https://filepicker"]'), null);
   check('YouTube — iframe в карточке', ann.querySelector('.lyrics__ann-body iframe')?.getAttribute('src'), 'https://www.youtube-nocookie.com/embed/abc123def45');
   check('ссылка на аннотацию', ann.querySelector('.lyrics__ann-link')?.getAttribute('href'), 'https://genius.com/annotations/555');
   check('открытая строка активна', refs[0].classList.contains('is-active'), true);

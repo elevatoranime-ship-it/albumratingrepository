@@ -26036,6 +26036,20 @@ ${suffix}`;
     f.referrerPolicy = "strict-origin-when-cross-origin";
     return f;
   }
+  var GENIUS_ANN_IMG_HOSTS = /* @__PURE__ */ new Set(["images.genius.com", "filepicker-images.genius.com"]);
+  var GENIUS_ANN_IMG_EXT_RE = /\.(?:png|jpe?g|gif|webp|avif)$/i;
+  function geniusAnnImageSrc(href) {
+    let u;
+    try {
+      u = new URL(href);
+    } catch {
+      return null;
+    }
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    if (GENIUS_ANN_IMG_HOSTS.has(u.hostname)) return href;
+    if (GENIUS_ANN_IMG_EXT_RE.test(u.pathname)) return href;
+    return null;
+  }
   var GENIUS_ANN_KEEP = /* @__PURE__ */ new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "S", "BLOCKQUOTE", "UL", "OL", "LI", "H2", "H3", "H4", "FIGURE", "FIGCAPTION", "IMG", "A"]);
   var GENIUS_ANN_DROP = /* @__PURE__ */ new Set(["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "SVG", "MATH", "FORM", "INPUT", "BUTTON", "SELECT", "TEXTAREA", "VIDEO", "AUDIO", "SOURCE", "NOSCRIPT"]);
   function geniusAnnSanitize(src, dst, seen) {
@@ -26060,6 +26074,16 @@ ${suffix}`;
             seen.add(yt);
             dst.appendChild(geniusYoutubeIframe(yt));
           }
+          continue;
+        }
+        const imgSrc = geniusAnnImageSrc(href);
+        if (imgSrc) {
+          const img = document.createElement("img");
+          img.src = imgSrc;
+          img.alt = "";
+          img.loading = "lazy";
+          img.referrerPolicy = "no-referrer";
+          dst.appendChild(img);
           continue;
         }
         const a = document.createElement("a");

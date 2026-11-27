@@ -6964,6 +6964,26 @@ function geniusYoutubeIframe(id: string): HTMLIFrameElement {
   return f;
 }
 
+/** Хосты Genius, где по ссылке гарантированно лежит картинка (hotlink-решение
+    по аннотациям); URL без расширения (filepicker) распознаём только по хосту. */
+const GENIUS_ANN_IMG_HOSTS = new Set(['images.genius.com', 'filepicker-images.genius.com']);
+const GENIUS_ANN_IMG_EXT_RE = /\.(?:png|jpe?g|gif|webp|avif)$/i;
+
+/** Ссылка-картинка → src для <img>: в теле аннотации такие ссылки рендерим
+    самой картинкой, а не текстом-URL (так Genius показывает вложения). */
+function geniusAnnImageSrc(href: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(href);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  if (GENIUS_ANN_IMG_HOSTS.has(u.hostname)) return href;
+  if (GENIUS_ANN_IMG_EXT_RE.test(u.pathname)) return href;
+  return null;
+}
+
 /* Тело аннотации — чужой HTML: вставляем только известные теги и только
    http(s)-ссылки; всё остальное (скрипты, iframe, style) выбрасываем,
    прочие элементы разворачиваем в содержимое. */
@@ -6993,6 +7013,17 @@ function geniusAnnSanitize(src: Node, dst: ParentNode, seen: Set<string>): void 
           dst.appendChild(geniusYoutubeIframe(yt));
         }
         continue; // вместо ссылки-превью — сам плеер
+      }
+      const imgSrc = geniusAnnImageSrc(href);
+      if (imgSrc) {
+        // ссылка на картинку (вложение genius-CDN) — сама картинка, не URL-текст
+        const img = document.createElement('img');
+        img.src = imgSrc;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.referrerPolicy = 'no-referrer';
+        dst.appendChild(img);
+        continue;
       }
       const a = document.createElement('a');
       a.href = href;

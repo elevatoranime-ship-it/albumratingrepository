@@ -8363,6 +8363,20 @@ async function init(): Promise<void> {
   card.classList.add('enter');
   window.setTimeout(() => card.classList.add('animate-in'), 140);
 
+  // reveal-анимация заканчивается keyframe'ом transform: none — Chrome по
+  // завершении оставляет identity-матрицу, и элемент навсегда становится
+  // containing block для fixed-потомков: мобильная шторка аннотации
+  // привязывалась к секции сингла и обрезалась её overflow: hidden
+  // (клик по × пробивался в содержимое под шторкой). Снимаем класс —
+  // так же, как это уже делают карточки релизов.
+  document.addEventListener('animationend', (ev) => {
+    const el = ev.target;
+    if (ev.animationName === 'rise' && el instanceof HTMLElement && el.classList.contains('reveal')) {
+      el.classList.remove('reveal');
+      el.style.animation = 'none';
+    }
+  });
+
   if (CLOUD) {
     try {
       const { data } = await getSB().auth.getSession();

@@ -27320,6 +27320,13 @@ ${suffix}`;
     showDemoHint();
     card.classList.add("enter");
     window.setTimeout(() => card.classList.add("animate-in"), 140);
+    document.addEventListener("animationend", (ev) => {
+      const el = ev.target;
+      if (ev.animationName === "rise" && el instanceof HTMLElement && el.classList.contains("reveal")) {
+        el.classList.remove("reveal");
+        el.style.animation = "none";
+      }
+    });
     if (CLOUD) {
       try {
         const { data } = await getSB().auth.getSession();

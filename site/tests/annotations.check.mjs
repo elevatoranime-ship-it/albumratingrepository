@@ -62,6 +62,9 @@ check('стили: шторка учитывает safe-area iPhone', stylesCss.
 check('стили: подсветка, раскладка, iframe', ['.lyrics__line.is-ref', '.lyrics__body.is-ann', '.lyrics__ann-body iframe'].every((s) => stylesCss.includes(s)), true);
 check('стили: у карточки нет display через [hidden]', !/\.lyrics__ann\s*\{[^}]*display\s*:/.test(stylesCss), true);
 check('клиент: санитайзер и YouTube', ['GENIUS_ANN_KEEP', 'youtube-nocookie.com/embed', 'geniusAnnSanitize'].every((s) => appSource.includes(s)), true);
+// без клинапа Chrome оставляет identity-матрицу reveal-анимации — секция
+// становится containing block для fixed-шторки и обрезает её overflow'ом
+check('клиент: reveal снимается после анимации rise (нет вечного fixed-CB)', appSource.includes("ev.animationName === 'rise'"), true);
 
 /* --- поведение --- */
 

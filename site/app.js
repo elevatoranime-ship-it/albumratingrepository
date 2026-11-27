@@ -20453,10 +20453,13 @@ ${suffix}`;
       if (viewTrank.classList.contains("is-visible")) renderTrackRank();
       if (viewAlbum.classList.contains("is-visible")) renderAlbumSingles();
       if (viewSingle.classList.contains("is-visible") && !currentSingle()) {
-        viewStack.length = 0;
-        viewStack.push({ view: "home" });
-        void swapTo(viewSingle, viewHome, () => {
-          viewHome.scrollTop = 0;
+        void queueNav(async () => {
+          if (!viewSingle.classList.contains("is-visible") || currentSingle()) return;
+          viewStack.length = 0;
+          viewStack.push({ view: "home" });
+          await swapTo(viewSingle, viewHome, () => {
+            viewHome.scrollTop = 0;
+          });
         });
         renderAlbums();
         toast("\u042D\u0442\u043E\u0442 \u0441\u0438\u043D\u0433\u043B \u0443\u0434\u0430\u043B\u0451\u043D");
@@ -20525,27 +20528,64 @@ ${suffix}`;
   });
   window.addEventListener("focus", resumeSynchronization);
   window.addEventListener("online", resumeSynchronization);
+  var LS_SPOILERS = "spoilers_local_v1";
+  var spoilersOn = false;
+  function loadSpoilersFor(id) {
+    try {
+      const raw = localStorage.getItem(LS_SPOILERS);
+      return raw ? Boolean(JSON.parse(raw)[id]) : false;
+    } catch {
+      return false;
+    }
+  }
+  function saveSpoilersFor(id, on) {
+    try {
+      const raw = localStorage.getItem(LS_SPOILERS);
+      const map = raw ? JSON.parse(raw) : {};
+      map[id] = on;
+      localStorage.setItem(LS_SPOILERS, JSON.stringify(map));
+    } catch {
+    }
+  }
+  function applySpoilers() {
+    document.body.classList.toggle("spoilers", spoilersOn);
+  }
+  function loadSpoilersForUser(id) {
+    spoilersOn = loadSpoilersFor(id);
+    applySpoilers();
+  }
   window.addEventListener("storage", (event) => {
+    if (event.key === LS_SPOILERS) {
+      if (currentUser) {
+        loadSpoilersForUser(currentUser.id);
+        syncSpoilerToggle();
+      }
+      return;
+    }
     if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_SINGLE_RATINGS, LS_META].includes(event.key))) requestSync(0);
   });
   async function ensureProfile(user) {
     const s = getSB();
     const { data } = await s.from("profiles").select("*").eq("id", user.id).maybeSingle();
+    let profile;
     if (data) {
-      return {
+      profile = {
         id: data.id,
         email: user.email ?? "",
         username: data.username,
         initials: data.initials,
         avatarUrl: data.avatar_url ?? null
       };
+    } else {
+      const email = (user.email ?? "").toLowerCase();
+      const allowed = ALLOWED_USERS.find((u) => u.email.toLowerCase() === email);
+      const username = allowed?.username ?? (user.email ?? "user").split("@")[0];
+      const initials = allowed?.initials ?? (username.charAt(0).toUpperCase() || "?");
+      await s.from("profiles").insert({ id: user.id, username, initials, avatar_url: null });
+      profile = { id: user.id, email: user.email ?? "", username, initials, avatarUrl: null };
     }
-    const email = (user.email ?? "").toLowerCase();
-    const allowed = ALLOWED_USERS.find((u) => u.email.toLowerCase() === email);
-    const username = allowed?.username ?? (user.email ?? "user").split("@")[0];
-    const initials = allowed?.initials ?? (username.charAt(0).toUpperCase() || "?");
-    await s.from("profiles").insert({ id: user.id, username, initials, avatar_url: null });
-    return { id: user.id, email: user.email ?? "", username, initials, avatarUrl: null };
+    loadSpoilersForUser(profile.id);
+    return profile;
   }
   async function loginCloud(email, password) {
     const { data, error } = await getSB().auth.signInWithPassword({ email, password });
@@ -20574,6 +20614,7 @@ ${suffix}`;
       initials: u.initials,
       avatarUrl: m?.avatarUrl ?? null
     };
+    loadSpoilersForUser(currentUser.id);
   }
   function isAdmin() {
     if (!currentUser) return false;
@@ -21123,6 +21164,7 @@ ${suffix}`;
   var albumRankList = q("#album-rank-list");
   var artistsBtn = q("#artists-btn");
   var profileBack = q("#profile-back");
+  var profSpoilers = q("#prof-spoilers");
   var profAvatar = q("#prof-avatar");
   var profUpload = q("#prof-upload");
   var profRemove = q("#prof-remove");
@@ -21262,7 +21304,17 @@ ${suffix}`;
   var addSubmit = q("#add-submit");
   var addSubmitLabel = q("#add-submit-label");
   var addError = q("#add-error");
+  var navChain = Promise.resolve();
+  function queueNav(task) {
+    const run = navChain.then(task);
+    navChain = run.then(() => void 0, () => void 0);
+    return run;
+  }
   async function swapTo(from, to, after) {
+    if (from === to) {
+      after?.();
+      return;
+    }
     if (from === viewAdd) setEvaluatorOpen(false);
     from.classList.add("is-leaving");
     await sleep3(560);
@@ -21270,11 +21322,15 @@ ${suffix}`;
     from.style.display = "none";
     to.style.display = "";
     to.classList.remove("is-visible");
-    requestAnimationFrame(() => {
-      to.classList.add("is-visible");
-      if (after) after();
-      flushSynchronizedRender();
-    });
+    await new Promise((resolve) => requestAnimationFrame(() => {
+      try {
+        to.classList.add("is-visible");
+        if (after) after();
+        flushSynchronizedRender();
+      } finally {
+        resolve();
+      }
+    }));
   }
   var isRegisterMode = false;
   var authBusy = false;
@@ -21352,10 +21408,10 @@ ${suffix}`;
     success.classList.add("is-visible");
     await sleep3(1350);
     success.classList.remove("is-visible");
-    await swapTo(viewLogin, viewHome, () => {
+    await queueNav(() => swapTo(viewLogin, viewHome, () => {
       viewHome.scrollTop = 0;
       moveSegThumb();
-    });
+    }));
     passwordInput.value = "";
     password2Input.value = "";
     renderAlbums();
@@ -21366,13 +21422,17 @@ ${suffix}`;
       stopRealtime();
       if (CLOUD) await getSB().auth.signOut();
       currentUser = null;
+      spoilersOn = false;
+      applySpoilers();
       currentAlbumId = null;
       currentSingleId = null;
       currentArtistName = null;
       pendingSingleRatings.clear();
-      viewStack.length = 0;
-      viewStack.push({ view: "home" });
-      await swapTo(viewHome, viewLogin);
+      await queueNav(async () => {
+        viewStack.length = 0;
+        viewStack.push({ view: "home" });
+        await swapTo(viewHome, viewLogin);
+      });
       viewHome.querySelectorAll(".album").forEach((el) => {
         el.classList.add("reveal");
         el.style.animation = "";
@@ -21775,7 +21835,7 @@ ${suffix}`;
       ${avatarMarkup(r, "av__chip-who")}
       <span class="av__chip-val">${r.mean === null ? "\u2014" : fmt(r.mean)}</span>
       <span class="av__chip-sub">${label} \xB7 ${r.n} \u0438\u0437 ${list.length}</span>`;
-      chip.title = `${r.username}: ${r.mean === null ? "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043E\u043A" : fmt(r.mean) + " \u0432 \u0441\u0440\u0435\u0434\u043D\u0435\u043C"} \xB7 ${r.n}/${list.length} \u0442\u0440\u0435\u043A\u043E\u0432`;
+      chip.title = spoilersOn ? "" : `${r.username}: ${r.mean === null ? "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043E\u043A" : fmt(r.mean) + " \u0432 \u0441\u0440\u0435\u0434\u043D\u0435\u043C"} \xB7 ${r.n}/${list.length} \u0442\u0440\u0435\u043A\u043E\u0432`;
       avChips.appendChild(chip);
     }
   }
@@ -23059,106 +23119,111 @@ ${suffix}`;
     return viewStack[viewStack.length - 1] ?? { view: "home" };
   }
   async function navigateTo(view, entry) {
-    const from = visibleView() ?? viewHome;
-    viewStack.push(entry);
-    await swapTo(from, view, () => {
-      view.scrollTop = 0;
+    await queueNav(async () => {
+      const from = visibleView() ?? viewHome;
+      if (from === view) return;
+      viewStack.push(entry);
+      await swapTo(from, view, () => {
+        view.scrollTop = 0;
+      });
     });
   }
   async function goBack() {
-    viewStack.pop();
-    if (viewAlbum.classList.contains("is-visible")) setActiveTrack(null);
-    const prev = topEntry();
-    const from = visibleView() ?? viewHome;
-    switch (prev.view) {
-      case "album": {
-        currentAlbumId = prev.albumId ?? null;
-        currentSingleId = null;
-        const al = albums.find((a) => a.id === prev.albumId);
-        if (al) renderAlbumPage(al);
-        await swapTo(from, viewAlbum, () => {
-          viewAlbum.scrollTop = 0;
-        });
-        break;
+    await queueNav(async () => {
+      viewStack.pop();
+      if (viewAlbum.classList.contains("is-visible")) setActiveTrack(null);
+      const prev = topEntry();
+      const from = visibleView() ?? viewHome;
+      switch (prev.view) {
+        case "album": {
+          currentAlbumId = prev.albumId ?? null;
+          currentSingleId = null;
+          const al = albums.find((a) => a.id === prev.albumId);
+          if (al) renderAlbumPage(al);
+          await swapTo(from, viewAlbum, () => {
+            viewAlbum.scrollTop = 0;
+          });
+          break;
+        }
+        case "single": {
+          currentSingleId = prev.singleId ?? null;
+          currentAlbumId = null;
+          const s = albums.find((a) => a.id === prev.singleId);
+          if (s) renderSinglePage(s);
+          await swapTo(from, viewSingle, () => {
+            viewSingle.scrollTop = 0;
+          });
+          break;
+        }
+        case "artist": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          if (currentArtistName) renderArtistPage();
+          await swapTo(from, viewArtist, () => {
+            viewArtist.scrollTop = 0;
+          });
+          break;
+        }
+        case "profile": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderProfilePage();
+          await swapTo(from, viewProfile, () => {
+            viewProfile.scrollTop = 0;
+          });
+          break;
+        }
+        case "rank": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderArtistRank();
+          await swapTo(from, viewRank, () => {
+            viewRank.scrollTop = 0;
+          });
+          break;
+        }
+        case "arank": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderAlbumRank();
+          await swapTo(from, viewArank, () => {
+            viewArank.scrollTop = 0;
+          });
+          break;
+        }
+        case "trank": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderTrackRank();
+          await swapTo(from, viewTrank, () => {
+            viewTrank.scrollTop = 0;
+          });
+          break;
+        }
+        case "add": {
+          currentAlbumId = null;
+          currentSingleId = null;
+          applyAddMode(prev.kind);
+          await swapTo(from, viewAdd, () => {
+            viewAdd.scrollTop = 0;
+          });
+          break;
+        }
+        default: {
+          currentAlbumId = null;
+          currentSingleId = null;
+          currentArtistName = null;
+          renderAlbums();
+          await swapTo(from, viewHome, () => {
+            viewHome.scrollTop = 0;
+          });
+        }
       }
-      case "single": {
-        currentSingleId = prev.singleId ?? null;
-        currentAlbumId = null;
-        const s = albums.find((a) => a.id === prev.singleId);
-        if (s) renderSinglePage(s);
-        await swapTo(from, viewSingle, () => {
-          viewSingle.scrollTop = 0;
-        });
-        break;
-      }
-      case "artist": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        if (currentArtistName) renderArtistPage();
-        await swapTo(from, viewArtist, () => {
-          viewArtist.scrollTop = 0;
-        });
-        break;
-      }
-      case "profile": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderProfilePage();
-        await swapTo(from, viewProfile, () => {
-          viewProfile.scrollTop = 0;
-        });
-        break;
-      }
-      case "rank": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderArtistRank();
-        await swapTo(from, viewRank, () => {
-          viewRank.scrollTop = 0;
-        });
-        break;
-      }
-      case "arank": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderAlbumRank();
-        await swapTo(from, viewArank, () => {
-          viewArank.scrollTop = 0;
-        });
-        break;
-      }
-      case "trank": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderTrackRank();
-        await swapTo(from, viewTrank, () => {
-          viewTrank.scrollTop = 0;
-        });
-        break;
-      }
-      case "add": {
-        currentAlbumId = null;
-        currentSingleId = null;
-        applyAddMode(prev.kind);
-        await swapTo(from, viewAdd, () => {
-          viewAdd.scrollTop = 0;
-        });
-        break;
-      }
-      default: {
-        currentAlbumId = null;
-        currentSingleId = null;
-        currentArtistName = null;
-        renderAlbums();
-        await swapTo(from, viewHome, () => {
-          viewHome.scrollTop = 0;
-        });
-      }
-    }
+    });
   }
   async function openRelease(id) {
     const rel = albums.find((a) => a.id === id);
@@ -23197,7 +23262,7 @@ ${suffix}`;
       <span class="album__year">${a.year}</span>
       ${badge}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ""}
-      ${featScore !== null ? `<span class="album__featbadge">\u0444\u0438\u0442 ${fmt(featScore)}</span>` : ""}
+      ${featScore !== null ? `<span class="album__featbadge">\u0444\u0438\u0442 ${spoilersOn ? "***" : fmt(featScore)}</span>` : ""}
     </div>
     <div class="album__body">
       <h3 class="album__title">${esc(title)}</h3>
@@ -23655,6 +23720,7 @@ ${suffix}`;
     profRemove.hidden = !currentUser.avatarUrl;
     profError.textContent = "";
     profError.classList.remove("is-visible");
+    syncSpoilerToggle();
   }
   async function openProfile() {
     renderProfilePage();
@@ -23662,6 +23728,18 @@ ${suffix}`;
   }
   profileBtn.addEventListener("click", () => void openProfile());
   profileBack.addEventListener("click", () => void goBack());
+  function syncSpoilerToggle() {
+    profSpoilers.classList.toggle("is-on", spoilersOn);
+    profSpoilers.setAttribute("aria-checked", String(spoilersOn));
+  }
+  profSpoilers.addEventListener("click", () => {
+    if (!currentUser) return;
+    spoilersOn = !spoilersOn;
+    saveSpoilersFor(currentUser.id, spoilersOn);
+    applySpoilers();
+    syncSpoilerToggle();
+    toast(spoilersOn ? "\u043E\u0446\u0435\u043D\u043A\u0438 \u0441\u043A\u0440\u044B\u0442\u044B" : "\u043E\u0446\u0435\u043D\u043A\u0438 \u0441\u043D\u043E\u0432\u0430 \u0432\u0438\u0434\u043D\u044B");
+  });
   function applyProfileToUi() {
     setAvatarEl(homeAvatar, currentUser);
     setAvatarEl(profAvatar, currentUser);
@@ -23779,8 +23857,7 @@ ${suffix}`;
     editJointField.hidden = isSingleEdit;
     editArtistInput.value = first;
     editJointCheck.checked = joint && !isSingleEdit;
-    editJointBox.hidden = !editJointCheck.checked;
-    editJointBox.classList.toggle("is-revealed", editJointCheck.checked);
+    setJointReveal(editJointBox, editJointCheck.checked);
     editJointInput.value = second;
     editTitleInput.value = al.title;
     editYearInput.value = String(al.year);
@@ -23982,15 +24059,17 @@ ${suffix}`;
       }
       const wasLast = currentAlbumId === al.id;
       currentAlbumId = null;
-      viewStack.length = 0;
-      viewStack.push({ view: "home" });
-      if (wasLast) {
-        await crumbleCover();
+      await queueNav(async () => {
+        viewStack.length = 0;
+        viewStack.push({ view: "home" });
         renderAlbums();
-        await swapTo(viewAlbum, viewHome, () => {
-          viewHome.scrollTop = 0;
-        });
-      }
+        if (wasLast && viewAlbum.classList.contains("is-visible")) {
+          await crumbleCover();
+          await swapTo(viewAlbum, viewHome, () => {
+            viewHome.scrollTop = 0;
+          });
+        }
+      });
       toast("\u0410\u043B\u044C\u0431\u043E\u043C \u0443\u0434\u0430\u043B\u0451\u043D");
     } catch (err) {
       toast(messageOf(err));
@@ -24225,7 +24304,7 @@ ${suffix}`;
       ${avatarMarkup(row, "av__chip-who")}
       <span class="av__chip-val">${row.value ? fmt(row.value.score) : "\u2014"}</span>
       <span class="av__chip-sub">${label} \xB7 ${state}</span>`;
-      chip.title = `${row.username}: ${row.value ? fmt(row.value.score) : "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043A\u0438"} \xB7 ${state}`;
+      chip.title = spoilersOn ? "" : `${row.username}: ${row.value ? fmt(row.value.score) : "\u043D\u0435\u0442 \u043E\u0446\u0435\u043D\u043A\u0438"} \xB7 ${state}`;
       svChips.appendChild(chip);
     }
   }
@@ -24262,7 +24341,7 @@ ${suffix}`;
   function renderSingleMine() {
     const s = currentSingle();
     const mine = currentUser && s ? singleRatings[s.id]?.[currentUser.id] : void 0;
-    svMine.textContent = mine ? fmt(mine.score) : "\u2014";
+    svMine.textContent = mine ? spoilersOn ? "***" : fmt(mine.score) : "\u2014";
     svMine.classList.toggle("is-empty", !mine);
   }
   function syncSingleControls() {
@@ -24562,13 +24641,16 @@ ${suffix}`;
         saveLocalSingleRatings();
       }
       currentSingleId = null;
-      viewStack.length = 0;
-      viewStack.push({ view: "home" });
-      await crumbleCover(".sv__cover");
-      setHomeMode("single", false);
-      renderAlbums();
-      await swapTo(viewSingle, viewHome, () => {
-        viewHome.scrollTop = 0;
+      await queueNav(async () => {
+        viewStack.length = 0;
+        viewStack.push({ view: "home" });
+        const onSingle = viewSingle.classList.contains("is-visible");
+        if (onSingle) await crumbleCover(".sv__cover");
+        setHomeMode("single", false);
+        renderAlbums();
+        if (onSingle) await swapTo(viewSingle, viewHome, () => {
+          viewHome.scrollTop = 0;
+        });
       });
       toast("\u0421\u0438\u043D\u0433\u043B \u0443\u0434\u0430\u043B\u0451\u043D");
     } catch (err) {
@@ -25541,15 +25623,43 @@ ${suffix}`;
     const data = await geniusApi("lyrics", { id });
     const song = data.song;
     if (!song) throw new GeniusError("parse", "\u043F\u0435\u0441\u043D\u044F \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430");
+    const refs = Array.isArray(song.refs) ? song.refs.flatMap((r) => {
+      if (!r || typeof r !== "object") return [];
+      const obj = r;
+      const rid = typeof obj.id === "string" || typeof obj.id === "number" ? String(obj.id) : "";
+      const lines = Array.isArray(obj.lines) ? obj.lines.filter((n) => typeof n === "number" && Number.isInteger(n) && n >= 0) : [];
+      return rid && lines.length ? [{ id: rid, lines }] : [];
+    }) : [];
     const parsed = {
       id: String(song.id),
       title: typeof song.title === "string" ? song.title : "",
       artist: typeof song.artist === "string" ? song.artist : "",
       url: typeof song.url === "string" ? song.url : "",
       lyricsState: typeof song.lyrics_state === "string" ? song.lyrics_state : null,
-      text: typeof song.text === "string" ? song.text : ""
+      text: typeof song.text === "string" ? song.text : "",
+      refs
     };
     geniusLyricsCache.set(id, parsed);
+    return parsed;
+  }
+  var geniusAnnCache = /* @__PURE__ */ new Map();
+  async function geniusFetchAnnotation(id) {
+    const hit = geniusAnnCache.get(id);
+    if (hit) return hit;
+    const data = await geniusApi("annotations", { id });
+    const a = data.annotation;
+    if (!a) throw new GeniusError("parse", "\u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044F \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430");
+    const authorRaw = a.author && typeof a.author === "object" ? a.author : null;
+    const authorName = authorRaw && typeof authorRaw.name === "string" && authorRaw.name ? authorRaw.name : null;
+    const parsed = {
+      id: typeof a.id === "string" ? a.id : id,
+      url: typeof a.url === "string" && a.url ? a.url : `https://genius.com/annotations/${id}`,
+      author: authorName ? { name: authorName, url: typeof authorRaw?.url === "string" && authorRaw.url ? authorRaw.url : null } : null,
+      createdAt: typeof a.created_at === "string" && a.created_at ? a.created_at : null,
+      html: typeof a.html === "string" ? a.html : "",
+      youtube: Array.isArray(a.youtube) ? a.youtube.filter((x) => typeof x === "string") : []
+    };
+    geniusAnnCache.set(id, parsed);
     return parsed;
   }
   var GENIUS_BRACKETS_RE = /[(\[{][^)\]}]*[)\]}]/g;
@@ -25640,6 +25750,8 @@ ${suffix}`;
   var lyricsFixCancel = q("#lyrics-fix-cancel");
   var lyricsFixSave = q("#lyrics-fix-save");
   var lyricsFixNote = q("#lyrics-fix-note");
+  var lyricsBody = q("#lyrics-body");
+  var lyricsAnn = q("#lyrics-ann");
   var vinylSection = q("#vinyl-section");
   var vinylDisc = q("#vinyl-disc");
   var vinylArt = q("#vinyl-art");
@@ -25663,6 +25775,8 @@ ${suffix}`;
   var vinylFixCancel = q("#vinyl-fix-cancel");
   var vinylFixSave = q("#vinyl-fix-save");
   var vinylFixNote = q("#vinyl-fix-note");
+  var vinylTextwrap = q("#vinyl-textwrap");
+  var vinylAnn = q("#vinyl-ann");
   var albumLyricsUi = {
     song: lyricsSong,
     artist: lyricsArtist,
@@ -25675,6 +25789,8 @@ ${suffix}`;
     report: lyricsReport,
     copy: lyricsCopy,
     text: lyricsText,
+    bodyWrap: lyricsBody,
+    ann: lyricsAnn,
     fix: lyricsFix,
     cands: lyricsCands,
     url: lyricsUrl,
@@ -25696,6 +25812,8 @@ ${suffix}`;
     report: vinylReport,
     copy: vinylCopy,
     text: vinylText,
+    bodyWrap: vinylTextwrap,
+    ann: vinylAnn,
     fix: vinylFix,
     cands: vinylCands,
     url: vinylUrl,
@@ -25705,6 +25823,26 @@ ${suffix}`;
     fixNote: vinylFixNote,
     typewriter: true
   };
+  for (const ui of [albumLyricsUi, vinylLyricsUi]) {
+    const openFrom = (target) => {
+      const line = target?.closest(".is-ref") ?? null;
+      if (line && ui.text.contains(line) && line.dataset.ann) {
+        geniusAnnOpen(ui, line.dataset.ann);
+        return true;
+      }
+      return false;
+    };
+    ui.text.addEventListener("click", (e) => {
+      openFrom(e.target);
+    });
+    ui.text.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      if (openFrom(e.target)) e.preventDefault();
+    });
+    ui.bodyWrap.addEventListener("click", (e) => {
+      if (e.target.closest('[data-act="ann-close"]')) geniusAnnClose(ui);
+    });
+  }
   var geniusSeq = 0;
   var geniusActiveKey = null;
   var geniusTypeTimer;
@@ -25749,6 +25887,9 @@ ${suffix}`;
     ui.text.hidden = true;
     ui.text.textContent = "";
     ui.text.classList.remove("is-typing");
+    geniusAnnClose(ui);
+    geniusAnnDeferred.delete(ui);
+    geniusAnnCtx.delete(ui.text);
     ui.fix.hidden = true;
     ui.cands.innerHTML = "";
     ui.url.value = "";
@@ -25762,10 +25903,12 @@ ${suffix}`;
   }
   function geniusTypeText(ui, text) {
     window.clearInterval(geniusTypeTimer);
+    geniusAnnDeferred.delete(ui);
     ui.text.hidden = false;
     ui.text.classList.remove("is-typing");
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       ui.text.textContent = text;
+      geniusAnnFlush(ui);
       return;
     }
     if (!ui.typewriter) {
@@ -25779,6 +25922,7 @@ ${suffix}`;
       });
       ui.text.textContent = "";
       ui.text.appendChild(frag);
+      geniusAnnFlush(ui);
       return;
     }
     ui.text.textContent = "";
@@ -25790,6 +25934,7 @@ ${suffix}`;
       if (i >= text.length) {
         window.clearInterval(geniusTypeTimer);
         ui.text.classList.remove("is-typing");
+        geniusAnnFlush(ui);
       }
     }, 16);
   }
@@ -25803,11 +25948,220 @@ ${suffix}`;
       ui.link.hidden = false;
     }
     if (song.text) geniusTypeText(ui, song.text);
+    void geniusLoadAnn(run, song);
     const surface = run.kind === "single" ? vinylSection : lyricsPanel;
     surface.classList.add("is-found");
     if (run.kind === "single") {
       vinylDisc.classList.add("is-landing");
       vinylPin.classList.add("is-dropping");
+    }
+  }
+  var geniusAnnCtx = /* @__PURE__ */ new WeakMap();
+  var geniusAnnDeferred = /* @__PURE__ */ new WeakMap();
+  function geniusAnnFlush(ui) {
+    const fn = geniusAnnDeferred.get(ui);
+    if (fn) {
+      geniusAnnDeferred.delete(ui);
+      fn();
+    }
+  }
+  async function geniusLoadAnn(run, song) {
+    if (!song.refs.length) return;
+    const key = `${run.kind}:${run.refId}`;
+    try {
+      const pairs = [];
+      await Promise.all(song.refs.map(async (ref) => {
+        const ann = await geniusFetchAnnotation(ref.id).catch(() => null);
+        if (ann) pairs.push([ref, ann]);
+      }));
+      if (geniusActiveKey !== key) return;
+      pairs.sort((a, b) => a[0].lines[0] - b[0].lines[0]);
+      geniusApplyAnn(run, song, pairs);
+    } catch {
+    }
+  }
+  function geniusBuildLines(ui, text) {
+    const frag = document.createDocumentFragment();
+    text.split("\n").forEach((line) => {
+      const el = document.createElement("span");
+      el.className = "lyrics__line";
+      el.textContent = line.length ? line : "\xA0";
+      frag.appendChild(el);
+    });
+    ui.text.textContent = "";
+    ui.text.appendChild(frag);
+  }
+  function geniusApplyAnn(run, song, pairs) {
+    const ui = run.ui;
+    const apply = () => {
+      if (geniusActiveKey !== `${run.kind}:${run.refId}` || ui.text.hidden || !pairs.length) return;
+      if (song.text && !ui.text.querySelector(".lyrics__line")) geniusBuildLines(ui, song.text);
+      const lines = ui.text.querySelectorAll(".lyrics__line");
+      const anns = /* @__PURE__ */ new Map();
+      const refs = [];
+      for (const [ref, ann] of pairs) {
+        anns.set(ref.id, ann);
+        refs.push(ref);
+        for (const i of ref.lines) {
+          const el = lines[i];
+          if (!el || el.dataset.ann) continue;
+          el.classList.add("is-ref");
+          el.dataset.ann = ref.id;
+          el.setAttribute("role", "button");
+          el.setAttribute("tabindex", "0");
+          el.setAttribute("aria-label", "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044E \u043A \u0441\u0442\u0440\u043E\u043A\u0435");
+        }
+      }
+      geniusAnnCtx.set(ui.text, { song, refs, anns });
+    };
+    if (ui.text.classList.contains("is-typing")) geniusAnnDeferred.set(ui, apply);
+    else apply();
+  }
+  function geniusAnnClose(ui) {
+    ui.ann.hidden = true;
+    ui.bodyWrap.classList.remove("is-ann");
+    ui.text.querySelectorAll(".lyrics__line.is-active").forEach((el) => el.classList.remove("is-active"));
+  }
+  function geniusYoutubeId(url) {
+    const m = /(?:youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{6,})/i.exec(url);
+    return m ? m[1] : null;
+  }
+  function geniusYoutubeIframe(id) {
+    const f = document.createElement("iframe");
+    f.src = `https://www.youtube-nocookie.com/embed/${id}`;
+    f.title = "\u0420\u043E\u043B\u0438\u043A YouTube";
+    f.loading = "lazy";
+    f.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+    f.allowFullscreen = true;
+    f.referrerPolicy = "strict-origin-when-cross-origin";
+    return f;
+  }
+  var GENIUS_ANN_KEEP = /* @__PURE__ */ new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "S", "BLOCKQUOTE", "UL", "OL", "LI", "H2", "H3", "H4", "FIGURE", "FIGCAPTION", "IMG", "A"]);
+  var GENIUS_ANN_DROP = /* @__PURE__ */ new Set(["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "SVG", "MATH", "FORM", "INPUT", "BUTTON", "SELECT", "TEXTAREA", "VIDEO", "AUDIO", "SOURCE", "NOSCRIPT"]);
+  function geniusAnnSanitize(src, dst, seen) {
+    for (const child of Array.from(src.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        dst.appendChild(document.createTextNode(child.textContent ?? ""));
+        continue;
+      }
+      if (child.nodeType !== Node.ELEMENT_NODE) continue;
+      const el = child;
+      const tag = el.tagName;
+      if (GENIUS_ANN_DROP.has(tag)) continue;
+      if (tag === "A") {
+        const href = el.getAttribute("href") ?? "";
+        if (!/^https?:\/\//i.test(href)) {
+          geniusAnnSanitize(el, dst, seen);
+          continue;
+        }
+        const yt = geniusYoutubeId(href);
+        if (yt) {
+          if (!seen.has(yt)) {
+            seen.add(yt);
+            dst.appendChild(geniusYoutubeIframe(yt));
+          }
+          continue;
+        }
+        const a = document.createElement("a");
+        a.href = href;
+        a.target = "_blank";
+        a.rel = "noreferrer noopener";
+        geniusAnnSanitize(el, a, seen);
+        dst.appendChild(a);
+        continue;
+      }
+      if (tag === "IMG") {
+        const srcAttr = el.getAttribute("src") ?? "";
+        if (!/^https?:\/\//i.test(srcAttr)) continue;
+        const img = document.createElement("img");
+        img.src = srcAttr;
+        img.alt = el.getAttribute("alt") ?? "";
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+        dst.appendChild(img);
+        continue;
+      }
+      if (!GENIUS_ANN_KEEP.has(tag)) {
+        geniusAnnSanitize(el, dst, seen);
+        continue;
+      }
+      const out = document.createElement(tag.toLowerCase());
+      geniusAnnSanitize(el, out, seen);
+      dst.appendChild(out);
+    }
+  }
+  function geniusAnnBody(ann) {
+    const frag = document.createDocumentFragment();
+    const seen = /* @__PURE__ */ new Set();
+    const holder = document.createElement("div");
+    holder.innerHTML = ann.html;
+    geniusAnnSanitize(holder, frag, seen);
+    const missing = ann.youtube.filter((id) => !seen.has(id));
+    for (const id of missing.reverse()) frag.insertBefore(geniusYoutubeIframe(id), frag.firstChild);
+    return frag;
+  }
+  function geniusAnnOpen(ui, annId) {
+    const ctx = geniusAnnCtx.get(ui.text);
+    const ref = ctx?.refs.find((r) => r.id === annId);
+    const ann = ctx?.anns.get(annId);
+    if (!ctx || !ref || !ann) return;
+    const frag = document.createDocumentFragment();
+    const head2 = document.createElement("div");
+    head2.className = "lyrics__ann-head";
+    const label = document.createElement("span");
+    label.className = "lyrics__ann-label";
+    label.textContent = "\u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044F";
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "lyrics__ann-close";
+    close.dataset.act = "ann-close";
+    close.setAttribute("aria-label", "\u0417\u0430\u043A\u0440\u044B\u0442\u044C \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044E");
+    close.textContent = "\xD7";
+    head2.append(label, close);
+    frag.appendChild(head2);
+    const textLines = ctx.song.text.split("\n");
+    const quote2 = ref.lines.map((i) => textLines[i] ?? "").join("\n");
+    if (quote2.trim()) {
+      const q2 = document.createElement("p");
+      q2.className = "lyrics__ann-quote";
+      q2.textContent = quote2;
+      frag.appendChild(q2);
+    }
+    const meta = document.createElement("p");
+    meta.className = "lyrics__ann-meta";
+    if (ann.author) {
+      const strong = document.createElement("strong");
+      strong.textContent = ann.author.name;
+      meta.appendChild(strong);
+    }
+    if (ann.createdAt) {
+      const date = new Date(ann.createdAt);
+      if (!Number.isNaN(date.getTime())) {
+        meta.appendChild(document.createTextNode(`${ann.author ? " \xB7 " : ""}${date.toLocaleDateString("ru-RU")}`));
+      }
+    }
+    if (meta.textContent) frag.appendChild(meta);
+    const body = document.createElement("div");
+    body.className = "lyrics__ann-body";
+    body.appendChild(geniusAnnBody(ann));
+    frag.appendChild(body);
+    const link = document.createElement("a");
+    link.className = "lyrics__ann-link";
+    link.href = ann.url;
+    link.target = "_blank";
+    link.rel = "noreferrer noopener";
+    link.textContent = "\u043E\u0442\u043A\u0440\u044B\u0442\u044C \u043D\u0430 Genius";
+    frag.appendChild(link);
+    ui.ann.replaceChildren(frag);
+    ui.ann.hidden = false;
+    ui.bodyWrap.classList.add("is-ann");
+    const lines = ui.text.querySelectorAll(".lyrics__line");
+    ui.text.querySelectorAll(".lyrics__line.is-active").forEach((el) => el.classList.remove("is-active"));
+    for (const i of ref.lines) lines[i]?.classList.add("is-active");
+    if (window.matchMedia("(max-width: 700px)").matches) {
+      lines[ref.lines[0]]?.scrollIntoView({ block: "center" });
+    } else {
+      ui.ann.scrollIntoView({ block: "nearest" });
     }
   }
   function geniusRenderCandidates(run, candidates) {
@@ -26600,7 +26954,7 @@ ${suffix}`;
     window.clearTimeout(coverUrlTimer);
     artistList.hidden = true;
     jointList.hidden = true;
-    jointBox.hidden = true;
+    setJointReveal(jointBox, false);
     jointField.hidden = true;
     jointCheck.checked = false;
     maxiField.hidden = true;
@@ -26636,7 +26990,7 @@ ${suffix}`;
     parentNote.textContent = single ? "\u043F\u0435\u0440\u0435\u0447\u0438\u0441\u043B\u0438\u0442\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u044B \u0447\u0435\u0440\u0435\u0437 \u0437\u0430\u043F\u044F\u0442\u0443\u044E; \u0441\u0438\u043D\u0433\u043B \u043F\u043E\u044F\u0432\u0438\u0442\u0441\u044F \u043D\u0430 \u043A\u0430\u0436\u0434\u043E\u043C \u0438\u0437 \u043D\u0438\u0445. \u0411\u0435\u0437 \u0441\u0432\u043E\u0435\u0439 \u043E\u0431\u043B\u043E\u0436\u043A\u0438 \u0438\u0441\u043F\u043E\u043B\u044C\u0437\u0443\u0435\u0442\u0441\u044F \u043E\u0431\u043B\u043E\u0436\u043A\u0430 \u043F\u0435\u0440\u0432\u043E\u0433\u043E \u0430\u043B\u044C\u0431\u043E\u043C\u0430" : "";
     coverNote.textContent = single ? "\u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u0441\u0441\u044B\u043B\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u044C \u043F\u043E\u0437\u0436\u0435, \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0441\u0438\u043D\u0433\u043B\u0430; \u0431\u0435\u0437 \u0441\u0432\u043E\u0435\u0439 \u043E\u0431\u043B\u043E\u0436\u043A\u0438 \u043F\u043E\u0434\u0441\u0442\u0430\u0432\u0438\u0442\u0441\u044F \u043E\u0431\u043B\u043E\u0436\u043A\u0430 \u0430\u043B\u044C\u0431\u043E\u043C\u0430" : "\u0444\u0430\u0439\u043B \u0438\u043B\u0438 \u0441\u0441\u044B\u043B\u043A\u0430 \u2014 \u043E\u0431\u043B\u043E\u0436\u043A\u0443 \u043C\u043E\u0436\u043D\u043E \u0431\u0443\u0434\u0435\u0442 \u0437\u0430\u043C\u0435\u043D\u0438\u0442\u044C \u0438 \u043F\u043E\u0437\u0436\u0435, \u043D\u0430 \u0441\u0442\u0440\u0430\u043D\u0438\u0446\u0435 \u0430\u043B\u044C\u0431\u043E\u043C\u0430";
     if (!single) {
-      jointBox.hidden = !jointCheck.checked;
+      setJointReveal(jointBox, jointCheck.checked);
     } else {
       maxiTracks.hidden = !maxiCheck.checked;
     }
@@ -26896,11 +27250,13 @@ ${suffix}`;
       addSubmit.classList.remove("is-loading");
       resetAddForm();
       setHomeMode(addKind, false);
-      if (topEntry().view === "add") viewStack.pop();
       renderAlbums();
       toast(added ?? (single ? isMaxi ? "\u041C\u0430\u043A\u0441\u0438-\u0441\u0438\u043D\u0433\u043B \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D" : "\u0421\u0438\u043D\u0433\u043B \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D" : isJoint ? "\u0421\u043E\u0432\u043C\u0435\u0441\u0442\u043D\u044B\u0439 \u0430\u043B\u044C\u0431\u043E\u043C \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D" : "\u0410\u043B\u044C\u0431\u043E\u043C \u0434\u043E\u0431\u0430\u0432\u043B\u0435\u043D"));
-      await swapTo(viewAdd, viewHome, () => {
-        viewHome.scrollTop = 0;
+      await queueNav(async () => {
+        if (topEntry().view === "add") viewStack.pop();
+        await swapTo(viewAdd, viewHome, () => {
+          viewHome.scrollTop = 0;
+        });
       });
     } catch (e) {
       addPending = false;
@@ -26964,6 +27320,14 @@ ${suffix}`;
     showDemoHint();
     card.classList.add("enter");
     window.setTimeout(() => card.classList.add("animate-in"), 140);
+    document.addEventListener("animationend", (ev) => {
+      const el = ev.target;
+      const isRevealAnim = ev.animationName === "rise" || ev.animationName === "riseSoft";
+      if (isRevealAnim && el instanceof HTMLElement && el.classList.contains("reveal")) {
+        el.classList.remove("reveal");
+        el.style.animation = "none";
+      }
+    });
     if (CLOUD) {
       try {
         const { data } = await getSB().auth.getSession();

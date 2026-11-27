@@ -542,9 +542,13 @@ function renderSynchronizedData(changed: boolean): void {
     if (viewAlbum.classList.contains('is-visible')) renderAlbumSingles();
     // ссылка на страницу сингла могла исчезнуть (сингл удалён из другой вкладки)
     if (viewSingle.classList.contains('is-visible') && !currentSingle()) {
-      viewStack.length = 0;
-      viewStack.push({ view: 'home' });
-      void swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+      void queueNav(async () => {
+        // Пока ждали очередь, могли уйти с этого экрана — тогда стек не трогаем.
+        if (!viewSingle.classList.contains('is-visible') || currentSingle()) return;
+        viewStack.length = 0;
+        viewStack.push({ view: 'home' });
+        await swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+      });
       renderAlbums();
       toast('Этот сингл удалён');
     }
@@ -615,7 +619,47 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('focus', resumeSynchronization);
 window.addEventListener('online', resumeSynchronization);
+/* ---------- Спойлеры оценок (настройка «скрывать оценки» в «мой профиль») ---------- */
+/* Пока включены, body.spoilers размывает баллы на главной и страницах релизов
+   (см. styles.css). Личная настройка: хранится в браузере по id участника,
+   переживает перезагрузку и применяется при входе. */
+const LS_SPOILERS = 'spoilers_local_v1'; // { [userId]: boolean }
+let spoilersOn = false;
+
+function loadSpoilersFor(id: string): boolean {
+  try {
+    const raw = localStorage.getItem(LS_SPOILERS);
+    return raw ? Boolean((JSON.parse(raw) as Record<string, boolean>)[id]) : false;
+  } catch { return false; }
+}
+
+function saveSpoilersFor(id: string, on: boolean): void {
+  try {
+    const raw = localStorage.getItem(LS_SPOILERS);
+    const map = raw ? (JSON.parse(raw) as Record<string, boolean>) : {};
+    map[id] = on;
+    localStorage.setItem(LS_SPOILERS, JSON.stringify(map));
+  } catch { /* ignore */ }
+}
+
+function applySpoilers(): void {
+  document.body.classList.toggle('spoilers', spoilersOn);
+}
+
+function loadSpoilersForUser(id: string): void {
+  spoilersOn = loadSpoilersFor(id);
+  applySpoilers();
+}
+
 window.addEventListener('storage', (event) => {
+  // тумблер переключили в соседней вкладке — подхватываем
+  if (event.key === LS_SPOILERS) {
+    if (currentUser) {
+      loadSpoilersForUser(currentUser.id);
+      syncSpoilerToggle();
+    }
+    return;
+  }
   if (!CLOUD && (!event.key || [LS_KEY, LS_TRACKS, LS_RATINGS, LS_SINGLE_RATINGS, LS_META].includes(event.key))) requestSync(0);
 });
 
@@ -623,21 +667,25 @@ window.addEventListener('storage', (event) => {
 async function ensureProfile(user: { id: string; email?: string | null }): Promise<ProfileInfo> {
   const s = getSB();
   const { data } = await s.from('profiles').select('*').eq('id', user.id).maybeSingle();
+  let profile: ProfileInfo;
   if (data) {
-    return {
+    profile = {
       id: data.id as string,
       email: user.email ?? '',
       username: data.username as string,
       initials: data.initials as string,
       avatarUrl: (data.avatar_url as string | null) ?? null,
     };
+  } else {
+    const email = (user.email ?? '').toLowerCase();
+    const allowed = ALLOWED_USERS.find((u) => u.email.toLowerCase() === email);
+    const username = allowed?.username ?? (user.email ?? 'user').split('@')[0];
+    const initials = allowed?.initials ?? (username.charAt(0).toUpperCase() || '?');
+    await s.from('profiles').insert({ id: user.id, username, initials, avatar_url: null });
+    profile = { id: user.id, email: user.email ?? '', username, initials, avatarUrl: null };
   }
-  const email = (user.email ?? '').toLowerCase();
-  const allowed = ALLOWED_USERS.find((u) => u.email.toLowerCase() === email);
-  const username = allowed?.username ?? (user.email ?? 'user').split('@')[0];
-  const initials = allowed?.initials ?? (username.charAt(0).toUpperCase() || '?');
-  await s.from('profiles').insert({ id: user.id, username, initials, avatar_url: null });
-  return { id: user.id, email: user.email ?? '', username, initials, avatarUrl: null };
+  loadSpoilersForUser(profile.id); // личный тумблер «скрывать оценки»
+  return profile;
 }
 
 async function loginCloud(email: string, password: string): Promise<void> {
@@ -669,6 +717,7 @@ async function loginLocal(email: string, password: string): Promise<void> {
     initials: u.initials,
     avatarUrl: m?.avatarUrl ?? null,
   };
+  loadSpoilersForUser(currentUser.id);
 }
 
 function isAdmin(): boolean {
@@ -1354,6 +1403,7 @@ const artistsBtn = q<HTMLButtonElement>('#artists-btn');
 
 /* мой профиль */
 const profileBack = q<HTMLButtonElement>('#profile-back');
+const profSpoilers = q<HTMLButtonElement>('#prof-spoilers');
 const profAvatar = q<HTMLSpanElement>('#prof-avatar');
 const profUpload = q<HTMLButtonElement>('#prof-upload');
 const profRemove = q<HTMLButtonElement>('#prof-remove');
@@ -1516,7 +1566,23 @@ const addSubmitLabel = q<HTMLSpanElement>('#add-submit-label');
 const addError = q<HTMLParagraphElement>('#add-error');
 
 /* ---------- Переходы между экранами ---------- */
+/* Все переходы между экранами строго сериализованы. Без этого быстрые серии
+   кликов (профиль → сразу трек/альбом) запускали бы два swapTo одновременно:
+   каждый прятал «свой» from и показывал «свой» to, поэтому оба экрана
+   оставались бы со классом is-visible — окно профиля висело бы поверх
+   страницы альбома (и наоборот), а стек навигации запутывался бы. */
+let navChain: Promise<void> = Promise.resolve();
+function queueNav<T>(task: () => Promise<T> | T): Promise<T> {
+  const run = navChain.then(task);
+  navChain = run.then(() => undefined, () => undefined);
+  return run;
+}
+
 async function swapTo(from: HTMLElement, to: HTMLElement, after?: () => void): Promise<void> {
+  if (from === to) { // уже на нужном экране — анимация не нужна
+    after?.();
+    return;
+  }
   if (from === viewAdd) setEvaluatorOpen(false);
   from.classList.add('is-leaving');
   await sleep(560);
@@ -1524,11 +1590,18 @@ async function swapTo(from: HTMLElement, to: HTMLElement, after?: () => void): P
   from.style.display = 'none';
   to.style.display = '';
   to.classList.remove('is-visible');
-  requestAnimationFrame(() => {
-    to.classList.add('is-visible');
-    if (after) after();
-    flushSynchronizedRender();
-  });
+  // Ждём кадр, пока to действительно получит is-visible: только после этого
+  // видимый экран корректно виден через visibleView() у следующего перехода.
+  // finally гарантирует, что очередь переходов не зависнет из-за исключения.
+  await new Promise<void>((resolve) => requestAnimationFrame(() => {
+    try {
+      to.classList.add('is-visible');
+      if (after) after();
+      flushSynchronizedRender();
+    } finally {
+      resolve();
+    }
+  }));
 }
 
 /* ---------- Вход / выход ---------- */
@@ -1607,10 +1680,10 @@ async function enterHome(): Promise<void> {
   success.classList.add('is-visible');
   await sleep(1350);
   success.classList.remove('is-visible');
-  await swapTo(viewLogin, viewHome, () => {
+  await queueNav(() => swapTo(viewLogin, viewHome, () => {
     viewHome.scrollTop = 0;
     moveSegThumb();
-  });
+  }));
   passwordInput.value = '';
   password2Input.value = '';
   renderAlbums();
@@ -1622,13 +1695,17 @@ logoutBtn.addEventListener('click', () => {
     stopRealtime();
     if (CLOUD) await getSB().auth.signOut();
     currentUser = null;
+    spoilersOn = false;
+    applySpoilers(); // на входе спойлеры подтянутся заново для вошедшего участника
     currentAlbumId = null;
     currentSingleId = null;
     currentArtistName = null;
     pendingSingleRatings.clear(); // черновики оценок не переносятся на другого участника
-    viewStack.length = 0;
-    viewStack.push({ view: 'home' });
-    await swapTo(viewHome, viewLogin);
+    await queueNav(async () => {
+      viewStack.length = 0;
+      viewStack.push({ view: 'home' });
+      await swapTo(viewHome, viewLogin);
+    });
     viewHome.querySelectorAll<HTMLElement>('.album').forEach((el) => {
       el.classList.add('reveal');
       el.style.animation = '';
@@ -2087,7 +2164,8 @@ function renderImpact(): void {
       ${avatarMarkup(r, 'av__chip-who')}
       <span class="av__chip-val">${r.mean === null ? '—' : fmt(r.mean)}</span>
       <span class="av__chip-sub">${label} · ${r.n} из ${list.length}</span>`;
-    chip.title = `${r.username}: ${r.mean === null ? 'нет оценок' : fmt(r.mean) + ' в среднем'} · ${r.n}/${list.length} треков`;
+    // при включённых спойлерах подсказка не должна выдавать балл
+    chip.title = spoilersOn ? '' : `${r.username}: ${r.mean === null ? 'нет оценок' : fmt(r.mean) + ' в среднем'} · ${r.n}/${list.length} треков`;
     avChips.appendChild(chip);
   }
 }
@@ -3537,13 +3615,17 @@ function topEntry(): ViewEntry {
 }
 
 async function navigateTo(view: HTMLElement, entry: ViewEntry): Promise<void> {
-  const from = visibleView() ?? viewHome;
-  viewStack.push(entry);
-  await swapTo(from, view, () => { view.scrollTop = 0; });
+  await queueNav(async () => {
+    const from = visibleView() ?? viewHome;
+    if (from === view) return; // двойной клик по уже открытому экрану — не плодим стек
+    viewStack.push(entry);
+    await swapTo(from, view, () => { view.scrollTop = 0; });
+  });
 }
 
 /* вернуться на предыдущий экран */
 async function goBack(): Promise<void> {
+  await queueNav(async () => {
   viewStack.pop(); // снимаем текущий экран
   if (viewAlbum.classList.contains('is-visible')) setActiveTrack(null); // уходим со страницы альбома — выделение не несём с собой
   const prev = topEntry();
@@ -3619,6 +3701,7 @@ async function goBack(): Promise<void> {
       await swapTo(from, viewHome, () => { viewHome.scrollTop = 0; });
     }
   }
+  });
 }
 
 /* --- открытие страницы релиза (альбом или сингл) --- */
@@ -3672,7 +3755,7 @@ function makeAlbumCard(a: UiAlbum, featScore: number | null = null, animate = fa
       <span class="album__year">${a.year}</span>
       ${badge}
       ${a.albumType ? `<span class="album__type">${esc(typeLabelOf(a.albumType))}</span>` : ''}
-      ${featScore !== null ? `<span class="album__featbadge">фит ${fmt(featScore)}</span>` : ''}
+      ${featScore !== null ? `<span class="album__featbadge">фит ${spoilersOn ? '***' : fmt(featScore)}</span>` : ''}
     </div>
     <div class="album__body">
       <h3 class="album__title">${esc(title)}</h3>
@@ -4218,6 +4301,7 @@ function renderProfilePage(): void {
   profRemove.hidden = !currentUser.avatarUrl;
   profError.textContent = '';
   profError.classList.remove('is-visible');
+  syncSpoilerToggle();
 }
 
 async function openProfile(): Promise<void> {
@@ -4227,6 +4311,21 @@ async function openProfile(): Promise<void> {
 
 profileBtn.addEventListener('click', () => void openProfile());
 profileBack.addEventListener('click', () => void goBack());
+
+/* --- тумблер спойлеров: применяется сразу, без кнопки «сохранить» --- */
+function syncSpoilerToggle(): void {
+  profSpoilers.classList.toggle('is-on', spoilersOn);
+  profSpoilers.setAttribute('aria-checked', String(spoilersOn));
+}
+
+profSpoilers.addEventListener('click', () => {
+  if (!currentUser) return;
+  spoilersOn = !spoilersOn;
+  saveSpoilersFor(currentUser.id, spoilersOn);
+  applySpoilers();
+  syncSpoilerToggle();
+  toast(spoilersOn ? 'оценки скрыты' : 'оценки снова видны');
+});
 
 /* применяем обновлённые аватар/ник во всех видимых местах */
 function applyProfileToUi(): void {
@@ -4347,8 +4446,7 @@ function openEditRelease(al: UiAlbum): void {
   editJointField.hidden = isSingleEdit;
   editArtistInput.value = first;
   editJointCheck.checked = joint && !isSingleEdit;
-  editJointBox.hidden = !editJointCheck.checked;
-  editJointBox.classList.toggle('is-revealed', editJointCheck.checked);
+  setJointReveal(editJointBox, editJointCheck.checked);
   editJointInput.value = second;
   editTitleInput.value = al.title;
   editYearInput.value = String(al.year);
@@ -4542,13 +4640,16 @@ async function handleDeleteAlbum(): Promise<void> {
     }
     const wasLast = currentAlbumId === al.id;
     currentAlbumId = null;
-    viewStack.length = 0;
-    viewStack.push({ view: 'home' });
-    if (wasLast) {
-      await crumbleCover();
+    await queueNav(async () => {
+      viewStack.length = 0;
+      viewStack.push({ view: 'home' });
       renderAlbums();
-      await swapTo(viewAlbum, viewHome, () => { viewHome.scrollTop = 0; });
-    }
+      // Пока ждали очередь, могли уйти с этой страницы — тогда только стек.
+      if (wasLast && viewAlbum.classList.contains('is-visible')) {
+        await crumbleCover();
+        await swapTo(viewAlbum, viewHome, () => { viewHome.scrollTop = 0; });
+      }
+    });
     toast('Альбом удалён');
   } catch (err) {
     toast(messageOf(err));
@@ -4827,7 +4928,8 @@ function renderSingleImpact(): void {
       ${avatarMarkup(row, 'av__chip-who')}
       <span class="av__chip-val">${row.value ? fmt(row.value.score) : '—'}</span>
       <span class="av__chip-sub">${label} · ${state}</span>`;
-    chip.title = `${row.username}: ${row.value ? fmt(row.value.score) : 'нет оценки'} · ${state}`;
+    // при включённых спойлерах подсказка не должна выдавать балл
+    chip.title = spoilersOn ? '' : `${row.username}: ${row.value ? fmt(row.value.score) : 'нет оценки'} · ${state}`;
     svChips.appendChild(chip);
   }
 }
@@ -4866,7 +4968,8 @@ function peerSingleRatingOf(singleId: string): { score: number; confirmed: boole
 function renderSingleMine(): void {
   const s = currentSingle();
   const mine = currentUser && s ? singleRatings[s.id]?.[currentUser.id] : undefined;
-  svMine.textContent = mine ? fmt(mine.score) : '—';
+  // при спойлерах своя оценка тоже звёздочки, но пустое поле остаётся «—»
+  svMine.textContent = mine ? (spoilersOn ? '***' : fmt(mine.score)) : '—';
   svMine.classList.toggle('is-empty', !mine);
 }
 
@@ -5208,12 +5311,15 @@ async function handleDeleteSingle(): Promise<void> {
       saveLocalSingleRatings();
     }
     currentSingleId = null;
-    viewStack.length = 0;
-    viewStack.push({ view: 'home' });
-    await crumbleCover('.sv__cover');
-    setHomeMode('single', false);
-    renderAlbums();
-    await swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+    await queueNav(async () => {
+      viewStack.length = 0;
+      viewStack.push({ view: 'home' });
+      const onSingle = viewSingle.classList.contains('is-visible');
+      if (onSingle) await crumbleCover('.sv__cover');
+      setHomeMode('single', false);
+      renderAlbums();
+      if (onSingle) await swapTo(viewSingle, viewHome, () => { viewHome.scrollTop = 0; });
+    });
     toast('Сингл удалён');
   } catch (err) {
     toast(messageOf(err));
@@ -6321,9 +6427,22 @@ class GeniusError extends Error {
   }
 }
 
+/** Строка(и) текста, покрытые аннотацией (индексы строк с нуля). */
+interface GeniusAnnRef { id: string; lines: number[]; }
+
+/** Аннотация в стабильной форме прокси /api/genius/annotations. */
+interface GeniusAnnotation {
+  id: string; url: string;
+  author: { name: string; url: string | null } | null;
+  createdAt: string | null;
+  html: string;        // тело — клиент санитайзирует перед вставкой
+  youtube: string[];   // id роликов, упомянутых в теле
+}
+
 interface GeniusSongInfo {
   id: string; title: string; artist: string; url: string;
   lyricsState: string | null; text: string;
+  refs: GeniusAnnRef[];
 }
 
 const geniusSearchCache = new Map<string, Array<{ id: string; title: string; artist: string; url: string; lyricsState: string | null }>>();
@@ -6377,15 +6496,52 @@ async function geniusFetchSong(id: string): Promise<GeniusSongInfo> {
   const data = await geniusApi<{ song?: Record<string, unknown> }>('lyrics', { id });
   const song = data.song;
   if (!song) throw new GeniusError('parse', 'песня не найдена');
-  const parsed = {
+  const refs: GeniusAnnRef[] = Array.isArray(song.refs)
+    ? song.refs.flatMap((r) => {
+        if (!r || typeof r !== 'object') return [];
+        const obj = r as { id?: unknown; lines?: unknown };
+        const rid = typeof obj.id === 'string' || typeof obj.id === 'number' ? String(obj.id) : '';
+        const lines = Array.isArray(obj.lines)
+          ? obj.lines.filter((n): n is number => typeof n === 'number' && Number.isInteger(n) && n >= 0)
+          : [];
+        return rid && lines.length ? [{ id: rid, lines }] : [];
+      })
+    : [];
+  const parsed: GeniusSongInfo = {
     id: String(song.id),
     title: typeof song.title === 'string' ? song.title : '',
     artist: typeof song.artist === 'string' ? song.artist : '',
     url: typeof song.url === 'string' ? song.url : '',
     lyricsState: typeof song.lyrics_state === 'string' ? song.lyrics_state : null,
     text: typeof song.text === 'string' ? song.text : '',
+    refs,
   };
   geniusLyricsCache.set(id, parsed);
+  return parsed;
+}
+
+/** Кэш тел аннотаций на сеанс — тот же id не тянется дважды. */
+const geniusAnnCache = new Map<string, GeniusAnnotation>();
+
+async function geniusFetchAnnotation(id: string): Promise<GeniusAnnotation> {
+  const hit = geniusAnnCache.get(id);
+  if (hit) return hit;
+  const data = await geniusApi<{ annotation?: Record<string, unknown> }>('annotations', { id });
+  const a = data.annotation;
+  if (!a) throw new GeniusError('parse', 'аннотация не найдена');
+  const authorRaw = a.author && typeof a.author === 'object' ? a.author as Record<string, unknown> : null;
+  const authorName = authorRaw && typeof authorRaw.name === 'string' && authorRaw.name ? authorRaw.name : null;
+  const parsed: GeniusAnnotation = {
+    id: typeof a.id === 'string' ? a.id : id,
+    url: typeof a.url === 'string' && a.url ? a.url : `https://genius.com/annotations/${id}`,
+    author: authorName
+      ? { name: authorName, url: typeof authorRaw?.url === 'string' && authorRaw.url ? authorRaw.url : null }
+      : null,
+    createdAt: typeof a.created_at === 'string' && a.created_at ? a.created_at : null,
+    html: typeof a.html === 'string' ? a.html : '',
+    youtube: Array.isArray(a.youtube) ? a.youtube.filter((x): x is string => typeof x === 'string') : [],
+  };
+  geniusAnnCache.set(id, parsed);
   return parsed;
 }
 
@@ -6484,6 +6640,8 @@ const lyricsUrlError = q<HTMLElement>('#lyrics-url-error');
 const lyricsFixCancel = q<HTMLButtonElement>('#lyrics-fix-cancel');
 const lyricsFixSave = q<HTMLButtonElement>('#lyrics-fix-save');
 const lyricsFixNote = q<HTMLElement>('#lyrics-fix-note');
+const lyricsBody = q<HTMLElement>('#lyrics-body');
+const lyricsAnn = q<HTMLElement>('#lyrics-ann');
 
 const vinylSection = q<HTMLElement>('#vinyl-section');
 const vinylDisc = q<HTMLElement>('#vinyl-disc');
@@ -6508,6 +6666,8 @@ const vinylUrlError = q<HTMLElement>('#vinyl-url-error');
 const vinylFixCancel = q<HTMLButtonElement>('#vinyl-fix-cancel');
 const vinylFixSave = q<HTMLButtonElement>('#vinyl-fix-save');
 const vinylFixNote = q<HTMLElement>('#vinyl-fix-note');
+const vinylTextwrap = q<HTMLElement>('#vinyl-textwrap');
+const vinylAnn = q<HTMLElement>('#vinyl-ann');
 
 interface GeniusScreenUi {
   song: HTMLElement;
@@ -6521,6 +6681,8 @@ interface GeniusScreenUi {
   report: HTMLElement;
   copy: HTMLButtonElement;
   text: HTMLElement;
+  bodyWrap: HTMLElement; // текст + карточка аннотации (раскладка «текст | карточка»)
+  ann: HTMLElement;       // карточка аннотации
   fix: HTMLFormElement;
   cands: HTMLElement;
   url: HTMLInputElement;
@@ -6534,7 +6696,7 @@ interface GeniusScreenUi {
 const albumLyricsUi: GeniusScreenUi = {
   song: lyricsSong, artist: lyricsArtist, link: lyricsLink, replaceBtn: lyricsReplaceBtn,
   state: lyricsState, skeleton: lyricsSkeleton, fail: lyricsFail, failToggle: lyricsFailToggle, report: lyricsReport,
-  copy: lyricsCopy, text: lyricsText, fix: lyricsFix, cands: lyricsCands, url: lyricsUrl,
+  copy: lyricsCopy, text: lyricsText, bodyWrap: lyricsBody, ann: lyricsAnn, fix: lyricsFix, cands: lyricsCands, url: lyricsUrl,
   urlError: lyricsUrlError, fixCancel: lyricsFixCancel, fixSave: lyricsFixSave, fixNote: lyricsFixNote,
   typewriter: false,
 };
@@ -6542,10 +6704,32 @@ const albumLyricsUi: GeniusScreenUi = {
 const vinylLyricsUi: GeniusScreenUi = {
   song: vinylSong, artist: vinylArtist, link: vinylLink, replaceBtn: vinylReplaceBtn,
   state: vinylState, skeleton: vinylSkeleton, fail: vinylFail, failToggle: vinylFailToggle, report: vinylReport,
-  copy: vinylCopy, text: vinylText, fix: vinylFix, cands: vinylCands, url: vinylUrl,
+  copy: vinylCopy, text: vinylText, bodyWrap: vinylTextwrap, ann: vinylAnn, fix: vinylFix, cands: vinylCands, url: vinylUrl,
   urlError: vinylUrlError, fixCancel: vinylFixCancel, fixSave: vinylFixSave, fixNote: vinylFixNote,
   typewriter: true,
 };
+
+/* Клик по подсвеченной строке открывает карточку аннотации, × закрывает. */
+for (const ui of [albumLyricsUi, vinylLyricsUi]) {
+  const openFrom = (target: Element | null): boolean => {
+    const line = target?.closest<HTMLElement>('.is-ref') ?? null;
+    if (line && ui.text.contains(line) && line.dataset.ann) {
+      geniusAnnOpen(ui, line.dataset.ann);
+      return true;
+    }
+    return false;
+  };
+  ui.text.addEventListener('click', (e) => { openFrom(e.target as Element); });
+  ui.text.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if (openFrom(e.target as Element)) e.preventDefault();
+  });
+  // × в карточке и тап по затемнению (телефон) — на обёртке: scrim лежит
+  // рядом с карточкой, а не внутри неё
+  ui.bodyWrap.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('[data-act="ann-close"]')) geniusAnnClose(ui);
+  });
+}
 
 /* ---------- общий движок ---------- */
 
@@ -6605,6 +6789,9 @@ function geniusResetUi(ui: GeniusScreenUi): void {
   ui.text.hidden = true;
   ui.text.textContent = '';
   ui.text.classList.remove('is-typing');
+  geniusAnnClose(ui);
+  geniusAnnDeferred.delete(ui);
+  geniusAnnCtx.delete(ui.text);
   ui.fix.hidden = true;
   ui.cands.innerHTML = '';
   ui.url.value = '';
@@ -6620,10 +6807,12 @@ function geniusResetUi(ui: GeniusScreenUi): void {
 /** Печать текста посимвольно (сингл): быстро, с бегущим курсором. */
 function geniusTypeText(ui: GeniusScreenUi, text: string): void {
   window.clearInterval(geniusTypeTimer);
+  geniusAnnDeferred.delete(ui); // подсветка аннотаций применится к новому тексту
   ui.text.hidden = false;
   ui.text.classList.remove('is-typing');
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     ui.text.textContent = text;
+    geniusAnnFlush(ui);
     return;
   }
   if (!ui.typewriter) {
@@ -6638,6 +6827,7 @@ function geniusTypeText(ui: GeniusScreenUi, text: string): void {
     });
     ui.text.textContent = '';
     ui.text.appendChild(frag);
+    geniusAnnFlush(ui);
     return;
   }
   ui.text.textContent = '';
@@ -6649,6 +6839,7 @@ function geniusTypeText(ui: GeniusScreenUi, text: string): void {
     if (i >= text.length) {
       window.clearInterval(geniusTypeTimer);
       ui.text.classList.remove('is-typing');
+      geniusAnnFlush(ui);
     }
   }, 16);
 }
@@ -6663,11 +6854,260 @@ function geniusRenderSong(run: GeniusRun, song: GeniusSongInfo): void {
     ui.link.hidden = false;
   }
   if (song.text) geniusTypeText(ui, song.text);
+  void geniusLoadAnn(run, song); // подсветка строк с аннотациями — когда тела дойдут
   const surface = run.kind === 'single' ? vinylSection : lyricsPanel;
   surface.classList.add('is-found');
   if (run.kind === 'single') {
     vinylDisc.classList.add('is-landing');
     vinylPin.classList.add('is-dropping');
+  }
+}
+
+/* ---------- аннотации: подсветка строк и карточка ---------- */
+
+/** Что уже показано на экране: текст песни, id аннотаций и их тела. */
+interface GeniusAnnCtx {
+  song: GeniusSongInfo;
+  refs: GeniusAnnRef[];
+  anns: Map<string, GeniusAnnotation>;
+}
+const geniusAnnCtx = new WeakMap<HTMLElement, GeniusAnnCtx>(); // по ui.text
+/** Подсветка, пришедшая до конца посимвольной печати — применить после. */
+const geniusAnnDeferred = new WeakMap<GeniusScreenUi, () => void>();
+
+function geniusAnnFlush(ui: GeniusScreenUi): void {
+  const fn = geniusAnnDeferred.get(ui);
+  if (fn) {
+    geniusAnnDeferred.delete(ui);
+    fn();
+  }
+}
+
+/** Тянет тела аннотаций песни и подсвечивает строки. Ошибки тихие:
+    подсветка — украшение, текст и без неё читается. */
+async function geniusLoadAnn(run: GeniusRun, song: GeniusSongInfo): Promise<void> {
+  if (!song.refs.length) return;
+  const key = `${run.kind}:${run.refId}`;
+  try {
+    const pairs: Array<readonly [GeniusAnnRef, GeniusAnnotation]> = [];
+    await Promise.all(song.refs.map(async (ref) => {
+      const ann = await geniusFetchAnnotation(ref.id).catch(() => null);
+      if (ann) pairs.push([ref, ann] as const);
+    }));
+    if (geniusActiveKey !== key) return;
+    pairs.sort((a, b) => a[0].lines[0] - b[0].lines[0]); // детерминизм при гонке
+    geniusApplyAnn(run, song, pairs);
+  } catch { /* без подсветки живём */ }
+}
+
+/** Перестраивает текст в построчные span-ы (нужно пластинке: там текст
+    печатался одним куском) — без каскадной анимации, текст уже виден. */
+function geniusBuildLines(ui: GeniusScreenUi, text: string): void {
+  const frag = document.createDocumentFragment();
+  text.split('\n').forEach((line) => {
+    const el = document.createElement('span');
+    el.className = 'lyrics__line';
+    el.textContent = line.length ? line : '\u00A0';
+    frag.appendChild(el);
+  });
+  ui.text.textContent = '';
+  ui.text.appendChild(frag);
+}
+
+function geniusApplyAnn(run: GeniusRun, song: GeniusSongInfo, pairs: Array<readonly [GeniusAnnRef, GeniusAnnotation]>): void {
+  const ui = run.ui;
+  const apply = (): void => {
+    if (geniusActiveKey !== `${run.kind}:${run.refId}` || ui.text.hidden || !pairs.length) return;
+    if (song.text && !ui.text.querySelector('.lyrics__line')) geniusBuildLines(ui, song.text);
+    const lines = ui.text.querySelectorAll<HTMLElement>('.lyrics__line');
+    const anns = new Map<string, GeniusAnnotation>();
+    const refs: GeniusAnnRef[] = [];
+    for (const [ref, ann] of pairs) {
+      anns.set(ref.id, ann);
+      refs.push(ref);
+      for (const i of ref.lines) {
+        const el = lines[i];
+        if (!el || el.dataset.ann) continue; // если строку уже заняли — первая аннотация
+        el.classList.add('is-ref');
+        el.dataset.ann = ref.id;
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('aria-label', 'Показать аннотацию к строке');
+      }
+    }
+    geniusAnnCtx.set(ui.text, { song, refs, anns });
+  };
+  if (ui.text.classList.contains('is-typing')) geniusAnnDeferred.set(ui, apply);
+  else apply();
+}
+
+function geniusAnnClose(ui: GeniusScreenUi): void {
+  ui.ann.hidden = true;
+  ui.bodyWrap.classList.remove('is-ann');
+  ui.text.querySelectorAll('.lyrics__line.is-active').forEach((el) => el.classList.remove('is-active'));
+}
+
+/** YouTube-ролик → iframe (прямо в карточке, по решению продукта). */
+function geniusYoutubeId(url: string): string | null {
+  const m = /(?:youtube\.com\/(?:watch\?(?:[^#\s]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/)([\w-]{6,})/i.exec(url);
+  return m ? m[1] : null;
+}
+
+function geniusYoutubeIframe(id: string): HTMLIFrameElement {
+  const f = document.createElement('iframe');
+  f.src = `https://www.youtube-nocookie.com/embed/${id}`;
+  f.title = 'Ролик YouTube';
+  f.loading = 'lazy';
+  f.allow = 'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share';
+  f.allowFullscreen = true;
+  f.referrerPolicy = 'strict-origin-when-cross-origin';
+  return f;
+}
+
+/* Тело аннотации — чужой HTML: вставляем только известные теги и только
+   http(s)-ссылки; всё остальное (скрипты, iframe, style) выбрасываем,
+   прочие элементы разворачиваем в содержимое. */
+const GENIUS_ANN_KEEP = new Set(['P', 'BR', 'STRONG', 'B', 'EM', 'I', 'U', 'S', 'BLOCKQUOTE', 'UL', 'OL', 'LI', 'H2', 'H3', 'H4', 'FIGURE', 'FIGCAPTION', 'IMG', 'A']);
+const GENIUS_ANN_DROP = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'SVG', 'MATH', 'FORM', 'INPUT', 'BUTTON', 'SELECT', 'TEXTAREA', 'VIDEO', 'AUDIO', 'SOURCE', 'NOSCRIPT']);
+
+function geniusAnnSanitize(src: Node, dst: ParentNode, seen: Set<string>): void {
+  for (const child of Array.from(src.childNodes)) {
+    if (child.nodeType === Node.TEXT_NODE) {
+      dst.appendChild(document.createTextNode(child.textContent ?? ''));
+      continue;
+    }
+    if (child.nodeType !== Node.ELEMENT_NODE) continue;
+    const el = child as HTMLElement;
+    const tag = el.tagName;
+    if (GENIUS_ANN_DROP.has(tag)) continue;
+    if (tag === 'A') {
+      const href = el.getAttribute('href') ?? '';
+      if (!/^https?:\/\//i.test(href)) {
+        geniusAnnSanitize(el, dst, seen); // ссылку снимаем, текст оставляем
+        continue;
+      }
+      const yt = geniusYoutubeId(href);
+      if (yt) {
+        if (!seen.has(yt)) {
+          seen.add(yt);
+          dst.appendChild(geniusYoutubeIframe(yt));
+        }
+        continue; // вместо ссылки-превью — сам плеер
+      }
+      const a = document.createElement('a');
+      a.href = href;
+      a.target = '_blank';
+      a.rel = 'noreferrer noopener';
+      geniusAnnSanitize(el, a, seen);
+      dst.appendChild(a);
+      continue;
+    }
+    if (tag === 'IMG') {
+      const srcAttr = el.getAttribute('src') ?? '';
+      if (!/^https?:\/\//i.test(srcAttr)) continue;
+      const img = document.createElement('img');
+      img.src = srcAttr;
+      img.alt = el.getAttribute('alt') ?? '';
+      img.loading = 'lazy';
+      img.referrerPolicy = 'no-referrer'; // CDN не должен видеть, откуда пришли
+      dst.appendChild(img);
+      continue;
+    }
+    if (!GENIUS_ANN_KEEP.has(tag)) {
+      geniusAnnSanitize(el, dst, seen); // div, span и прочее — разворачиваем
+      continue;
+    }
+    const out = document.createElement(tag.toLowerCase());
+    geniusAnnSanitize(el, out, seen);
+    dst.appendChild(out);
+  }
+}
+
+/** Санированное тело аннотации: ролики из тела — iframe, ролики,
+    найденные только сервером (без якоря) — в начало. */
+function geniusAnnBody(ann: GeniusAnnotation): DocumentFragment {
+  const frag = document.createDocumentFragment();
+  const seen = new Set<string>();
+  const holder = document.createElement('div');
+  holder.innerHTML = ann.html; // вставка в изолированный узел; скрипты не исполняются
+  geniusAnnSanitize(holder, frag, seen);
+  const missing = ann.youtube.filter((id) => !seen.has(id));
+  for (const id of missing.reverse()) frag.insertBefore(geniusYoutubeIframe(id), frag.firstChild);
+  return frag;
+}
+
+/** Открывает карточку аннотации для подсвеченной строки. */
+function geniusAnnOpen(ui: GeniusScreenUi, annId: string): void {
+  const ctx = geniusAnnCtx.get(ui.text);
+  const ref = ctx?.refs.find((r) => r.id === annId);
+  const ann = ctx?.anns.get(annId);
+  if (!ctx || !ref || !ann) return;
+
+  const frag = document.createDocumentFragment();
+  const head = document.createElement('div');
+  head.className = 'lyrics__ann-head';
+  const label = document.createElement('span');
+  label.className = 'lyrics__ann-label';
+  label.textContent = 'аннотация';
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'lyrics__ann-close';
+  close.dataset.act = 'ann-close';
+  close.setAttribute('aria-label', 'Закрыть аннотацию');
+  close.textContent = '×';
+  head.append(label, close);
+  frag.appendChild(head);
+
+  // точные строки, к которым относится аннотация
+  const textLines = ctx.song.text.split('\n');
+  const quote = ref.lines.map((i) => textLines[i] ?? '').join('\n');
+  if (quote.trim()) {
+    const q = document.createElement('p');
+    q.className = 'lyrics__ann-quote';
+    q.textContent = quote;
+    frag.appendChild(q);
+  }
+
+  const meta = document.createElement('p');
+  meta.className = 'lyrics__ann-meta';
+  if (ann.author) {
+    const strong = document.createElement('strong');
+    strong.textContent = ann.author.name;
+    meta.appendChild(strong);
+  }
+  if (ann.createdAt) {
+    const date = new Date(ann.createdAt);
+    if (!Number.isNaN(date.getTime())) {
+      meta.appendChild(document.createTextNode(`${ann.author ? ' · ' : ''}${date.toLocaleDateString('ru-RU')}`));
+    }
+  }
+  if (meta.textContent) frag.appendChild(meta);
+
+  const body = document.createElement('div');
+  body.className = 'lyrics__ann-body';
+  body.appendChild(geniusAnnBody(ann));
+  frag.appendChild(body);
+
+  const link = document.createElement('a');
+  link.className = 'lyrics__ann-link';
+  link.href = ann.url;
+  link.target = '_blank';
+  link.rel = 'noreferrer noopener';
+  link.textContent = 'открыть на Genius';
+  frag.appendChild(link);
+
+  ui.ann.replaceChildren(frag);
+  ui.ann.hidden = false;
+  ui.bodyWrap.classList.add('is-ann');
+  const lines = ui.text.querySelectorAll<HTMLElement>('.lyrics__line');
+  ui.text.querySelectorAll('.lyrics__line.is-active').forEach((el) => el.classList.remove('is-active'));
+  for (const i of ref.lines) lines[i]?.classList.add('is-active');
+  if (window.matchMedia('(max-width: 700px)').matches) {
+    // шторка перекрывает низ экрана — поднимаем строку к центру её блока,
+    // чтобы она оставалась видна над карточкой
+    lines[ref.lines[0]]?.scrollIntoView({ block: 'center' });
+  } else {
+    ui.ann.scrollIntoView({ block: 'nearest' });
   }
 }
 
@@ -7521,7 +7961,7 @@ function resetAddForm(): void {
   window.clearTimeout(coverUrlTimer);
   artistList.hidden = true;
   jointList.hidden = true;
-  jointBox.hidden = true;
+  setJointReveal(jointBox, false);
   jointField.hidden = true;
   jointCheck.checked = false;
   maxiField.hidden = true;
@@ -7565,7 +8005,7 @@ function applyAddMode(kind: ReleaseKind): void {
     ? 'файл или ссылку можно заменить позже, на странице сингла; без своей обложки подставится обложка альбома'
     : 'файл или ссылка — обложку можно будет заменить и позже, на странице альбома';
   if (!single) {
-    jointBox.hidden = !jointCheck.checked;
+    setJointReveal(jointBox, jointCheck.checked);
   } else {
     maxiTracks.hidden = !maxiCheck.checked;
   }
@@ -7842,10 +8282,12 @@ async function handleAdd(): Promise<void> {
     addSubmit.classList.remove('is-loading');
     resetAddForm();
     setHomeMode(addKind, false);
-    if (topEntry().view === 'add') viewStack.pop();
     renderAlbums();
     toast(added ?? (single ? (isMaxi ? 'Макси-сингл добавлен' : 'Сингл добавлен') : (isJoint ? 'Совместный альбом добавлен' : 'Альбом добавлен')));
-    await swapTo(viewAdd, viewHome, () => { viewHome.scrollTop = 0; });
+    await queueNav(async () => {
+      if (topEntry().view === 'add') viewStack.pop();
+      await swapTo(viewAdd, viewHome, () => { viewHome.scrollTop = 0; });
+    });
   } catch (e) {
     addPending = false;
     addSubmit.classList.remove('is-loading');
@@ -7920,6 +8362,22 @@ async function init(): Promise<void> {
 
   card.classList.add('enter');
   window.setTimeout(() => card.classList.add('animate-in'), 140);
+
+  // reveal-анимация заканчивается keyframe'ом transform: none — Chrome по
+  // завершении оставляет identity-матрицу, и элемент навсегда становится
+  // containing block для fixed-потомков: мобильная шторка аннотации
+  // привязывалась к секции сингла и обрезалась её overflow: hidden
+  // (клик по × пробивался в содержимое под шторкой). Снимаем класс —
+  // так же, как это уже делают карточки релизов.
+  document.addEventListener('animationend', (ev) => {
+    const el = ev.target;
+    // rise — общий кейфрейм, riseSoft — у reveal внутри view-specific правил
+    const isRevealAnim = ev.animationName === 'rise' || ev.animationName === 'riseSoft';
+    if (isRevealAnim && el instanceof HTMLElement && el.classList.contains('reveal')) {
+      el.classList.remove('reveal');
+      el.style.animation = 'none';
+    }
+  });
 
   if (CLOUD) {
     try {

@@ -298,7 +298,11 @@
               <pre class="cover-search__report" id="lyrics-report" hidden></pre>
               <button class="btn btn--ghost btn--sm cover-search__copy" id="lyrics-copy" type="button" hidden>скопировать отчёт</button>
             </div>
-            <blockquote class="lyrics__text" id="lyrics-text" hidden></blockquote>
+            <div class="lyrics__body" id="lyrics-body">
+              <blockquote class="lyrics__text" id="lyrics-text" hidden></blockquote>
+              <div class="lyrics__ann-scrim" id="lyrics-ann-scrim" data-act="ann-close" aria-hidden="true"></div>
+              <aside class="lyrics__ann" id="lyrics-ann" hidden aria-label="Аннотация"></aside>
+            </div>
             <form class="lyrics__fix" id="lyrics-fix" hidden novalidate>
               <p class="lyrics__fix-title">Не та песня? Подставьте нужную:</p>
               <div class="lyrics__cands" id="lyrics-cands"></div>
@@ -747,7 +751,11 @@
                 <pre class="cover-search__report" id="vinyl-report" hidden></pre>
                 <button class="btn btn--ghost btn--sm cover-search__copy" id="vinyl-copy" type="button" hidden>скопировать отчёт</button>
               </div>
-              <blockquote class="lyrics__text lyrics__text--type" id="vinyl-text" hidden></blockquote>
+              <div class="lyrics__body" id="vinyl-textwrap">
+                <blockquote class="lyrics__text lyrics__text--type" id="vinyl-text" hidden></blockquote>
+                <div class="lyrics__ann-scrim" id="vinyl-ann-scrim" data-act="ann-close" aria-hidden="true"></div>
+                <aside class="lyrics__ann" id="vinyl-ann" hidden aria-label="Аннотация"></aside>
+              </div>
               <form class="lyrics__fix" id="vinyl-fix" hidden novalidate>
                 <p class="lyrics__fix-title">Не та песня? Подставьте нужную:</p>
                 <div class="lyrics__cands" id="vinyl-cands"></div>
@@ -876,6 +884,15 @@
                    autocomplete="off" spellcheck="false" maxlength="24" placeholder="ваш ник…" />
             <p class="form__error" id="prof-error" role="alert" aria-live="polite"></p>
             <button class="btn" id="prof-save" type="button">сохранить</button>
+          </div>
+
+          <div class="prof__section reveal" style="--d:.34s">
+            <span class="prof__label">спойлеры</span>
+            <button class="spoiler" id="prof-spoilers" type="button" role="switch" aria-checked="false">
+              <span class="spoiler__track" aria-hidden="true"><span class="spoiler__thumb"></span></span>
+              <span class="spoiler__text">скрывать оценки</span>
+            </button>
+            <p class="prof__note">баллы замажутся на главной и внутри альбомов и синглов — действует только для вас</p>
           </div>
         </div>
       </div>

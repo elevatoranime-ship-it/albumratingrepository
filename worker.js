@@ -11,11 +11,16 @@
  *   GET /api/genius/search?q=…   → поиск песен (прозрачный прокси api.genius.com)
  *   GET /api/genius/lyrics?id=…  → текст песни: { song: { title, artist, url,
  *                                   lyrics_state, text, refs } } — refs: какие
- *                                   строки (индексы) покрыты аннотациями и их id
+ *                                   строки (индексы) покрыты аннотациями и их id.
+ *                                   Страница genius.com с сервера отвечает
+ *                                   403 (bot-защита), поэтому текст берётся из
+ *                                   свежего снимка Wayback, а refs — из
+ *                                   официального API referents (якоря в HTML
+ *                                   больше не содержат id — слаг-ссылки)
  *   GET /api/genius/annotations?id=… → аннотация: { annotation: { id, url,
  *                                   author, created_at, html, youtube } } —
- *                                   тело берётся из JSON, которым пользуется
- *                                   сам сайт genius.com/api/annotations/:id
+ *                                   официальный api.genius.com/annotations/:id
+ *                                   (тело — body.dom, на сервере → html)
  *
  * Ответы кэшируются (Cache API): поиск на 10 минут, текст и аннотации на сутки.
  * Токен можно задать секретом `wrangler secret put GENIUS_TOKEN`;
@@ -24,9 +29,10 @@
 
 const GENIUS_TOKEN_FALLBACK = '0bdmXdOU1UaPikappqvWfrpwrpxkB3HczT2xlouY9vliFGTXSahE6jOVSwAaosGP';
 /** Версия разбора текста (extractLyrics) — входит в ключ кэша /lyrics; повышать при правках разбора. */
-const LYRICS_PARSER_VERSION = 3;
-/** Версия нормализации аннотации — входит в ключ кэша /annotations. */
-const ANN_FORMAT_VERSION = 1;
+const LYRICS_PARSER_VERSION = 4;
+/** Версия нормализации аннотации — входит в ключ кэша /annotations.
+    v4: приоритет body.dom над body.html (в dom вложения-картинки). */
+const ANN_FORMAT_VERSION = 4;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 const CORS = {
@@ -222,20 +228,175 @@ export function youtubeIds(text) {
   return [...ids].sort();
 }
 
+/** Источники данных: страница genius.com с сервера недоступна (403, bot-защита) —
+    текст песни берём из свежего снимка Wayback (вариант id_ отдаёт оригинальную
+    разметку), покрытие аннотаций — из официального API referents. */
+
+/** Снимок страницы в Wayback: сначала спрашиваем свежий, качаем оригинал (id_). */
+async function waybackHtml(pageUrl) {
+  const avail = await fetch(`https://archive.org/wayback/available?url=${encodeURIComponent(pageUrl)}`, {
+    headers: { 'user-agent': UA },
+  });
+  if (!avail.ok) throw new Error(`Wayback available ответил ${avail.status}`);
+  const snap = (await avail.json())?.archived_snapshots?.closest;
+  if (!snap?.url || !snap?.timestamp) return null;
+  const wbUrl = `https://web.archive.org/web/${snap.timestamp}id_/${pageUrl}`;
+  let wb = await fetch(wbUrl, { headers: { 'user-agent': UA } });
+  if (wb.status === 429) { // politeness-лимит archive.org — один повтор
+    await new Promise((r) => setTimeout(r, 1500));
+    wb = await fetch(wbUrl, { headers: { 'user-agent': UA } });
+  }
+  if (!wb.ok) throw new Error(`Wayback ответил ${wb.status}`);
+  return wb.text();
+}
+
+/** HTML страницы песни: сначала сам genius.com, при ошибке/403 — Wayback. */
+async function songHtml(pageUrl) {
+  let liveStatus = null;
+  try {
+    const live = await fetch(pageUrl, { headers: { 'user-agent': UA, 'accept-language': 'en,ru;q=0.9' } });
+    if (live.ok) return live.text();
+    liveStatus = live.status;
+  } catch (err) {
+    liveStatus = err?.message || 'сбой сети';
+  }
+  const html = await waybackHtml(pageUrl);
+  if (html == null) throw new Error(`страница Genius ответила ${liveStatus}; свежего снимка Wayback нет`);
+  return html;
+}
+
+/** Официальный API referents — какие фрагменты текста покрыты аннотациями.
+    null — источник недоступен: текст всё равно отдаём, без подсветки. */
+async function geniusReferents(songId, token) {
+  try {
+    const data = await geniusFetch(`https://api.genius.com/referents?song_id=${songId}&per_page=50&access_token=${encodeURIComponent(token)}`);
+    return Array.isArray(data?.response?.referents) ? data.response.referents : [];
+  } catch {
+    return null;
+  }
+}
+
+/** Складка символов1→1: API отдаёт прямые кавычки, страница — типографские. */
+const FOLD_CHARS = {
+  '\u2018': "'", '\u2019': "'", '\u201A': "'", '\u201B': "'", '\u2032': "'",
+  '\u201C': '"', '\u201D': '"', '\u201E': '"', '\u201F': '"', '\u2033': '"',
+  '\u2013': '-', '\u2014': '-', '\u2212': '-',
+};
+
+/** Канонический вид текста + карта позиций: серии пробелов схлопываются в один
+    (map[i] — индекс исходного текста для символа canon[i]), кавычки складываются. */
+function canonWithMap(text) {
+  let out = '';
+  const map = [];
+  for (let i = 0; i < text.length; i++) {
+    const folded = FOLD_CHARS[text[i]] || text[i];
+    if (/\s/.test(folded)) {
+      if (out.length && out[out.length - 1] !== ' ') {
+        out += ' ';
+        map.push(i);
+      }
+    } else {
+      out += folded;
+      map.push(i);
+    }
+  }
+  return { canon: out, map };
+}
+
+/** refs из referents API: фрагмент (range.content) ищем в каноническом тексте,
+    позицию переводим в индексы строк. is_description — не про текст песни. */
+export function mapAnnRefs(referents, text) {
+  if (!Array.isArray(referents) || !text) return [];
+  const { canon, map } = canonWithMap(text);
+  const out = [];
+  const seen = new Set();
+  const lineOf = (off) => {
+    let line = 0;
+    for (let i = 0; i < off && i < text.length; i++) if (text.charCodeAt(i) === 10) line++;
+    return line;
+  };
+  for (const rf of referents) {
+    if (!rf || rf.is_description) continue;
+    const ann = Array.isArray(rf.annotations) ? rf.annotations[0] : null;
+    const id = ann?.id != null ? String(ann.id) : '';
+    if (!id || seen.has(id)) continue;
+    const raw = rf.range && typeof rf.range.content === 'string' && rf.range.content
+      ? rf.range.content
+      : typeof rf.fragment === 'string' ? rf.fragment : '';
+    const frag = canonWithMap(raw).canon.trim();
+    if (!frag) continue;
+    const at = canon.indexOf(frag);
+    if (at === -1) continue;
+    const start = map[at];
+    const end = map[Math.min(at + frag.length, map.length - 1)] + 1;
+    const first = lineOf(start);
+    const last = lineOf(Math.max(start, end - 1));
+    const lines = [];
+    for (let l = first; l <= last; l++) lines.push(l);
+    seen.add(id);
+    out.push({ id, lines });
+  }
+  out.sort((a, b) => a.lines[0] - b.lines[0] || a.id.localeCompare(b.id));
+  return out;
+}
+
+/** body.dom официального API → html: текст экранируется, неизвестные теги
+    разворачиваются, ссылки — только http(s). Клиент санитайзером — второй рубеж. */
+const ANN_HTML_TAGS = new Set([
+  'p', 'br', 'a', 'i', 'em', 'b', 'strong', 'u', 's', 'span', 'sub', 'sup',
+  'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'code', 'hr',
+  'img',
+]);
+function escapeAnnText(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+export function domToHtml(node) {
+  if (node == null) return '';
+  if (typeof node === 'string') return escapeAnnText(node);
+  if (Array.isArray(node)) return node.map(domToHtml).join('');
+  const tag = String(node.tag || '').toLowerCase();
+  const kids = domToHtml(node.children);
+  if (tag === 'root' || !ANN_HTML_TAGS.has(tag)) return kids;
+  if (tag === 'br') return '<br>';
+  if (tag === 'a') {
+    const href = String((node.attributes && node.attributes.href) || '');
+    if (!/^https?:\/\//i.test(href)) return kids;
+    return `<a href="${href.replace(/"/g, '&quot;')}">${kids}</a>`;
+  }
+  if (tag === 'img') {
+    // вложение в теле: раньше img выпадал из allowlist и терялся без следа
+    const src = String((node.attributes && node.attributes.src) || '');
+    if (!/^https:\/\//i.test(src)) return '';
+    const alt = escapeAnnText(String((node.attributes && node.attributes.alt) || '')).replace(/"/g, '&quot;');
+    return `<img src="${src.replace(/"/g, '&quot;')}" alt="${alt}">`;
+  }
+  return `<${tag}>${kids}</${tag}>`;
+}
+
 /** Стабильная форма аннотации для клиента: тело (html) клиент санитайзирует
     сам — на сервере нет DOM, а доверять разметке Genius нельзя. */
 export function normalizeAnnotation(ann) {
   const body = ann && typeof ann === 'object' ? ann : {};
   const inner = body.body && typeof body.body === 'object' ? body.body : {};
-  const html = typeof inner.html === 'string' ? inner.html : '';
-  const authorRaw = body.author && typeof body.author === 'object' ? body.author : null;
+  // dom — канонический формат редактора (в нём вложения-картинки), html — запасной:
+  // приоритет html прятал img: поле есть, но без вложений, и domToHtml не вызывался
+  const fromDom = inner.dom ? domToHtml(inner.dom) : '';
+  const html = fromDom || (typeof inner.html === 'string' ? inner.html : '');
+  const authorUser = Array.isArray(body.authors) && body.authors[0] && body.authors[0].user
+    ? body.authors[0].user
+    : null;
+  const legacy = body.author && typeof body.author === 'object' ? body.author : null;
+  const authorName = authorUser && typeof authorUser.name === 'string' && authorUser.name
+    ? authorUser.name
+    : legacy && typeof legacy.name === 'string' && legacy.name ? legacy.name : null;
+  const authorUrl = authorUser && typeof authorUser.url === 'string' && authorUser.url
+    ? authorUser.url
+    : legacy && typeof legacy.url === 'string' && legacy.url ? legacy.url : null;
   const id = body.id != null ? String(body.id) : '';
   return {
     id,
     url: typeof body.url === 'string' && body.url ? body.url : `https://genius.com/annotations/${id}`,
-    author: authorRaw && typeof authorRaw.name === 'string' && authorRaw.name
-      ? { name: authorRaw.name, url: typeof authorRaw.url === 'string' && authorRaw.url ? authorRaw.url : null }
-      : null,
+    author: authorName ? { name: authorName, url: authorUrl || null } : null,
     created_at: typeof body.created_at === 'string' && body.created_at ? body.created_at : null,
     html,
     youtube: youtubeIds(html),
@@ -272,10 +433,12 @@ export default {
           const songMeta = await geniusFetch(`https://api.genius.com/songs/${id}?access_token=${encodeURIComponent(token)}`);
           const song = songMeta?.response?.song;
           if (!song) return json({ error: 'song not found' }, 404);
-          const page = await fetch(song.url, { headers: { 'user-agent': UA, 'accept-language': 'en,ru;q=0.9' } });
-          if (!page.ok) return json({ error: `страница Genius ответила ${page.status}` }, 502);
-          const html = await page.text();
+          const html = await songHtml(song.url);
           const detailed = extractLyricsDetailed(html);
+          // refs: официальный referents API (id + фрагменты → строки);
+          // если недоступен — якоря из HTML (старая разметка /annotations/:id)
+          const referents = await geniusReferents(id, token);
+          const refs = referents ? mapAnnRefs(referents, detailed.text) : [];
           return json({
             song: {
               id: song.id,
@@ -284,7 +447,7 @@ export default {
               url: song.url,
               lyrics_state: song.lyrics_state ?? null,
               text: detailed.text,
-              refs: detailed.refs,
+              refs: refs.length ? refs : detailed.refs,
             },
           });
         });
@@ -295,13 +458,13 @@ export default {
         if (!id) return json({ error: 'missing id' }, 400);
         const cacheKey = new Request(`${url.origin}/api/genius/annotations?id=${id}&v=${ANN_FORMAT_VERSION}`);
         return await cached(cacheKey, 86400, async () => {
-          // Внутренний JSON Genius — тот же, которым пользуется сам сайт:
-          // официальный API аннотаций не отдаёт.
-          const response = await fetch(`https://genius.com/api/annotations/${id}`, {
+          // Официальный API: тот же JSON, которым Genius отдаёт тела аннотаций
+          // (внутренний genius.com/api/annotations с сервера закрыт bot-защитой).
+          const response = await fetch(`https://api.genius.com/annotations/${id}?access_token=${encodeURIComponent(token)}`, {
             headers: { 'user-agent': UA, 'accept': 'application/json' },
           });
           if (response.status === 404) return json({ error: 'annotation not found' }, 404);
-          if (!response.ok) return json({ error: `Genius ответил ${response.status}` }, 502);
+          if (!response.ok) return json({ error: `Genius API ответил ${response.status}` }, 502);
           const data = await response.json().catch(() => null);
           const ann = data?.response?.annotation;
           if (!ann) return json({ error: 'annotation not found' }, 404);

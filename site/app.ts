@@ -6709,17 +6709,27 @@ const vinylLyricsUi: GeniusScreenUi = {
   typewriter: true,
 };
 
-/* Клик по подсвеченной строке открывает карточку аннотации, × закрывает. */
+/* Клик по подсвеченной строке открывает карточку аннотации; как на Genius —
+   клик по любому месту текста закрывает открытую (повторный клик по строке
+   той же аннотации — тоже), по другой подсвеченной — переключает; × — тоже. */
 for (const ui of [albumLyricsUi, vinylLyricsUi]) {
   const openFrom = (target: Element | null): boolean => {
     const line = target?.closest<HTMLElement>('.is-ref') ?? null;
     if (line && ui.text.contains(line) && line.dataset.ann) {
+      const sameOpen = !ui.ann.hidden && ui.ann.dataset.annId === line.dataset.ann;
+      if (sameOpen) {
+        geniusAnnClose(ui); // тумблер: повторный клик по строке закрывает
+        return true;
+      }
       geniusAnnOpen(ui, line.dataset.ann);
       return true;
     }
     return false;
   };
-  ui.text.addEventListener('click', (e) => { openFrom(e.target as Element); });
+  ui.text.addEventListener('click', (e) => {
+    if (openFrom(e.target as Element)) return;
+    if (!ui.ann.hidden) geniusAnnClose(ui); // обычный текст — закрыть открытую
+  });
   ui.text.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     if (openFrom(e.target as Element)) e.preventDefault();
@@ -6935,6 +6945,31 @@ function geniusApplyAnn(run: GeniusRun, song: GeniusSongInfo, pairs: Array<reado
         el.setAttribute('aria-label', 'Показать аннотацию к строке');
       }
     }
+    // многострочная аннотация — единым блоком: края группы (для скругления
+    // и рамки активности) и сквозное наведение по всем строкам группы
+    const allLines = Array.from(lines);
+    for (const el of allLines) el.classList.remove('is-ref-first', 'is-ref-last', 'is-hover');
+    const groups: HTMLElement[][] = [];
+    let acc: HTMLElement[] = [];
+    for (const el of allLines) {
+      const annId = el.dataset.ann;
+      if (annId && acc.length && acc[acc.length - 1].nextElementSibling === el && acc[0].dataset.ann === annId) {
+        acc.push(el);
+      } else {
+        if (acc.length) groups.push(acc);
+        acc = annId ? [el] : [];
+      }
+    }
+    if (acc.length) groups.push(acc);
+    for (const group of groups) {
+      group[0].classList.add('is-ref-first');
+      group[group.length - 1].classList.add('is-ref-last');
+      if (group.length === 1) continue;
+      for (const el of group) {
+        el.addEventListener('mouseenter', () => group.forEach((x) => x.classList.add('is-hover')));
+        el.addEventListener('mouseleave', () => group.forEach((x) => x.classList.remove('is-hover')));
+      }
+    }
     geniusAnnCtx.set(ui.text, { song, refs, anns });
   };
   if (ui.text.classList.contains('is-typing')) geniusAnnDeferred.set(ui, apply);
@@ -6943,6 +6978,7 @@ function geniusApplyAnn(run: GeniusRun, song: GeniusSongInfo, pairs: Array<reado
 
 function geniusAnnClose(ui: GeniusScreenUi): void {
   ui.ann.hidden = true;
+  delete ui.ann.dataset.annId;
   ui.bodyWrap.classList.remove('is-ann');
   ui.text.querySelectorAll('.lyrics__line.is-active').forEach((el) => el.classList.remove('is-active'));
 }
@@ -6962,6 +6998,26 @@ function geniusYoutubeIframe(id: string): HTMLIFrameElement {
   f.allowFullscreen = true;
   f.referrerPolicy = 'strict-origin-when-cross-origin';
   return f;
+}
+
+/** Хосты Genius, где по ссылке гарантированно лежит картинка (hotlink-решение
+    по аннотациям); URL без расширения (filepicker) распознаём только по хосту. */
+const GENIUS_ANN_IMG_HOSTS = new Set(['images.genius.com', 'filepicker-images.genius.com']);
+const GENIUS_ANN_IMG_EXT_RE = /\.(?:png|jpe?g|gif|webp|avif)$/i;
+
+/** Ссылка-картинка → src для <img>: в теле аннотации такие ссылки рендерим
+    самой картинкой, а не текстом-URL (так Genius показывает вложения). */
+function geniusAnnImageSrc(href: string): string | null {
+  let u: URL;
+  try {
+    u = new URL(href);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+  if (GENIUS_ANN_IMG_HOSTS.has(u.hostname)) return href;
+  if (GENIUS_ANN_IMG_EXT_RE.test(u.pathname)) return href;
+  return null;
 }
 
 /* Тело аннотации — чужой HTML: вставляем только известные теги и только
@@ -6993,6 +7049,17 @@ function geniusAnnSanitize(src: Node, dst: ParentNode, seen: Set<string>): void 
           dst.appendChild(geniusYoutubeIframe(yt));
         }
         continue; // вместо ссылки-превью — сам плеер
+      }
+      const imgSrc = geniusAnnImageSrc(href);
+      if (imgSrc) {
+        // ссылка на картинку (вложение genius-CDN) — сама картинка, не URL-текст
+        const img = document.createElement('img');
+        img.src = imgSrc;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.referrerPolicy = 'no-referrer';
+        dst.appendChild(img);
+        continue;
       }
       const a = document.createElement('a');
       a.href = href;
@@ -7098,6 +7165,7 @@ function geniusAnnOpen(ui: GeniusScreenUi, annId: string): void {
 
   ui.ann.replaceChildren(frag);
   ui.ann.hidden = false;
+  ui.ann.dataset.annId = annId; // для тумблера: повторный клик по строке закрывает
   ui.bodyWrap.classList.add('is-ann');
   const lines = ui.text.querySelectorAll<HTMLElement>('.lyrics__line');
   ui.text.querySelectorAll('.lyrics__line.is-active').forEach((el) => el.classList.remove('is-active'));

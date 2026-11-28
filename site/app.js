@@ -25827,13 +25827,19 @@ ${suffix}`;
     const openFrom = (target) => {
       const line = target?.closest(".is-ref") ?? null;
       if (line && ui.text.contains(line) && line.dataset.ann) {
+        const sameOpen = !ui.ann.hidden && ui.ann.dataset.annId === line.dataset.ann;
+        if (sameOpen) {
+          geniusAnnClose(ui);
+          return true;
+        }
         geniusAnnOpen(ui, line.dataset.ann);
         return true;
       }
       return false;
     };
     ui.text.addEventListener("click", (e) => {
-      openFrom(e.target);
+      if (openFrom(e.target)) return;
+      if (!ui.ann.hidden) geniusAnnClose(ui);
     });
     ui.text.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
@@ -26012,6 +26018,29 @@ ${suffix}`;
           el.setAttribute("aria-label", "\u041F\u043E\u043A\u0430\u0437\u0430\u0442\u044C \u0430\u043D\u043D\u043E\u0442\u0430\u0446\u0438\u044E \u043A \u0441\u0442\u0440\u043E\u043A\u0435");
         }
       }
+      const allLines = Array.from(lines);
+      for (const el of allLines) el.classList.remove("is-ref-first", "is-ref-last", "is-hover");
+      const groups = [];
+      let acc = [];
+      for (const el of allLines) {
+        const annId = el.dataset.ann;
+        if (annId && acc.length && acc[acc.length - 1].nextElementSibling === el && acc[0].dataset.ann === annId) {
+          acc.push(el);
+        } else {
+          if (acc.length) groups.push(acc);
+          acc = annId ? [el] : [];
+        }
+      }
+      if (acc.length) groups.push(acc);
+      for (const group of groups) {
+        group[0].classList.add("is-ref-first");
+        group[group.length - 1].classList.add("is-ref-last");
+        if (group.length === 1) continue;
+        for (const el of group) {
+          el.addEventListener("mouseenter", () => group.forEach((x) => x.classList.add("is-hover")));
+          el.addEventListener("mouseleave", () => group.forEach((x) => x.classList.remove("is-hover")));
+        }
+      }
       geniusAnnCtx.set(ui.text, { song, refs, anns });
     };
     if (ui.text.classList.contains("is-typing")) geniusAnnDeferred.set(ui, apply);
@@ -26019,6 +26048,7 @@ ${suffix}`;
   }
   function geniusAnnClose(ui) {
     ui.ann.hidden = true;
+    delete ui.ann.dataset.annId;
     ui.bodyWrap.classList.remove("is-ann");
     ui.text.querySelectorAll(".lyrics__line.is-active").forEach((el) => el.classList.remove("is-active"));
   }
@@ -26035,6 +26065,20 @@ ${suffix}`;
     f.allowFullscreen = true;
     f.referrerPolicy = "strict-origin-when-cross-origin";
     return f;
+  }
+  var GENIUS_ANN_IMG_HOSTS = /* @__PURE__ */ new Set(["images.genius.com", "filepicker-images.genius.com"]);
+  var GENIUS_ANN_IMG_EXT_RE = /\.(?:png|jpe?g|gif|webp|avif)$/i;
+  function geniusAnnImageSrc(href) {
+    let u;
+    try {
+      u = new URL(href);
+    } catch {
+      return null;
+    }
+    if (u.protocol !== "https:" && u.protocol !== "http:") return null;
+    if (GENIUS_ANN_IMG_HOSTS.has(u.hostname)) return href;
+    if (GENIUS_ANN_IMG_EXT_RE.test(u.pathname)) return href;
+    return null;
   }
   var GENIUS_ANN_KEEP = /* @__PURE__ */ new Set(["P", "BR", "STRONG", "B", "EM", "I", "U", "S", "BLOCKQUOTE", "UL", "OL", "LI", "H2", "H3", "H4", "FIGURE", "FIGCAPTION", "IMG", "A"]);
   var GENIUS_ANN_DROP = /* @__PURE__ */ new Set(["SCRIPT", "STYLE", "IFRAME", "OBJECT", "EMBED", "SVG", "MATH", "FORM", "INPUT", "BUTTON", "SELECT", "TEXTAREA", "VIDEO", "AUDIO", "SOURCE", "NOSCRIPT"]);
@@ -26060,6 +26104,16 @@ ${suffix}`;
             seen.add(yt);
             dst.appendChild(geniusYoutubeIframe(yt));
           }
+          continue;
+        }
+        const imgSrc = geniusAnnImageSrc(href);
+        if (imgSrc) {
+          const img = document.createElement("img");
+          img.src = imgSrc;
+          img.alt = "";
+          img.loading = "lazy";
+          img.referrerPolicy = "no-referrer";
+          dst.appendChild(img);
           continue;
         }
         const a = document.createElement("a");
@@ -26154,6 +26208,7 @@ ${suffix}`;
     frag.appendChild(link);
     ui.ann.replaceChildren(frag);
     ui.ann.hidden = false;
+    ui.ann.dataset.annId = annId;
     ui.bodyWrap.classList.add("is-ann");
     const lines = ui.text.querySelectorAll(".lyrics__line");
     ui.text.querySelectorAll(".lyrics__line.is-active").forEach((el) => el.classList.remove("is-active"));

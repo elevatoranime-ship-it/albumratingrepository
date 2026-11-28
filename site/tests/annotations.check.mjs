@@ -10,6 +10,7 @@
    Браузерный прогон (desktop + mobile) — tests/genius-lyrics.spec.ts в CI. */
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -43,11 +44,34 @@ async function waitFor(fn, timeout = 8000, step = 40) {
 
 console.log('проверка: статика аннотаций');
 check('worker: маршрут /api/genius/annotations', workerJs.includes("'/api/genius/annotations'"), true);
-check('worker: разбор возвращает refs', workerJs.includes('extractLyricsDetailed') && workerJs.includes('refs: detailed.refs'), true);
+check('worker: разбор возвращает refs', workerJs.includes('extractLyricsDetailed') && workerJs.includes('refs: refs.length ? refs : detailed.refs'), true);
 check('worker: нормализация аннотации экспортирована', workerJs.includes('export function normalizeAnnotation'), true);
+check('worker: текст — Wayback при403, refs — официальный referents API',
+  ['waybackHtml', 'id_/', 'geniusReferents', 'mapAnnRefs'].every((s) => workerJs.includes(s)), true);
+check('worker: тело аннотации — api.genius.com + body.dom → html',
+  ['api.genius.com/annotations', 'domToHtml'].every((s) => workerJs.includes(s)), true);
 check('server: маршрут /api/genius/annotations', serverPy.includes('/api/genius/annotations'), true);
-check('server: lyrics-ответ содержит refs', serverPy.includes('"refs": detailed["refs"]'), true);
+check('server: lyrics-ответ содержит refs', serverPy.includes('"refs": refs or detailed["refs"]'), true);
 check('server: normalize_annotation зеркалит worker', serverPy.includes('def normalize_annotation'), true);
+check('server: текст — Wayback при403, refs — referents API (паритет worker)',
+  ['fetch_lyrics_html', 'wayback_html', 'id_/', 'map_ann_refs', 'dom_to_html'].every((s) => serverPy.includes(s)), true);
+check('server: аннотация из api.genius.com', serverPy.includes('api.genius.com/annotations'), true);
+// вложения в теле: img из body.dom раньше выпадал из allowlist и пропадал без следа
+check('worker: img в allowlist тела и ветка https-src',
+  workerJs.includes("'img',") && workerJs.includes("tag === 'img'") && workerJs.includes('node.attributes.src'), true);
+check('server: img в allowlist тела и ветка https-src (паритет)',
+  serverPy.includes('"img",') && serverPy.includes('tag == "img"') && serverPy.includes('attrs.get("src")'), true);
+const workerAnnImg = execFileSync(process.execPath, ['--input-type=module', '-e',
+  `import { normalizeAnnotation } from './worker.js';` +
+  `console.log(normalizeAnnotation({body:{dom:{tag:'root',children:[{tag:'p',children:['текст']},{tag:'img',attributes:{src:'https://images.genius.com/8729fd8f6449d7fdca95631f6e603116.379×379×1.png'}},{tag:'img',attributes:{src:'javascript:x'}}]}}}).html)`,
+], { cwd: path.join(root, '..') }).toString();
+check('worker: https-img из body.dom доходит до html, javascript — нет',
+  workerAnnImg.includes('<img src="https://images.genius.com/8729fd8f6449d7fdca95631f6e603116.379×379×1.png"') && !workerAnnImg.includes('javascript:'), true);
+const serverAnnImg = execFileSync('python3', ['-c',
+  'from server import dom_to_html; print(dom_to_html({"tag":"root","children":[{"tag":"p","children":["текст"]},{"tag":"img","attributes":{"src":"https://images.genius.com/8729fd8f6449d7fdca95631f6e603116.379×379×1.png"}},{"tag":"img","attributes":{"src":"javascript:x"}}]}))',
+], { cwd: root }).toString();
+check('server: https-img из body.dom доходит до html, javascript — нет',
+  serverAnnImg.includes('<img src="https://images.genius.com/8729fd8f6449d7fdca95631f6e603116.379×379×1.png"') && !serverAnnImg.includes('javascript:'), true);
 check('server: макет --mock-genius для превью без сети', serverPy.includes('--mock-genius') && serverPy.includes('MOCK_LYRICS_HTML'), true);
 check('server: макетные аннотации идут через normalize_annotation', serverPy.includes('normalize_annotation(raw)'), true);
 check('разметка: карточки на обоих экранах', ['id="lyrics-ann"', 'id="vinyl-ann"', 'id="lyrics-body"', 'id="vinyl-textwrap"'].every((s) => html.includes(s)), true);
@@ -60,8 +84,10 @@ const mobileSheetRule = stylesCss.match(/\.lyrics__body\.is-ann \.lyrics__ann \{
 check('стили: мобильная шторка bottom-anchored (top: auto)', Boolean(mobileSheetRule && mobileSheetRule[0].includes('top: auto')), true);
 check('стили: шторка учитывает safe-area iPhone', stylesCss.includes('env(safe-area-inset-bottom)'), true);
 check('стили: подсветка, раскладка, iframe', ['.lyrics__line.is-ref', '.lyrics__body.is-ann', '.lyrics__ann-body iframe'].every((s) => stylesCss.includes(s)), true);
+check('стили: группа строк — единый блок (края, hover, рамка активности)',
+  ['is-ref-first', 'is-ref-last', 'is-hover'].every((s) => stylesCss.includes(s)), true);
 check('стили: у карточки нет display через [hidden]', !/\.lyrics__ann\s*\{[^}]*display\s*:/.test(stylesCss), true);
-check('клиент: санитайзер и YouTube', ['GENIUS_ANN_KEEP', 'youtube-nocookie.com/embed', 'geniusAnnSanitize'].every((s) => appSource.includes(s)), true);
+check('клиент: санитайзер и YouTube', ['GENIUS_ANN_KEEP', 'youtube-nocookie.com/embed', 'geniusAnnSanitize', 'geniusAnnImageSrc', 'filepicker-images.genius.com'].every((s) => appSource.includes(s)), true);
 // без клинапа Chrome оставляет identity-матрицу reveal-анимации — секция
 // становится containing block для fixed-шторки и обрезает её overflow'ом
 check('клиент: reveal снимается после анимации rise/riseSoft (нет вечного fixed-CB)',
@@ -77,6 +103,8 @@ const annFixture = {
   created_at: '2024-05-01T12:00:00Z',
   html: '<p>Это <b>аннотация</b> со <a href="https://genius.com/annotated-song-lyrics">ссылкой</a>.</p>'
     + '<img src="https://images.genius.com/pic.jpg" alt="картинка"/>'
+    // вложение genius-CDN: в body приходит ссылкой — карточка показывает картинкой
+    + '<a href="https://filepicker-images.genius.com/f0b42d309c89a7fd2dc9d87d18a52225ddb601db51a5aad98857cff9a15ded3%2Fac9am38xyy6">https://filepicker-images.genius.com/f0b42d309c89a7fd2dc9d87d18a52225ddb601db51a5aad98857cff9a15ded3%2Fac9am38xyy6</a>'
     + '<a href="https://www.youtube.com/watch?v=abc123def45"><img src="https://i.ytimg.com/vi/abc123def45/hqdefault.jpg" alt=""/></a>'
     + '<script>alert(1)</script>',
   youtube: ['abc123def45'],
@@ -151,7 +179,7 @@ async function boot() {
 
 async function scenario() {
   console.log('сценарий: подсветка строк, карточка, закрытие');
-  const { doc, pageErrors } = await boot();
+  const { window, doc, pageErrors } = await boot();
 
   doc.querySelector('#albums .album__title').click();
   await waitFor(() => [...doc.querySelectorAll('.view.is-visible')].map((v) => v.id).join() === 'view-album');
@@ -163,6 +191,14 @@ async function scenario() {
   check('подсвеченные строки — «Два» и «Три»', refs.map((el) => el.textContent), ['Два', 'Три']);
   check('строки доступны с клавиатуры', refs.every((el) => el.getAttribute('role') === 'button' && el.getAttribute('tabindex') === '0'), true);
   check('остальные строки не подсвечены', doc.querySelectorAll('#lyrics-text .lyrics__line:not(.is-ref)').length, 3);
+  // многострочная аннотация — единым блоком: края группы и сквозной hover
+  const refEls = [...doc.querySelectorAll('#lyrics-text .lyrics__line.is-ref')];
+  check('группа: первая строка — край снизу', refEls[0].classList.contains('is-ref-first') && !refEls[0].classList.contains('is-ref-last'), true);
+  check('группа: последняя строка — край сверху', refEls[1].classList.contains('is-ref-last') && !refEls[1].classList.contains('is-ref-first'), true);
+  refEls[0].dispatchEvent(new window.MouseEvent('mouseenter'));
+  check('группа: наведение подсвечивает все строки', refEls.every((el) => el.classList.contains('is-hover')), true);
+  refEls[1].dispatchEvent(new window.MouseEvent('mouseleave'));
+  check('группа: уход снимает подсветку со всех', refEls.some((el) => el.classList.contains('is-hover')), false);
 
   refs[0].click();
   const ann = doc.querySelector('#lyrics-ann');
@@ -175,9 +211,23 @@ async function scenario() {
   check('тело: script выброшен', ann.querySelector('.lyrics__ann-body script'), null);
   check('тело: ссылка https осталась', Boolean(ann.querySelector('.lyrics__ann-body a[href="https://genius.com/annotated-song-lyrics"]')), true);
   check('тело: картинка с CDN', ann.querySelector('.lyrics__ann-body img')?.getAttribute('src'), 'https://images.genius.com/pic.jpg');
+  // ссылка-вложение genius-CDN (filepicker, без расширения) — картинкой, не URL-текстом
+  check('тело: ссылка-картинка стала <img>',
+    Boolean(ann.querySelector('.lyrics__ann-body img[src^="https://filepicker-images.genius.com/"]')), true);
+  check('тело: без ссылки-URL вместо картинки', ann.querySelector('.lyrics__ann-body a[href^="https://filepicker"]'), null);
   check('YouTube — iframe в карточке', ann.querySelector('.lyrics__ann-body iframe')?.getAttribute('src'), 'https://www.youtube-nocookie.com/embed/abc123def45');
   check('ссылка на аннотацию', ann.querySelector('.lyrics__ann-link')?.getAttribute('href'), 'https://genius.com/annotations/555');
   check('открытая строка активна', refs[0].classList.contains('is-active'), true);
+
+  // закрытие кликом по тексту, как на Genius: тумблер по строке + обычный текст
+  refs[1].click();
+  check('повторный клик по строке той же аннотации закрывает', ann.hidden, true);
+  refs[0].click();
+  check('переоткрытие по строке работает', ann.hidden, false);
+  doc.querySelector('#lyrics-text .lyrics__line:not(.is-ref)').click();
+  check('клик по обычному тексту закрывает аннотацию', ann.hidden, true);
+  refs[0].click();
+  check('аннотация открыта для проверки ×', ann.hidden, false);
 
   ann.querySelector('.lyrics__ann-close').click();
   check('карточка закрыта', ann.hidden, true);

@@ -3342,6 +3342,8 @@ body { -webkit-tap-highlight-color: transparent; }
 .lyrics__close:hover { color: var(--text); border-color: var(--line-strong); }
 
 .lyrics__state { min-height: 18px; margin-top: 10px; font-size: 13px; color: var(--text-dim); }
+/* пустая строка состояния не должна держать место под шапкой */
+.lyrics__state:empty { display: none; }
 .lyrics__state.is-searching::before {
   content: '';
   display: inline-block;
@@ -3359,7 +3361,7 @@ body { -webkit-tap-highlight-color: transparent; }
 /* сам текст: нативный шрифт UI — в тон всей остальной гамме сайта,
    без «книжной» антиквы, которая выбивалась из монохром-лаванды */
 .lyrics__text {
-  margin: 12px 0 0;
+  margin: 6px 0 0;
   padding: 14px 16px;
   font-family: var(--font-ui);
   font-size: 16px;
@@ -3644,8 +3646,9 @@ body { -webkit-tap-highlight-color: transparent; }
 @keyframes ge-line { from { opacity: 0; transform: translateY(12px); filter: blur(7px); } }
 #lyrics-text {
   padding-left: 20px;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
-  mask-image: linear-gradient(180deg, transparent 0, #000 26px, #000 calc(100% - 26px), transparent 100%);
+  /* верхний фейд — только под прокруткой, не над первой строкой в покое */
+  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 26px), transparent 100%);
+  mask-image: linear-gradient(180deg, transparent 0, #000 10px, #000 calc(100% - 26px), transparent 100%);
 }
 .lyrics__text::before {
   content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: 2px;

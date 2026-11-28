@@ -1313,7 +1313,7 @@ const q = <T extends HTMLElement>(sel: string): T => {
 };
 
 const card = q<HTMLDivElement>('#card');
-const viewLogin = q<HTMLElement>('#view-login');
+const viewLanding = q<HTMLElement>('#view-landing');
 const viewHome = q<HTMLElement>('#view-home');
 const viewAlbum = q<HTMLElement>('#view-album');
 const viewAdd = q<HTMLElement>('#view-add');
@@ -1680,7 +1680,7 @@ async function enterHome(): Promise<void> {
   success.classList.add('is-visible');
   await sleep(1350);
   success.classList.remove('is-visible');
-  await queueNav(() => swapTo(viewLogin, viewHome, () => {
+  await queueNav(() => swapTo(viewLanding, viewHome, () => {
     viewHome.scrollTop = 0;
     moveSegThumb();
   }));
@@ -1704,7 +1704,8 @@ logoutBtn.addEventListener('click', () => {
     await queueNav(async () => {
       viewStack.length = 0;
       viewStack.push({ view: 'home' });
-      await swapTo(viewHome, viewLogin);
+      await swapTo(viewHome, viewLanding);
+      viewLanding.scrollTop = 0; // возврат на обзор — с начала
     });
     viewHome.querySelectorAll<HTMLElement>('.album').forEach((el) => {
       el.classList.add('reveal');
@@ -1715,6 +1716,54 @@ logoutBtn.addEventListener('click', () => {
     card.classList.add('enter');
   })();
 });
+
+/* ---------- Обзор-лендинг: прогресс, переходы, появление секций ---------- */
+(() => {
+  const lp = q<HTMLElement>('#lp');
+  if (!lp) return;
+  const progress = q<HTMLElement>('#lp-progress');
+
+  const onScroll = (): void => {
+    if (!progress) return;
+    const max = lp.scrollHeight - lp.clientHeight;
+    progress.style.transform = `scaleX(${max > 0 ? Math.min(1, lp.scrollTop / max) : 0})`;
+  };
+  lp.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  // «Войти» / «Что внутри» — плавный переход по секциям (без смены экрана)
+  for (const btn of document.querySelectorAll<HTMLElement>('[data-lp-scroll]')) {
+    btn.addEventListener('click', () => {
+      const target = document.getElementById(btn.dataset.lpScroll ?? '');
+      // jsdom не реализует scrollIntoView — вызываем только если он есть
+      target?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  // секции проявляются при появлении в кадре; карточка входа «въезжает» при
+  // скролле к последней секции. Без IntersectionObserver (старые браузеры,
+  // jsdom) — показываем всё сразу, без анимации ожидания.
+  const secs = [...lp.querySelectorAll<HTMLElement>('.lp__sec')];
+  const playCardEnter = (): void => {
+    card.classList.remove('enter');
+    void card.offsetWidth;
+    card.classList.add('enter');
+  };
+  if ('IntersectionObserver' in window) {
+    lp.classList.add('is-anim');
+    const io = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add('is-in');
+        if (entry.target.id === 'lp-enter') playCardEnter();
+        io.unobserve(entry.target);
+      }
+    }, { threshold: 0.35 });
+    for (const sec of secs) io.observe(sec);
+  } else {
+    for (const sec of secs) sec.classList.add('is-in');
+  }
+})();
 
 /* ---------- Переключатель «альбомы | синглы» на главной ---------- */
 function moveSegThumb(): void {
@@ -8416,8 +8465,8 @@ function showDemoHint(): void {
 function showHomeDirect(): void {
   homeTitle.textContent = currentUser?.username ?? 'Гость';
   setAvatarEl(homeAvatar, currentUser);
-  viewLogin.classList.remove('is-visible');
-  viewLogin.style.display = 'none';
+  viewLanding.classList.remove('is-visible');
+  viewLanding.style.display = 'none';
   viewHome.style.display = '';
   viewHome.classList.add('is-visible');
   renderAlbums();

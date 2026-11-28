@@ -21084,7 +21084,7 @@ ${suffix}`;
     return el;
   };
   var card = q("#card");
-  var viewLogin = q("#view-login");
+  var viewLanding = q("#view-landing");
   var viewHome = q("#view-home");
   var viewAlbum = q("#view-album");
   var viewAdd = q("#view-add");
@@ -21408,7 +21408,7 @@ ${suffix}`;
     success.classList.add("is-visible");
     await sleep3(1350);
     success.classList.remove("is-visible");
-    await queueNav(() => swapTo(viewLogin, viewHome, () => {
+    await queueNav(() => swapTo(viewLanding, viewHome, () => {
       viewHome.scrollTop = 0;
       moveSegThumb();
     }));
@@ -21431,7 +21431,8 @@ ${suffix}`;
       await queueNav(async () => {
         viewStack.length = 0;
         viewStack.push({ view: "home" });
-        await swapTo(viewHome, viewLogin);
+        await swapTo(viewHome, viewLanding);
+        viewLanding.scrollTop = 0;
       });
       viewHome.querySelectorAll(".album").forEach((el) => {
         el.classList.add("reveal");
@@ -21442,6 +21443,44 @@ ${suffix}`;
       card.classList.add("enter");
     })();
   });
+  (() => {
+    const lp = q("#lp");
+    if (!lp) return;
+    const progress = q("#lp-progress");
+    const onScroll = () => {
+      if (!progress) return;
+      const max = lp.scrollHeight - lp.clientHeight;
+      progress.style.transform = `scaleX(${max > 0 ? Math.min(1, lp.scrollTop / max) : 0})`;
+    };
+    lp.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    for (const btn of document.querySelectorAll("[data-lp-scroll]")) {
+      btn.addEventListener("click", () => {
+        const target = document.getElementById(btn.dataset.lpScroll ?? "");
+        target?.scrollIntoView?.({ behavior: "smooth", block: "start" });
+      });
+    }
+    const secs = [...lp.querySelectorAll(".lp__sec")];
+    const playCardEnter = () => {
+      card.classList.remove("enter");
+      void card.offsetWidth;
+      card.classList.add("enter");
+    };
+    if ("IntersectionObserver" in window) {
+      lp.classList.add("is-anim");
+      const io = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          entry.target.classList.add("is-in");
+          if (entry.target.id === "lp-enter") playCardEnter();
+          io.unobserve(entry.target);
+        }
+      }, { threshold: 0.35 });
+      for (const sec of secs) io.observe(sec);
+    } else {
+      for (const sec of secs) sec.classList.add("is-in");
+    }
+  })();
   function moveSegThumb() {
     const btn = homeMode === "album" ? segAlbums : segSingles;
     if (!btn.offsetWidth) return;
@@ -27363,8 +27402,8 @@ ${suffix}`;
   function showHomeDirect() {
     homeTitle.textContent = currentUser?.username ?? "\u0413\u043E\u0441\u0442\u044C";
     setAvatarEl(homeAvatar, currentUser);
-    viewLogin.classList.remove("is-visible");
-    viewLogin.style.display = "none";
+    viewLanding.classList.remove("is-visible");
+    viewLanding.style.display = "none";
     viewHome.style.display = "";
     viewHome.classList.add("is-visible");
     renderAlbums();

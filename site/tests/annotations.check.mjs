@@ -86,6 +86,8 @@ check('стили: шторка учитывает safe-area iPhone', stylesCss.
 check('стили: подсветка, раскладка, iframe', ['.lyrics__line.is-ref', '.lyrics__body.is-ann', '.lyrics__ann-body iframe'].every((s) => stylesCss.includes(s)), true);
 check('стили: группа строк — единый блок (края, hover, рамка активности)',
   ['is-ref-first', 'is-ref-last', 'is-hover'].every((s) => stylesCss.includes(s)), true);
+check('стили: шторка поверх всех контейнеров — секция треков поднимается при аннотации',
+  stylesCss.includes('.av__tracks:has(.lyrics__body.is-ann)'), true);
 check('стили: у карточки нет display через [hidden]', !/\.lyrics__ann\s*\{[^}]*display\s*:/.test(stylesCss), true);
 check('клиент: санитайзер и YouTube', ['GENIUS_ANN_KEEP', 'youtube-nocookie.com/embed', 'geniusAnnSanitize', 'geniusAnnImageSrc', 'filepicker-images.genius.com'].every((s) => appSource.includes(s)), true);
 // без клинапа Chrome оставляет identity-матрицу reveal-анимации — секция

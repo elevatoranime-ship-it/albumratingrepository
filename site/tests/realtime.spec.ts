@@ -299,7 +299,7 @@ test('logout stops polling and a second login creates a fresh subscription', asy
   const cloud = await start(page);
   await page.locator('#album-back').click();
   await page.locator('#logout-btn').click();
-  await expect(page.locator('#view-login')).toHaveClass(/is-visible/);
+  await expect(page.locator('#view-landing')).toHaveClass(/is-visible/);
   const reads = cloud.state.reads;
   await page.clock.runFor(12000);
   expect(cloud.state.reads).toBe(reads);

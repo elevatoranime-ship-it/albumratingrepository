@@ -3379,10 +3379,16 @@ body { -webkit-tap-highlight-color: transparent; }
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
-/* бегущий курсор, пока текст печатается */
+/* бегущий курсор, пока текст печатается — чёткий штрих, не глиф-блок */
 .lyrics__text.is-typing::after {
-  content: '▍';
-  color: #f2cf5e;
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 1.05em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  background: var(--ge-yellow);
+  border-radius: 2px;
   animation: genius-caret 0.85s steps(1) infinite;
 }
 @keyframes genius-caret { 50% { opacity: 0; } }
@@ -3574,7 +3580,13 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 
 /* ---------- панель альбома: стекло, жёлтая кромка, свечение ---------- */
-.lyrics { position: relative; border: 1px solid rgba(255, 255, 255, .08); transform-origin: 50% 0; }
+.lyrics {
+  position: relative;
+  border: 1px solid rgba(255, 255, 255, .08);
+  transform-origin: 50% 0;
+  /* глубина за счёт тени, а не неонового ореола */
+  box-shadow: 0 34px 70px -42px rgba(0, 0, 0, .95), 0 2px 10px -4px rgba(0, 0, 0, .6);
+}
 .lyrics > * { position: relative; z-index: 1; }
 .lyrics::before {
   /* фирменная кромка: прорисовывается при открытии, бежит во время поиска */
@@ -3587,10 +3599,10 @@ body { -webkit-tap-highlight-color: transparent; }
 .lyrics.is-searching::before { animation: ge-edge 1.5s linear infinite; }
 @keyframes ge-edge { from { transform: translateX(-60%) scaleX(.45); } to { transform: translateX(60%) scaleX(.45); } }
 .lyrics::after {
-  /* тёплое свечение из угла — появляется, когда текст найден */
+  /* мягкий свет из угла (нейтральный, не жёлтый) — появляется, когда текст найден */
   content: ''; position: absolute; z-index: 0; right: -60px; top: -70px; width: 300px; height: 300px;
   border-radius: 50%; pointer-events: none; opacity: 0;
-  background: radial-gradient(circle, rgba(242, 207, 94, .16), transparent 62%);
+  background: radial-gradient(circle, rgba(255, 255, 255, .05), transparent 62%);
   transition: opacity 1.2s var(--ge-ease);
 }
 .lyrics.is-found::after { opacity: 1; }
@@ -3605,11 +3617,8 @@ body { -webkit-tap-highlight-color: transparent; }
 @keyframes ge-rise { from { opacity: 0; transform: translateY(10px); } }
 .lyrics__mark svg { animation: ge-stamp .6s var(--ge-ease) .18s both; }
 @keyframes ge-stamp { 0% { transform: scale(1.55) rotate(-10deg); opacity: 0; } 55% { opacity: 1; } 100% { transform: none; } }
-.lyrics.is-found .lyrics__mark svg { filter: drop-shadow(0 0 10px rgba(242, 207, 94, .45)); }
-.lyrics.is-found .lyrics__song {
-  background: linear-gradient(92deg, #fff 20%, var(--ge-yellow)); -webkit-background-clip: text; background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
+.lyrics.is-found .lyrics__mark svg { filter: drop-shadow(0 2px 5px rgba(0, 0, 0, .45)); }
+/* заголовок — плотный тёплый белый: акцент держат знак и кромка, не градиент по тексту */
 
 /* состояние: пилюля с живыми точками */
 .lyrics__state.is-searching::after { content: ''; display: inline-block; min-width: 26px; text-align: left; animation: ge-dots 1.3s steps(1) infinite; }
@@ -3619,7 +3628,7 @@ body { -webkit-tap-highlight-color: transparent; }
 .lyrics__skeleton { display: grid; gap: 10px; margin: 6px 0 2px; }
 .lyrics__skeleton i {
   display: block; height: 12px; border-radius: 7px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, .05) 30%, rgba(242, 207, 94, .17) 50%, rgba(255, 255, 255, .05) 70%);
+  background: linear-gradient(90deg, rgba(255, 255, 255, .05) 30%, rgba(255, 255, 255, .10) 50%, rgba(255, 255, 255, .05) 70%);
   background-size: 220% 100%; animation: ge-shimmer 1.35s linear infinite;
 }
 .lyrics__skeleton i:nth-child(1) { width: 46%; }
@@ -3640,9 +3649,10 @@ body { -webkit-tap-highlight-color: transparent; }
 }
 .lyrics__text::before {
   content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 2px; border-radius: 2px;
-  background: linear-gradient(180deg, var(--ge-yellow), rgba(242, 207, 94, 0) 85%); opacity: .5;
+  background: linear-gradient(180deg, rgba(242, 207, 94, .7), rgba(242, 207, 94, 0) 85%); opacity: .4;
 }
-.lyrics__text.is-typing::before { opacity: .95; box-shadow: 0 0 12px rgba(242, 207, 94, .35); }
+/* печать: рельса становится ярче, но без неонового box-shadow */
+.lyrics__text.is-typing::before { opacity: .9; }
 
 /* --- аннотации Genius: подсветка строк и карточка --- */
 .lyrics__line.is-ref {

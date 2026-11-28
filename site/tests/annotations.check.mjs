@@ -10,6 +10,7 @@
    Браузерный прогон (desktop + mobile) — tests/genius-lyrics.spec.ts в CI. */
 import { JSDOM } from 'jsdom';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,6 +56,22 @@ check('server: normalize_annotation зеркалит worker', serverPy.includes(
 check('server: текст — Wayback при403, refs — referents API (паритет worker)',
   ['fetch_lyrics_html', 'wayback_html', 'id_/', 'map_ann_refs', 'dom_to_html'].every((s) => serverPy.includes(s)), true);
 check('server: аннотация из api.genius.com', serverPy.includes('api.genius.com/annotations'), true);
+// вложения в теле: img из body.dom раньше выпадал из allowlist и пропадал без следа
+check('worker: img в allowlist тела и ветка https-src',
+  workerJs.includes("'img',") && workerJs.includes("tag === 'img'") && workerJs.includes('node.attributes.src'), true);
+check('server: img в allowlist тела и ветка https-src (паритет)',
+  serverPy.includes('"img",') && serverPy.includes('tag == "img"') && serverPy.includes('attrs.get("src")'), true);
+const workerAnnImg = execFileSync(process.execPath, ['--input-type=module', '-e',
+  `import { normalizeAnnotation } from './worker.js';` +
+  `console.log(normalizeAnnotation({body:{dom:{tag:'root',children:[{tag:'p',children:['текст']},{tag:'img',attributes:{src:'https://images.genius.com/8729fd8f6449d7fdca95631f6e603116.379×379×1.png'}},{tag:'img',attributes:{src:'javascript:x'}}]}}}).html)`,
+], { cwd: path.join(root, '..') }).toString();
+check('worker: https-img из body.dom доходит до html, javascript — нет',
+  workerAnnImg.includes('<img src="https://images.genius.com/8729fd8f6449d7fdca95631f6e603116.379×379×1.png"') && !workerAnnImg.includes('javascript:'), true);
+const serverAnnImg = execFileSync('python3', ['-c',
+  'from server import dom_to_html; print(dom_to_html({"tag":"root","children":[{"tag":"p","children":["текст"]},{"tag":"img","attributes":{"src":"https://images.genius.com/8729fd8f6449d7fdca95631f6e603116.379×379×1.png"}},{"tag":"img","attributes":{"src":"javascript:x"}}]}))',
+], { cwd: root }).toString();
+check('server: https-img из body.dom доходит до html, javascript — нет',
+  serverAnnImg.includes('<img src="https://images.genius.com/8729fd8f6449d7fdca95631f6e603116.379×379×1.png"') && !serverAnnImg.includes('javascript:'), true);
 check('server: макет --mock-genius для превью без сети', serverPy.includes('--mock-genius') && serverPy.includes('MOCK_LYRICS_HTML'), true);
 check('server: макетные аннотации идут через normalize_annotation', serverPy.includes('normalize_annotation(raw)'), true);
 check('разметка: карточки на обоих экранах', ['id="lyrics-ann"', 'id="vinyl-ann"', 'id="lyrics-body"', 'id="vinyl-textwrap"'].every((s) => html.includes(s)), true);

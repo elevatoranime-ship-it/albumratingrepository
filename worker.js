@@ -344,6 +344,7 @@ export function mapAnnRefs(referents, text) {
 const ANN_HTML_TAGS = new Set([
   'p', 'br', 'a', 'i', 'em', 'b', 'strong', 'u', 's', 'span', 'sub', 'sup',
   'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'code', 'hr',
+  'img',
 ]);
 function escapeAnnText(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -360,6 +361,13 @@ export function domToHtml(node) {
     const href = String((node.attributes && node.attributes.href) || '');
     if (!/^https?:\/\//i.test(href)) return kids;
     return `<a href="${href.replace(/"/g, '&quot;')}">${kids}</a>`;
+  }
+  if (tag === 'img') {
+    // вложение в теле: раньше img выпадал из allowlist и терялся без следа
+    const src = String((node.attributes && node.attributes.src) || '');
+    if (!/^https:\/\//i.test(src)) return '';
+    const alt = escapeAnnText(String((node.attributes && node.attributes.alt) || '')).replace(/"/g, '&quot;');
+    return `<img src="${src.replace(/"/g, '&quot;')}" alt="${alt}">`;
   }
   return `<${tag}>${kids}</${tag}>`;
 }

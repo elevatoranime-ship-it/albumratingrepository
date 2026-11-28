@@ -425,4 +425,8 @@ test('официальный формат аннотации: body.dom → html,
   expect(domToHtml({ tag: 'a', attributes: { href: 'javascript:x' }, children: ['y'] })).toBe('y');
   expect(domToHtml({ tag: 'a', attributes: { href: 'https://genius.com/a' }, children: ['y'] })).toBe('<a href="https://genius.com/a">y</a>');
   expect(domToHtml('a < b & c')).toBe('a &lt; b &amp; c');
+  // вложения тела: https-img проходит, не-https молча отбрасывается
+  expect(domToHtml({ tag: 'img', attributes: { src: 'https://images.genius.com/x.png', alt: 'd' } }))
+    .toBe('<img src="https://images.genius.com/x.png" alt="d">');
+  expect(domToHtml({ tag: 'img', attributes: { src: 'javascript:x' } })).toBe('');
 });

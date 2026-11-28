@@ -353,6 +353,7 @@ def map_ann_refs(referents, text):
 ANN_HTML_TAGS = {
     "p", "br", "a", "i", "em", "b", "strong", "u", "s", "span", "sub", "sup",
     "blockquote", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5", "h6", "code", "hr",
+    "img",
 }
 
 
@@ -382,6 +383,14 @@ def dom_to_html(node):
         if not re.match(r"^https?://", href, re.I):
             return kids
         return f'<a href="{href.replace(chr(34), "&quot;")}">{kids}</a>'
+    if tag == "img":
+        # вложение в теле: раньше img выпадал из allowlist и терялся без следа
+        attrs = node.get("attributes") if isinstance(node.get("attributes"), dict) else {}
+        src = str(attrs.get("src") or "")
+        if not re.match(r"^https://", src, re.I):
+            return ""
+        alt = escape_ann_text(str(attrs.get("alt") or "")).replace(chr(34), "&quot;")
+        return f'<img src="{src.replace(chr(34), "&quot;")}" alt="{alt}">'
     return f"<{tag}>{kids}</{tag}>"
 
 

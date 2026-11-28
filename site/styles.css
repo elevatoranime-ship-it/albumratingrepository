@@ -3774,6 +3774,11 @@ body { -webkit-tap-highlight-color: transparent; }
   /* две колонки не влезают: текст остаётся как был, карточка выезжает
      снизу, тап по затемнению (или ×) закрывает */
   .lyrics__body.is-ann { display: block; }
+  /* секция треков — stacking context (z-index:1), соседние «СИНГЛЫ» и
+     карточки тем же z-index идут позже в DOM и перекрывали шторку.
+     Пока открыта аннотация, поднимаем секцию целиком — тогда scrim и
+     шторка (z90/91 внутри неё) оказываются поверх всех контейнеров */
+  .av__tracks:has(.lyrics__body.is-ann) { z-index: 95; }
   .lyrics__body.is-ann .lyrics__ann-scrim {
     display: block;
     position: fixed;

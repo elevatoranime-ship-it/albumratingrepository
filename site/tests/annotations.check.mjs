@@ -84,6 +84,8 @@ const mobileSheetRule = stylesCss.match(/\.lyrics__body\.is-ann \.lyrics__ann \{
 check('стили: мобильная шторка bottom-anchored (top: auto)', Boolean(mobileSheetRule && mobileSheetRule[0].includes('top: auto')), true);
 check('стили: шторка учитывает safe-area iPhone', stylesCss.includes('env(safe-area-inset-bottom)'), true);
 check('стили: подсветка, раскладка, iframe', ['.lyrics__line.is-ref', '.lyrics__body.is-ann', '.lyrics__ann-body iframe'].every((s) => stylesCss.includes(s)), true);
+check('стили: группа строк — единый блок (края, hover, рамка активности)',
+  ['is-ref-first', 'is-ref-last', 'is-hover'].every((s) => stylesCss.includes(s)), true);
 check('стили: у карточки нет display через [hidden]', !/\.lyrics__ann\s*\{[^}]*display\s*:/.test(stylesCss), true);
 check('клиент: санитайзер и YouTube', ['GENIUS_ANN_KEEP', 'youtube-nocookie.com/embed', 'geniusAnnSanitize', 'geniusAnnImageSrc', 'filepicker-images.genius.com'].every((s) => appSource.includes(s)), true);
 // без клинапа Chrome оставляет identity-матрицу reveal-анимации — секция
@@ -177,7 +179,7 @@ async function boot() {
 
 async function scenario() {
   console.log('сценарий: подсветка строк, карточка, закрытие');
-  const { doc, pageErrors } = await boot();
+  const { window, doc, pageErrors } = await boot();
 
   doc.querySelector('#albums .album__title').click();
   await waitFor(() => [...doc.querySelectorAll('.view.is-visible')].map((v) => v.id).join() === 'view-album');
@@ -189,6 +191,14 @@ async function scenario() {
   check('подсвеченные строки — «Два» и «Три»', refs.map((el) => el.textContent), ['Два', 'Три']);
   check('строки доступны с клавиатуры', refs.every((el) => el.getAttribute('role') === 'button' && el.getAttribute('tabindex') === '0'), true);
   check('остальные строки не подсвечены', doc.querySelectorAll('#lyrics-text .lyrics__line:not(.is-ref)').length, 3);
+  // многострочная аннотация — единым блоком: края группы и сквозной hover
+  const refEls = [...doc.querySelectorAll('#lyrics-text .lyrics__line.is-ref')];
+  check('группа: первая строка — край снизу', refEls[0].classList.contains('is-ref-first') && !refEls[0].classList.contains('is-ref-last'), true);
+  check('группа: последняя строка — край сверху', refEls[1].classList.contains('is-ref-last') && !refEls[1].classList.contains('is-ref-first'), true);
+  refEls[0].dispatchEvent(new window.MouseEvent('mouseenter'));
+  check('группа: наведение подсвечивает все строки', refEls.every((el) => el.classList.contains('is-hover')), true);
+  refEls[1].dispatchEvent(new window.MouseEvent('mouseleave'));
+  check('группа: уход снимает подсветку со всех', refEls.some((el) => el.classList.contains('is-hover')), false);
 
   refs[0].click();
   const ann = doc.querySelector('#lyrics-ann');

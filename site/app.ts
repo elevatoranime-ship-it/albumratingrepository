@@ -6935,6 +6935,31 @@ function geniusApplyAnn(run: GeniusRun, song: GeniusSongInfo, pairs: Array<reado
         el.setAttribute('aria-label', 'Показать аннотацию к строке');
       }
     }
+    // многострочная аннотация — единым блоком: края группы (для скругления
+    // и рамки активности) и сквозное наведение по всем строкам группы
+    const allLines = Array.from(lines);
+    for (const el of allLines) el.classList.remove('is-ref-first', 'is-ref-last', 'is-hover');
+    const groups: HTMLElement[][] = [];
+    let acc: HTMLElement[] = [];
+    for (const el of allLines) {
+      const annId = el.dataset.ann;
+      if (annId && acc.length && acc[acc.length - 1].nextElementSibling === el && acc[0].dataset.ann === annId) {
+        acc.push(el);
+      } else {
+        if (acc.length) groups.push(acc);
+        acc = annId ? [el] : [];
+      }
+    }
+    if (acc.length) groups.push(acc);
+    for (const group of groups) {
+      group[0].classList.add('is-ref-first');
+      group[group.length - 1].classList.add('is-ref-last');
+      if (group.length === 1) continue;
+      for (const el of group) {
+        el.addEventListener('mouseenter', () => group.forEach((x) => x.classList.add('is-hover')));
+        el.addEventListener('mouseleave', () => group.forEach((x) => x.classList.remove('is-hover')));
+      }
+    }
     geniusAnnCtx.set(ui.text, { song, refs, anns });
   };
   if (ui.text.classList.contains('is-typing')) geniusAnnDeferred.set(ui, apply);

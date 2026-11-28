@@ -3653,11 +3653,25 @@ body { -webkit-tap-highlight-color: transparent; }
   cursor: pointer;
   transition: background 0.18s ease;
 }
-.lyrics__line.is-ref:hover { background: rgba(242, 207, 94, 0.3); }
+/* многострочная группа — один блок: скругления только на внешних краях */
+.lyrics__line.is-ref-first:not(.is-ref-last) { border-radius: 6px 6px 0 0; }
+.lyrics__line.is-ref-last:not(.is-ref-first) { border-radius: 0 0 6px 6px; }
+.lyrics__line.is-ref:not(.is-ref-first):not(.is-ref-last) { border-radius: 0; }
+.lyrics__line.is-ref:hover, .lyrics__line.is-ref.is-hover { background: rgba(242, 207, 94, 0.3); }
 .lyrics__line.is-ref:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* активность: рамка по периметру всей группы — без разделителей между строками */
 .lyrics__line.is-ref.is-active {
   background: rgba(242, 207, 94, 0.38);
   box-shadow: inset 0 0 0 1px rgba(242, 207, 94, 0.65);
+}
+.lyrics__line.is-ref.is-active:not(:is(.is-ref-first, .is-ref-last)) {
+  box-shadow: inset 1px 0 0 rgba(242, 207, 94, 0.65), inset -1px 0 0 rgba(242, 207, 94, 0.65);
+}
+.lyrics__line.is-ref.is-active.is-ref-first:not(.is-ref-last) {
+  box-shadow: inset 0 1px 0 rgba(242, 207, 94, 0.65), inset 1px 0 0 rgba(242, 207, 94, 0.65), inset -1px 0 0 rgba(242, 207, 94, 0.65);
+}
+.lyrics__line.is-ref.is-active.is-ref-last:not(.is-ref-first) {
+  box-shadow: inset 0 -1px 0 rgba(242, 207, 94, 0.65), inset 1px 0 0 rgba(242, 207, 94, 0.65), inset -1px 0 0 rgba(242, 207, 94, 0.65);
 }
 /* после посимвольной печати строки перестраиваются — без повторного каскада */
 .lyrics__text--type .lyrics__line { animation: none; }

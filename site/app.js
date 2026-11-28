@@ -25827,13 +25827,19 @@ ${suffix}`;
     const openFrom = (target) => {
       const line = target?.closest(".is-ref") ?? null;
       if (line && ui.text.contains(line) && line.dataset.ann) {
+        const sameOpen = !ui.ann.hidden && ui.ann.dataset.annId === line.dataset.ann;
+        if (sameOpen) {
+          geniusAnnClose(ui);
+          return true;
+        }
         geniusAnnOpen(ui, line.dataset.ann);
         return true;
       }
       return false;
     };
     ui.text.addEventListener("click", (e) => {
-      openFrom(e.target);
+      if (openFrom(e.target)) return;
+      if (!ui.ann.hidden) geniusAnnClose(ui);
     });
     ui.text.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" && e.key !== " ") return;
@@ -26042,6 +26048,7 @@ ${suffix}`;
   }
   function geniusAnnClose(ui) {
     ui.ann.hidden = true;
+    delete ui.ann.dataset.annId;
     ui.bodyWrap.classList.remove("is-ann");
     ui.text.querySelectorAll(".lyrics__line.is-active").forEach((el) => el.classList.remove("is-active"));
   }
@@ -26201,6 +26208,7 @@ ${suffix}`;
     frag.appendChild(link);
     ui.ann.replaceChildren(frag);
     ui.ann.hidden = false;
+    ui.ann.dataset.annId = annId;
     ui.bodyWrap.classList.add("is-ann");
     const lines = ui.text.querySelectorAll(".lyrics__line");
     ui.text.querySelectorAll(".lyrics__line.is-active").forEach((el) => el.classList.remove("is-active"));

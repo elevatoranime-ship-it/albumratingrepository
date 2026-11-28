@@ -219,6 +219,16 @@ async function scenario() {
   check('ссылка на аннотацию', ann.querySelector('.lyrics__ann-link')?.getAttribute('href'), 'https://genius.com/annotations/555');
   check('открытая строка активна', refs[0].classList.contains('is-active'), true);
 
+  // закрытие кликом по тексту, как на Genius: тумблер по строке + обычный текст
+  refs[1].click();
+  check('повторный клик по строке той же аннотации закрывает', ann.hidden, true);
+  refs[0].click();
+  check('переоткрытие по строке работает', ann.hidden, false);
+  doc.querySelector('#lyrics-text .lyrics__line:not(.is-ref)').click();
+  check('клик по обычному тексту закрывает аннотацию', ann.hidden, true);
+  refs[0].click();
+  check('аннотация открыта для проверки ×', ann.hidden, false);
+
   ann.querySelector('.lyrics__ann-close').click();
   check('карточка закрыта', ann.hidden, true);
   check('раскладка сброшена', doc.querySelector('#lyrics-body').classList.contains('is-ann'), false);

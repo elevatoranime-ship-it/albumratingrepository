@@ -6709,17 +6709,27 @@ const vinylLyricsUi: GeniusScreenUi = {
   typewriter: true,
 };
 
-/* Клик по подсвеченной строке открывает карточку аннотации, × закрывает. */
+/* Клик по подсвеченной строке открывает карточку аннотации; как на Genius —
+   клик по любому месту текста закрывает открытую (повторный клик по строке
+   той же аннотации — тоже), по другой подсвеченной — переключает; × — тоже. */
 for (const ui of [albumLyricsUi, vinylLyricsUi]) {
   const openFrom = (target: Element | null): boolean => {
     const line = target?.closest<HTMLElement>('.is-ref') ?? null;
     if (line && ui.text.contains(line) && line.dataset.ann) {
+      const sameOpen = !ui.ann.hidden && ui.ann.dataset.annId === line.dataset.ann;
+      if (sameOpen) {
+        geniusAnnClose(ui); // тумблер: повторный клик по строке закрывает
+        return true;
+      }
       geniusAnnOpen(ui, line.dataset.ann);
       return true;
     }
     return false;
   };
-  ui.text.addEventListener('click', (e) => { openFrom(e.target as Element); });
+  ui.text.addEventListener('click', (e) => {
+    if (openFrom(e.target as Element)) return;
+    if (!ui.ann.hidden) geniusAnnClose(ui); // обычный текст — закрыть открытую
+  });
   ui.text.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' && e.key !== ' ') return;
     if (openFrom(e.target as Element)) e.preventDefault();
@@ -6968,6 +6978,7 @@ function geniusApplyAnn(run: GeniusRun, song: GeniusSongInfo, pairs: Array<reado
 
 function geniusAnnClose(ui: GeniusScreenUi): void {
   ui.ann.hidden = true;
+  delete ui.ann.dataset.annId;
   ui.bodyWrap.classList.remove('is-ann');
   ui.text.querySelectorAll('.lyrics__line.is-active').forEach((el) => el.classList.remove('is-active'));
 }
@@ -7154,6 +7165,7 @@ function geniusAnnOpen(ui: GeniusScreenUi, annId: string): void {
 
   ui.ann.replaceChildren(frag);
   ui.ann.hidden = false;
+  ui.ann.dataset.annId = annId; // для тумблера: повторный клик по строке закрывает
   ui.bodyWrap.classList.add('is-ann');
   const lines = ui.text.querySelectorAll<HTMLElement>('.lyrics__line');
   ui.text.querySelectorAll('.lyrics__line.is-active').forEach((el) => el.classList.remove('is-active'));

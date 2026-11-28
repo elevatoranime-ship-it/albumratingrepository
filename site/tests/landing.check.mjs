@@ -49,10 +49,18 @@ check('viewLogin заменён на viewLanding',
   appSource.includes('viewLanding') && !appSource.includes('viewLogin'), true);
 check('поведение: прогресс, плавный скролл, IO-гард, въезд карточки',
   ['#lp-progress', "'IntersectionObserver' in window", 'data-lp-scroll', 'playCardEnter'].every((s) => appSource.includes(s)), true);
-check('стили: fixed-скролл, sticky-секции, reduce-motion',
-  ['.view--landing', 'position: sticky', 'prefers-reduced-motion'].every((s) => stylesCss.includes(s)), true);
+check('стили: fixed-скролл и reduce-motion',
+  ['.view--landing', 'prefers-reduced-motion'].every((s) => stylesCss.includes(s)), true);
+check('секции без sticky-перекрытия (естественный скролл)',
+  /\.lp__sec\s*\{[^}]*position:\s*sticky/.test(stylesCss), false);
+check('секции обычным потоком: 100dvh и разделение линией',
+  [/\.lp__sec\s*\{[^}]*min-height:\s*100dvh/, /\.lp__sec \+ \.lp__sec \{ border-top:/].every((re) => re.test(stylesCss)), true);
 check('стили: навигация и прогресс выше секций',
   [/\.lp__nav\s*\{[^}]*z-index:\s*55/, /\.lp__progress\s*\{[^}]*z-index:\s*60/].every((re) => re.test(stylesCss)), true);
+check('плотный контент: полка, вкладки, пилюли, статистика',
+  ['lp-shelf', 'lp-tabs', 'lp__pills', 'lp__stats'].every((s) => html.includes(s)), true);
+const prose = html.replace(/<title>[\s\S]*?<\/title>/, '').replace(/aria-label="[^"]*"/g, '');
+check('слово на странице — ровно один раз (логотип)', (prose.match(/пространство/gi) ?? []).length, 1);
 
 /* --- поведение --- */
 async function boot() {

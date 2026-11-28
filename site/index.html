@@ -40,12 +40,17 @@
       <!-- 1 · герой -->
       <section class="lp__sec lp__sec--hero" id="lp-hero" aria-label="О сайте">
         <div class="lp__inner">
-          <p class="lp__eyebrow lp__up" style="--d:.05s">закрытое пространство для двоих</p>
-          <h1 class="lp__title lp__up" style="--d:.16s">Пространство</h1>
-          <p class="lp__lead lp__up" style="--d:.3s">Альбомы, оценки и рейтинги — в одном тихом месте.</p>
+          <p class="lp__eyebrow lp__up" style="--d:.05s">закрытый сайт для двоих</p>
+          <h1 class="lp__title lp__up" style="--d:.16s">Один альбом —<br />два взгляда</h1>
+          <p class="lp__lead lp__up" style="--d:.3s">Вы слушаете одни и те же релизы, ставите баллы и собираете честные рейтинги — вдвоём, без лишних глаз и алгоритмов.</p>
           <div class="lp__actions lp__up" style="--d:.44s">
             <button class="btn" type="button" data-lp-scroll="lp-enter">Войти</button>
             <button class="lp__ghost" type="button" data-lp-scroll="lp-collection">Что внутри</button>
+          </div>
+          <div class="lp__stats lp__up" style="--d:.58s" aria-hidden="true">
+            <div class="lp__stat"><b>2</b><span>участника</span></div>
+            <div class="lp__stat"><b>0–10</b><span>шкала оценок</span></div>
+            <div class="lp__stat"><b>4</b><span>вида рейтингов</span></div>
           </div>
         </div>
         <div class="lp__cue" aria-hidden="true"><span></span></div>
@@ -57,12 +62,20 @@
           <div class="lp__copy">
             <p class="lp__rubric lp__up">01 · Коллекция</p>
             <h2 class="lp__h2 lp__up" style="--d:.08s">Ваши пластинки</h2>
-            <p class="lp__text lp__up" style="--d:.16s">Альбомы и синглы: обложки, годы и средний балл — в общей коллекции.</p>
+            <p class="lp__text lp__up" style="--d:.16s">Альбомы и синглы с обложками, годами и средним баллом. Добавляете вдвоём — коллекция общая, как и впечатления.</p>
           </div>
           <div class="lp__demo lp__up" style="--d:.22s" aria-hidden="true">
-            <div class="lp-cover" style="--h:0"><span>Д</span></div>
-            <div class="lp-cover" style="--h:1"><span>Н</span></div>
-            <div class="lp-cover" style="--h:2"><span>Т</span></div>
+            <div class="lp-shelf">
+              <div class="lp-shelf__head"><span>Недавно добавлено</span><em>24 релиза</em></div>
+              <div class="lp-shelf__grid">
+                <figure class="lp-shelf__item"><span class="lp-cover lp-cover--a">Д</span><figcaption>Дом<em>8.6</em></figcaption></figure>
+                <figure class="lp-shelf__item"><span class="lp-cover lp-cover--b">Н</span><figcaption>Ночь<em>7.9</em></figcaption></figure>
+                <figure class="lp-shelf__item"><span class="lp-cover lp-cover--c">Т</span><figcaption>Тишина<em>9.1</em></figcaption></figure>
+                <figure class="lp-shelf__item"><span class="lp-cover lp-cover--b">В</span><figcaption>Восток<em>8.2</em></figcaption></figure>
+                <figure class="lp-shelf__item"><span class="lp-cover lp-cover--c">С</span><figcaption>Свет<em>7.4</em></figcaption></figure>
+                <figure class="lp-shelf__item"><span class="lp-cover lp-cover--a">М</span><figcaption>Музыка<em>9.4</em></figcaption></figure>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -73,7 +86,7 @@
           <div class="lp__copy">
             <p class="lp__rubric lp__up">02 · Оценки</p>
             <h2 class="lp__h2 lp__up" style="--d:.08s">Балл за каждым треком</h2>
-            <p class="lp__text lp__up" style="--d:.16s">Слайдером или числом. Итог считается, когда подтвердили оба.</p>
+            <p class="lp__text lp__up" style="--d:.16s">Слайдером или числом — от 0 до 10. Итог по треку появляется, когда балл подтвердили оба.</p>
           </div>
           <div class="lp__demo lp__up" style="--d:.22s" aria-hidden="true">
             <div class="lp-track"><i class="lp-track__num">01</i><span class="lp-track__name">Первый</span>
@@ -82,7 +95,12 @@
               <span class="lp-track__rail"><b style="--w:.64"></b></span><em>6.4</em></div>
             <div class="lp-track"><i class="lp-track__num">03</i><span class="lp-track__name">Третий</span>
               <span class="lp-track__rail"><b style="--w:.91"></b></span><em>9.1</em></div>
+            <div class="lp-track"><i class="lp-track__num">04</i><span class="lp-track__name">Четвёртый</span>
+              <span class="lp-track__rail"><b style="--w:.55"></b></span><em>5.5</em></div>
+            <div class="lp-track"><i class="lp-track__num">05</i><span class="lp-track__name">Пятый</span>
+              <span class="lp-track__rail"><b style="--w:.83"></b></span><em>8.3</em></div>
             <div class="lp-confirm"><i class="lp-dot"></i><i class="lp-dot"></i><span>подтверждено обоими</span></div>
+            <div class="lp-mask"><b>***</b><span>оценку можно скрыть спойлером</span></div>
           </div>
         </div>
       </section>
@@ -93,12 +111,16 @@
           <div class="lp__copy">
             <p class="lp__rubric lp__up">03 · Рейтинги</p>
             <h2 class="lp__h2 lp__up" style="--d:.08s">Честный чарт</h2>
-            <p class="lp__text lp__up" style="--d:.16s">Альбомы, артисты, синглы и треки — только из подтверждённых оценок.</p>
+            <p class="lp__text lp__up" style="--d:.16s">Альбомы, артисты, синглы и треки — только из подтверждённых оценок, без случайных баллов.</p>
           </div>
           <div class="lp__demo lp__up" style="--d:.22s" aria-hidden="true">
+            <div class="lp-tabs"><span class="is-on">Альбомы</span><span>Артисты</span><span>Синглы</span><span>Треки</span></div>
             <div class="lp-bar"><i style="--v:.94;--d:.1s"></i><span>1 · альбом года</span></div>
-            <div class="lp-bar"><i style="--v:.81;--d:.25s"></i><span>2 · сингл</span></div>
-            <div class="lp-bar"><i style="--v:.67;--d:.4s"></i><span>3 · релиз</span></div>
+            <div class="lp-bar"><i style="--v:.81;--d:.22s"></i><span>2 · сингл</span></div>
+            <div class="lp-bar"><i style="--v:.67;--d:.34s"></i><span>3 · релиз</span></div>
+            <div class="lp-bar"><i style="--v:.55;--d:.46s"></i><span>4 · трек</span></div>
+            <div class="lp-bar"><i style="--v:.42;--d:.58s"></i><span>5 · коллаборация</span></div>
+            <p class="lp-note">пересчитывается после каждого подтверждения</p>
           </div>
         </div>
       </section>
@@ -109,13 +131,15 @@
           <div class="lp__copy">
             <p class="lp__rubric lp__up">04 · Аннотации</p>
             <h2 class="lp__h2 lp__up" style="--d:.08s">Смысл между строк</h2>
-            <p class="lp__text lp__up" style="--d:.16s">Тексты Genius, подсветка строк и аннотации — прямо в карточке.</p>
+            <p class="lp__text lp__up" style="--d:.16s">Тексты Genius, подсветка строк и аннотации — прямо в карточке трека, со ссылкой на источник.</p>
           </div>
           <div class="lp__demo lp__up" style="--d:.22s" aria-hidden="true">
             <div class="lp-lyric">Она меня хочет и она шарит</div>
             <div class="lp-lyric is-hl">что я самый модный (Хочет)</div>
             <div class="lp-lyric">Кидаю деньги в сауне (А)</div>
+            <div class="lp-lyric">Здесь спит город, здесь живём мы</div>
             <div class="lp-ann"><b>аннотация</b><span>Аллюзия на трек «The Next Episode»</span></div>
+            <div class="lp-ann lp-ann--row"><i class="lp-ann__thumb"></i><span class="lp-ann__body"><b>аннотация</b><span>Кадр из клипа повторяет обложку альбома</span></span></div>
           </div>
         </div>
       </section>
@@ -126,7 +150,10 @@
           <div class="lp__copy lp__copy--center">
             <p class="lp__rubric lp__up">05 · Вход</p>
             <h2 class="lp__h2 lp__up" style="--d:.08s">Только для двоих</h2>
-            <p class="lp__text lp__up" style="--d:.16s">Почта и пароль — и вы внутри.</p>
+            <p class="lp__text lp__up" style="--d:.16s">Почта и пароль — и вы внутри. Сайт помнит только то, что вы ему доверили.</p>
+            <div class="lp__pills lp__up" style="--d:.26s" aria-hidden="true">
+              <span>без рекламы</span><span>без алгоритмов</span><span>без чужих глаз</span>
+            </div>
           </div>
           <div class="card" id="card">
 
@@ -198,7 +225,7 @@
 
         <footer class="foot reveal">
           <span class="foot__line"></span>
-          <span class="foot__text">закрытое пространство</span>
+          <span class="foot__text">закрытый архив для двоих</span>
           <span class="foot__line"></span>
         </footer>
 

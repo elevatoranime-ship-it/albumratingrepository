@@ -31,8 +31,8 @@ const GENIUS_TOKEN_FALLBACK = '0bdmXdOU1UaPikappqvWfrpwrpxkB3HczT2xlouY9vliFGTXS
 /** Версия разбора текста (extractLyrics) — входит в ключ кэша /lyrics; повышать при правках разбора. */
 const LYRICS_PARSER_VERSION = 4;
 /** Версия нормализации аннотации — входит в ключ кэша /annotations.
-    v3: img из body.dom доходит до html (раньше выпадал из allowlist). */
-const ANN_FORMAT_VERSION = 3;
+    v4: приоритет body.dom над body.html (в dom вложения-картинки). */
+const ANN_FORMAT_VERSION = 4;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 const CORS = {
@@ -378,7 +378,10 @@ export function domToHtml(node) {
 export function normalizeAnnotation(ann) {
   const body = ann && typeof ann === 'object' ? ann : {};
   const inner = body.body && typeof body.body === 'object' ? body.body : {};
-  const html = typeof inner.html === 'string' && inner.html ? inner.html : domToHtml(inner.dom);
+  // dom — канонический формат редактора (в нём вложения-картинки), html — запасной:
+  // приоритет html прятал img: поле есть, но без вложений, и domToHtml не вызывался
+  const fromDom = inner.dom ? domToHtml(inner.dom) : '';
+  const html = fromDom || (typeof inner.html === 'string' ? inner.html : '');
   const authorUser = Array.isArray(body.authors) && body.authors[0] && body.authors[0].user
     ? body.authors[0].user
     : null;

@@ -429,4 +429,8 @@ test('официальный формат аннотации: body.dom → html,
   expect(domToHtml({ tag: 'img', attributes: { src: 'https://images.genius.com/x.png', alt: 'd' } }))
     .toBe('<img src="https://images.genius.com/x.png" alt="d">');
   expect(domToHtml({ tag: 'img', attributes: { src: 'javascript:x' } })).toBe('');
+  // приоритет: dom (канонический, с вложениями) важнее html; html — только когда dom нет/пуст
+  expect(normalizeAnnotation({ body: { html: '<p>без картинки</p>', dom: { tag: 'root', children: [{ tag: 'img', attributes: { src: 'https://images.genius.com/x.png' } }] } } }).html)
+    .toBe('<img src="https://images.genius.com/x.png" alt="">');
+  expect(normalizeAnnotation({ body: { html: '<p>только html</p>' } }).html).toBe('<p>только html</p>');
 });

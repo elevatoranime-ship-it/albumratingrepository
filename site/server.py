@@ -398,7 +398,9 @@ def normalize_annotation(ann):
     """Стабильная форма аннотации для клиента — зеркалит worker.js."""
     body = ann if isinstance(ann, dict) else {}
     inner = body.get("body") if isinstance(body.get("body"), dict) else {}
-    html = inner.get("html") if isinstance(inner.get("html"), str) and inner.get("html") else dom_to_html(inner.get("dom"))
+    # dom — канонический формат редактора (в нём вложения-картинки), html — запасной
+    from_dom = dom_to_html(inner.get("dom")) if inner.get("dom") is not None else ""
+    html = from_dom or (inner.get("html") if isinstance(inner.get("html"), str) else "")
     authors = body.get("authors") if isinstance(body.get("authors"), list) else []
     author_user = None
     if authors and isinstance(authors[0], dict) and isinstance(authors[0].get("user"), dict):

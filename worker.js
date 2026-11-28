@@ -30,8 +30,9 @@
 const GENIUS_TOKEN_FALLBACK = '0bdmXdOU1UaPikappqvWfrpwrpxkB3HczT2xlouY9vliFGTXSahE6jOVSwAaosGP';
 /** Версия разбора текста (extractLyrics) — входит в ключ кэша /lyrics; повышать при правках разбора. */
 const LYRICS_PARSER_VERSION = 4;
-/** Версия нормализации аннотации — входит в ключ кэша /annotations. */
-const ANN_FORMAT_VERSION = 2;
+/** Версия нормализации аннотации — входит в ключ кэша /annotations.
+    v3: img из body.dom доходит до html (раньше выпадал из allowlist). */
+const ANN_FORMAT_VERSION = 3;
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36';
 
 const CORS = {
